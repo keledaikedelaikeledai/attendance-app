@@ -1,7 +1,7 @@
 import process from 'node:process'
 import { desc } from 'drizzle-orm'
 import { createError } from 'h3'
-import { user } from '../../database/schema'
+import { user } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 function isAllowedAdmin(email?: string | null) {

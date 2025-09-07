@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
-import { attendanceDay } from '../../database/schema'
+import { attendanceDay } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {

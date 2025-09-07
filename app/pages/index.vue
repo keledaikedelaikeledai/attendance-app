@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { ShiftDef } from '@/composables/useAttendance'
 import { onMounted, ref } from 'vue'
-import { getShiftLabel, SHIFT_DEFS, useAttendance } from '@/composables/useAttendance'
+import { getShiftLabel, useAttendance } from '@/composables/useAttendance'
 
 const {
   clockedIn,
@@ -16,6 +17,8 @@ const {
   selectedShiftCode,
   setShift,
   refresh,
+  shifts,
+  selectedShiftType,
 } = useAttendance()
 
 const geoSupported = ref<boolean>(false)
@@ -47,7 +50,8 @@ function shiftToMinutes(start: string, end: string) {
 }
 
 function getShiftByCode(code?: string | null) {
-  return SHIFT_DEFS.find(s => s.code === code)
+  const list: ShiftDef[] = (shifts as any)?.value ?? (shifts as any) ?? []
+  return list.find((s: ShiftDef) => s.code === code)
 }
 
 function getShiftStartEnd(clockInIso?: string, code?: string | null) {
@@ -91,19 +95,23 @@ function formatHumanMinutes(totalMinutes: number) {
 function pickClosestShift(now = new Date()) {
   const nowMin = minutesSinceMidnight(now)
   let closest: { code: string, diff: number } | null = null
-  for (const s of SHIFT_DEFS) {
+  const list: ShiftDef[] = (shifts as any)?.value ?? (shifts as any) ?? []
+  for (const s of list) {
     const { startMin } = shiftToMinutes(s.start, s.end)
     let diff = Math.abs(startMin - nowMin)
     diff = Math.min(diff, 1440 - diff)
     if (!closest || diff < closest.diff)
       closest = { code: s.code, diff }
   }
-  return (closest?.code as typeof selectedShiftCode.value) || 'pagi'
+  return (closest?.code as typeof selectedShiftCode.value) || (list[0]?.code as any)
 }
 
 function ensureDefaultShift() {
-  if (!selectedShiftCode.value)
-    setShift(pickClosestShift())
+  if (!selectedShiftCode.value) {
+    const def = pickClosestShift()
+    if (def)
+      setShift(def)
+  }
 }
 
 async function requestLocationOnce() {
@@ -217,7 +225,12 @@ function onLogout() {
         </p>
       </div>
       <div class="flex gap-2">
-        <UButton color="neutral" variant="soft" icon="i-heroicons-arrow-right-start-on-rectangle" @click="onLogout">
+        <UButton
+          color="neutral"
+          variant="soft"
+          icon="i-heroicons-arrow-right-start-on-rectangle"
+          @click="onLogout"
+        >
           Logout
         </UButton>
       </div>
@@ -263,19 +276,54 @@ function onLogout() {
 
           <div class="space-y-2">
             <UFormField label="Shift" help="Select your scheduled shift.">
-              <USelect v-model="selectedShiftCode" :items="SHIFT_DEFS" class="w-full" :disabled="clockedIn" placeholder="Select shift" value-key="code" />
+              <USelect
+                v-model="selectedShiftCode"
+                :items="(shifts as any)"
+                class="w-full"
+                :disabled="clockedIn"
+                placeholder="Select shift"
+                value-key="code"
+              />
+            </UFormField>
+            <UFormField label="Tipe Shift" help="Pilih tipe kehadiran Anda.">
+              <USelect
+                v-model="selectedShiftType"
+                :items="[{ label: 'Shift Harian', value: 'harian' }, { label: 'Shift Bantuan', value: 'bantuan' }]"
+                class="w-full"
+                :disabled="clockedIn"
+                placeholder="Pilih tipe shift"
+              />
             </UFormField>
           </div>
 
           <div class="flex flex-wrap gap-3">
-            <UButton v-if="!clockedIn" color="primary" icon="i-heroicons-play" :loading="locating" :disabled="!selectedShiftCode" @click="handleClock('in')">
+            <UButton
+              v-if="!clockedIn"
+              color="primary"
+              icon="i-heroicons-play"
+              :loading="locating"
+              :disabled="!selectedShiftCode || !selectedShiftType"
+              @click="handleClock('in')"
+            >
               Clock In
             </UButton>
-            <UButton v-else color="primary" variant="solid" icon="i-heroicons-stop" :loading="locating" @click="handleClock('out')">
+            <UButton
+              v-else
+              color="primary"
+              variant="solid"
+              icon="i-heroicons-stop"
+              :loading="locating"
+              @click="handleClock('out')"
+            >
               Clock Out
             </UButton>
             <UTooltip text="Clears today's data">
-              <UButton color="neutral" variant="outline" icon="i-heroicons-arrow-path" @click="onReset">
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-heroicons-arrow-path"
+                @click="onReset"
+              >
                 Reset
               </UButton>
             </UTooltip>
@@ -303,7 +351,13 @@ function onLogout() {
             </template>
           </div>
           <div>
-            <UButton size="xs" variant="soft" icon="i-heroicons-map-pin" :loading="locating" @click="requestLocationOnce">
+            <UButton
+              size="xs"
+              variant="soft"
+              icon="i-heroicons-map-pin"
+              :loading="locating"
+              @click="requestLocationOnce"
+            >
               Refresh Location
             </UButton>
           </div>

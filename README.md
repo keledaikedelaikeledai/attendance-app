@@ -7,33 +7,9 @@ Nuxt 4 attendance tracker using:
 - SQLite via Turso (libSQL)
 - Nuxt UI for components and styling
 
-Includes a simple clock in/out UI with geolocation, a local activity log, and a server-side auth API powered by Better Auth + Drizzle.
+Includes a simple clock in/out UI with geolocation, a server-backed attendance log, and an auth API powered by Better Auth + Drizzle.
 
-## Stack
-
-- Nuxt 4, Vue 3
-- @nuxt/ui (Nuxt UI)
-- better-auth (with drizzle adapter and username plugin)
-- drizzle-orm + drizzle-kit
-- @libsql/client (Turso/libSQL)
-
-## Quick start
-
-1) Install dependencies
-
-```bash
-# bun (recommended)
-bun install
-# Attendance App
-
-Nuxt 4 attendance tracker using:
-
-- Better Auth (email/password + username plugin)
-- Drizzle ORM
-- SQLite via Turso (libSQL)
-- Nuxt UI for components and styling
-
-Includes a simple clock in/out UI with geolocation, a local activity log, and a server-side auth API powered by Better Auth + Drizzle.
+See also: docs/flowcharts.md for architecture and user flows.
 
 ## Stack
 
@@ -142,16 +118,17 @@ Pages:
 
 - `app/pages/index.vue` – Attendance dashboard
 - Clock in/out with optional geolocation
-- Shift selection (pagi/siang/sore/malam)
-- Local activity log and duration
+- Shift selection backed by DB (served from `/api/shifts`)
+- Activity log and duration
 - `app/pages/register.vue` – Registration with Vee Validate + Zod
 - `app/pages/login.vue` – Login scaffold (wire to Better Auth signIn.email)
 
 Composable:
 
 - `app/composables/useAttendance.ts`
-- Persists minimal attendance state in localStorage
-- Exposes `clockIn`, `clockOut`, `resetDay`, `SHIFT_DEFS`, and helpers
+- Loads shifts from DB via `/api/shifts`
+- Talks to server endpoints for attendance state
+- Exposes `clockIn`, `clockOut`, `resetDay`, `setShift`, `getShiftLabel`, and derived state
 
 ## Project structure (selected)
 
@@ -169,6 +146,11 @@ Required variables (see `.env.example`):
 - `NUXT_DB_URL` – Turso URL (libsql://…) or local `file:sqlite.db`
 - `NUXT_DB_AUTH_TOKEN` – Turso auth token (omit/empty for local file)
 
+Optional (supported for certain deploy targets):
+
+- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`
+- `NUXT_HUB_DATABASE_URL` / `NUXT_HUB_DATABASE_AUTH_TOKEN`
+
 ## Scripts
 
 - `dev` – run Nuxt dev server
@@ -179,4 +161,3 @@ Required variables (see `.env.example`):
 ---
 
 Made with Nuxt, Nuxt UI, Better Auth, Drizzle, and SQLite (Turso/libSQL).
-pnpm install

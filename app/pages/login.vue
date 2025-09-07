@@ -8,11 +8,12 @@ const { value: password } = useField('password', toTypedSchema(z.string().min(6,
 
 const onSubmit = handleSubmit(async (values) => {
   try {
-    await authClient.signIn.username({
+    const { data } = await authClient.signIn.username({
       username: values.username,
       password: values.password,
     })
-    await navigateTo('/', { external: true })
+    console.log('Login success', data)
+    // await navigateTo('/', { external: true })
   }
   catch {}
 })
@@ -39,23 +40,49 @@ definePageMeta({
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div class="space-y-2">
             <UFormField label="Username" :error="errors.username">
-              <UInput v-model="username" size="xl" type="text" placeholder="protokol" icon="i-heroicons-envelope" autofocus class="w-full" />
+              <UInput
+                v-model="username"
+                size="xl"
+                type="text"
+                placeholder="protokol"
+                icon="i-heroicons-envelope"
+                autofocus
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="space-y-2">
             <UFormField label="Password" :error="errors.password">
-              <UInput v-model="password" size="xl" type="password" placeholder="••••••••" icon="i-heroicons-lock-closed" class="w-full" />
+              <UInput
+                v-model="password"
+                size="xl"
+                type="password"
+                placeholder="••••••••"
+                icon="i-heroicons-lock-closed"
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="pt-2">
-            <UButton size="xl" :loading="isSubmitting" block type="submit" icon="i-heroicons-arrow-right-end-on-rectangle">
+            <UButton
+              size="xl"
+              :loading="isSubmitting"
+              block
+              type="submit"
+              icon="i-heroicons-arrow-right-end-on-rectangle"
+            >
               Login
             </UButton>
           </div>
         </form>
       </UCard>
       <div class="text-center">
-        <UButton variant="link" to="/forgot-password" color="neutral" size="xs">
+        <UButton
+          variant="link"
+          to="/forgot-password"
+          color="neutral"
+          size="xs"
+        >
           Forgot password?
         </UButton>
       </div>

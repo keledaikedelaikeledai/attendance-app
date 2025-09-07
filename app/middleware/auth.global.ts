@@ -2,6 +2,7 @@ export default defineNuxtRouteMiddleware(async (
   to,
 ) => {
   const { data: session } = await authClient.useSession(useFetch)
+
   const authMeta = to.meta.auth
   // if no auth meta, then route is auth only
   if (!authMeta) {

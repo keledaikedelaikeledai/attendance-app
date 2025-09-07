@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
-import { attendanceDay, attendanceLog } from '../../database/schema'
+import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 type Log = typeof attendanceLog.$inferSelect
@@ -35,6 +35,7 @@ export default defineEventHandler(async (event) => {
   return {
     date: today,
     selectedShiftCode: day?.selectedShiftCode ?? null,
+    shiftType: (day as any)?.shiftType ?? null,
     clockedIn: Boolean(clockIn && !clockOut),
     clockInTime: clockIn ? new Date(clockIn.timestamp as Date).toISOString() : undefined,
     clockOutTime: clockOut ? new Date(clockOut.timestamp as Date).toISOString() : undefined,

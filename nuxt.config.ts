@@ -13,8 +13,10 @@ export default defineNuxtConfig({
 
   modules: [
     '@nuxt/ui',
+    '@nuxt/fonts',
     '@vee-validate/nuxt',
     '@nuxthub/core',
+    '@vueuse/nuxt',
   ],
 
   ui: {

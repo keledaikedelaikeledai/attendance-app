@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
-import { attendanceDay, attendanceLog } from '../../database/schema'
+import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {

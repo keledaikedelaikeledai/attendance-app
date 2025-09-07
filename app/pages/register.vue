@@ -53,38 +53,85 @@ definePageMeta({
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div class="space-y-2">
             <UFormField label="Username" :error="errors.username">
-              <UInput v-model="username" size="xl" type="text" placeholder="username" icon="i-heroicons-identification" autofocus class="w-full" />
+              <UInput
+                v-model="username"
+                size="xl"
+                type="text"
+                placeholder="username"
+                icon="i-heroicons-identification"
+                autofocus
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="space-y-2">
             <UFormField label="Full Name" :error="errors.name">
-              <UInput v-model="name" size="xl" type="text" placeholder="Full Name" icon="i-heroicons-user" class="w-full" />
+              <UInput
+                v-model="name"
+                size="xl"
+                type="text"
+                placeholder="Full Name"
+                icon="i-heroicons-user"
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="space-y-2">
             <UFormField label="Email" :error="errors.email">
-              <UInput v-model="email" size="xl" type="email" placeholder="you@example.com" icon="i-heroicons-envelope" class="w-full" />
+              <UInput
+                v-model="email"
+                size="xl"
+                type="email"
+                placeholder="you@example.com"
+                icon="i-heroicons-envelope"
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="space-y-2">
             <UFormField label="Password" :error="errors.password">
-              <UInput v-model="password" size="xl" type="password" placeholder="••••••••" icon="i-heroicons-lock-closed" class="w-full" />
+              <UInput
+                v-model="password"
+                size="xl"
+                type="password"
+                placeholder="••••••••"
+                icon="i-heroicons-lock-closed"
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="space-y-2">
             <UFormField label="Confirm Password" :error="errors.confirmPassword">
-              <UInput v-model="confirmPassword" size="xl" type="password" placeholder="••••••••" icon="i-heroicons-lock-closed" class="w-full" />
+              <UInput
+                v-model="confirmPassword"
+                size="xl"
+                type="password"
+                placeholder="••••••••"
+                icon="i-heroicons-lock-closed"
+                class="w-full"
+              />
             </UFormField>
           </div>
           <div class="pt-2">
-            <UButton size="xl" :loading="isSubmitting" block type="submit" icon="i-heroicons-arrow-right-end-on-rectangle">
+            <UButton
+              size="xl"
+              :loading="isSubmitting"
+              block
+              type="submit"
+              icon="i-heroicons-arrow-right-end-on-rectangle"
+            >
               Register
             </UButton>
           </div>
         </form>
       </UCard>
       <div class="text-center">
-        <UButton variant="link" to="/login" color="neutral" size="xs">
+        <UButton
+          variant="link"
+          to="/login"
+          color="neutral"
+          size="xs"
+        >
           Login
         </UButton>
       </div>

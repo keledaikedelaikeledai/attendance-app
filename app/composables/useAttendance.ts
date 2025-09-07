@@ -8,19 +8,19 @@ export interface AttendanceLog {
   shiftCode?: ShiftCode
 }
 
-export type ShiftCode = 'pagi' | 'siang' | 'sore' | 'malam'
+export type ShiftCode = string
 export interface ShiftDef { code: ShiftCode, label: string, start: string, end: string }
 
-// Shift times are local time (24h HH:MM); malam crosses midnight
-export const SHIFT_DEFS: ShiftDef[] = [
-  { code: 'pagi', label: 'Pagi (07:00-15:00)', start: '07:00', end: '15:00' },
-  { code: 'siang', label: 'Siang (12:00-20:00)', start: '12:00', end: '20:00' },
-  { code: 'sore', label: 'Sore (15:00-23:00)', start: '15:00', end: '23:00' },
-  { code: 'malam', label: 'Malam (23:00-07:00)', start: '23:00', end: '07:00' },
-]
+// Shifts are loaded from DB via API
+const shifts = ref<ShiftDef[]>([])
+
+async function loadShifts() {
+  const rows = await $fetch<ShiftDef[]>('/api/shifts', { credentials: 'include', query: { ts: Date.now() } })
+  shifts.value = rows || []
+}
 
 export function getShiftLabel(code?: ShiftCode | null) {
-  return SHIFT_DEFS.find(s => s.code === code)?.label || code || '-'
+  return shifts.value.find(s => s.code === code)?.label || code || '-'
 }
 
 const clockedIn = ref<boolean>(false)
@@ -28,11 +28,15 @@ const clockInTime = ref<string | undefined>()
 const clockOutTime = ref<string | undefined>()
 const logs = ref<AttendanceLog[]>([])
 const selectedShiftCode = ref<ShiftCode | undefined>()
+const selectedShiftType = ref<'harian' | 'bantuan' | undefined>()
 
 async function refresh() {
   const s = await $fetch<any>('/api/attendance', { method: 'GET', credentials: 'include', query: { ts: Date.now() } })
   if (!s)
     return
+  if (!shifts.value.length) {
+    await loadShifts()
+  }
   clockedIn.value = !!s.clockedIn
   clockInTime.value = s.clockInTime
   clockOutTime.value = s.clockOutTime
@@ -46,6 +50,7 @@ async function refresh() {
     shiftCode: l.shiftCode ?? undefined,
   }))
   selectedShiftCode.value = s.selectedShiftCode ?? undefined
+  selectedShiftType.value = s.shiftType ?? undefined
 }
 
 const durationMs = computed(() => {
@@ -72,7 +77,7 @@ const durationHuman = computed(() => {
 function shiftStartDate(clockInIso: string, code: ShiftCode | undefined) {
   if (!code)
     return null
-  const def = SHIFT_DEFS.find(s => s.code === code)
+  const def = shifts.value.find(s => s.code === code)
   if (!def)
     return null
   const d = new Date(clockInIso)
@@ -142,6 +147,7 @@ async function clockIn(opts?: ClockInOptions) {
     method: 'POST',
     body: {
       shiftCode: selectedShiftCode.value,
+      shiftType: selectedShiftType.value,
       coords: opts?.coords
         ? {
             latitude: opts.coords.latitude,
@@ -159,6 +165,7 @@ async function clockIn(opts?: ClockInOptions) {
     clockInTime.value = nowIso
     clockOutTime.value = undefined
     selectedShiftCode.value = res.selectedShiftCode ?? selectedShiftCode.value
+    selectedShiftType.value = res.shiftType ?? selectedShiftType.value
   }
   await refresh()
 }
@@ -206,8 +213,9 @@ export function useAttendance() {
     clockIn,
     clockOut,
     resetDay,
-    SHIFT_DEFS,
+    shifts,
     selectedShiftCode,
+    selectedShiftType,
     setShift,
     getShiftLabel,
     refresh,

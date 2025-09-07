@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
-import { attendanceDay, attendanceLog } from '../../database/schema'
+import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, coords } = body as { shiftCode?: string, coords?: { latitude?: number, longitude?: number, accuracy?: number } }
+  const { shiftCode, shiftType, coords } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number } }
 
   const db = useDb()
   const userId = session.user.id
@@ -26,12 +26,20 @@ export default defineEventHandler(async (event) => {
       userId,
       date,
       selectedShiftCode: shiftCode,
+      shiftType: (shiftType as any) || 'harian',
       createdAt: now,
       updatedAt: now,
     })
   }
-  else if (shiftCode) {
-    await db.update(attendanceDay).set({ selectedShiftCode: shiftCode, updatedAt: now }).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date)))
+  else if (shiftCode || shiftType) {
+    await db
+      .update(attendanceDay)
+      .set({
+        ...(shiftCode ? { selectedShiftCode: shiftCode } : {}),
+        ...(shiftType ? { shiftType: shiftType as any } : {}),
+        updatedAt: now,
+      })
+      .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date)))
   }
 
   // insert log
@@ -55,6 +63,7 @@ export default defineEventHandler(async (event) => {
   return {
     date,
     selectedShiftCode: day?.selectedShiftCode ?? null,
+    shiftType: (day as any)?.shiftType ?? null,
     logs,
   }
 })
