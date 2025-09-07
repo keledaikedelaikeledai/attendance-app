@@ -4,19 +4,6 @@ definePageMeta({
 })
 
 const { data, pending, error, refresh } = await useFetch('/api/admin/users', { credentials: 'include' })
-
-const columns = [
-  { key: 'name', label: 'Name' },
-  { key: 'email', label: 'Email' },
-  { key: 'username', label: 'Username' },
-  { key: 'createdAt', label: 'Joined' },
-]
-
-function fmtDate(ts?: string | Date) {
-  if (!ts)
-    return '-'
-  return new Date(ts).toLocaleString()
-}
 </script>
 
 <template>
