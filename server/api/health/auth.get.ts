@@ -1,7 +1,6 @@
-import { auth } from '../../utils/auth'
-
 export default defineEventHandler(async (event) => {
   try {
+    const auth = useBetterAuth()
     const session = await auth.api.getSession({ headers: event.node.req.headers as any })
     return {
       ok: true,
