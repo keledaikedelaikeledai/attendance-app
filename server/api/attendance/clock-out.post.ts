@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog } from '../../database/schema'
-import { auth } from '../../utils/auth'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
+  const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
   if (!session?.user)
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })

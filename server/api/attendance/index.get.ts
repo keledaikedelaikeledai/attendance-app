@@ -1,12 +1,12 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
 import { attendanceDay, attendanceLog } from '../../database/schema'
-import { auth } from '../../utils/auth'
 import { useDb } from '../../utils/db'
 
 type Log = typeof attendanceLog.$inferSelect
 
 export default defineEventHandler(async (event) => {
+  const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
   if (!session?.user)
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })

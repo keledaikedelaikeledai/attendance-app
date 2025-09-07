@@ -2,7 +2,6 @@ import process from 'node:process'
 import { desc } from 'drizzle-orm'
 import { createError } from 'h3'
 import { user } from '../../database/schema'
-import { auth } from '../../utils/auth'
 import { useDb } from '../../utils/db'
 
 function isAllowedAdmin(email?: string | null) {
@@ -16,6 +15,7 @@ function isAllowedAdmin(email?: string | null) {
 }
 
 export default defineEventHandler(async (event) => {
+  const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
   if (!session?.user)
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
