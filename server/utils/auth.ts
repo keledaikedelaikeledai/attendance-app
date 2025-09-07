@@ -24,7 +24,3 @@ export const auth = betterAuth({
     },
   },
 })
-
-export function useBetterAuth() {
-  return auth
-}
