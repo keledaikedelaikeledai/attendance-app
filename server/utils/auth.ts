@@ -17,10 +17,4 @@ export const auth = betterAuth({
   plugins: [
     username(),
   ],
-  user: {
-    additionalFields: {
-      isActive: { type: 'boolean', default: false, required: true },
-      isAdmin: { type: 'boolean', default: false, required: true },
-    },
-  },
 })

@@ -16,8 +16,6 @@ export const user = sqliteTable('user', {
     .notNull(),
   username: text('username').unique(),
   displayUsername: text('display_username'),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().$defaultFn(() => false),
-  isAdmin: integer('is_admin', { mode: 'boolean' }).notNull().$defaultFn(() => false),
 })
 
 export const session = sqliteTable('session', {

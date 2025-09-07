@@ -14,6 +14,7 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/ui',
     '@vee-validate/nuxt',
+    '@nuxthub/core',
   ],
 
   ui: {
@@ -23,6 +24,14 @@ export default defineNuxtConfig({
   nitro: {
     experimental: {
       openAPI: true,
+    },
+  },
+
+  hub: {
+    bindings: {
+      observability: {
+        logs: true,
+      },
     },
   },
 })
