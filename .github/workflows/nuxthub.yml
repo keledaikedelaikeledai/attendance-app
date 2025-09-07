@@ -30,5 +30,8 @@ jobs:
 
       - name: Build & Deploy to NuxtHub
         uses: nuxt-hub/action@v2
+        env:
+          NUXT_DB_URL: ${{ secrets.NUXT_DB_URL }}
+          NUXT_DB_AUTH_TOKEN: ${{ secrets.NUXT_DB_AUTH_TOKEN }}
         with:
           project-key: attendance-app-yoqt
