@@ -12,8 +12,8 @@ const onSubmit = handleSubmit(async (values) => {
       username: values.username,
       password: values.password,
     })
-    console.log('Login success', data)
-    // await navigateTo('/', { external: true })
+    console.info('Login success', data)
+    await navigateTo('/', { external: true })
   }
   catch {}
 })
