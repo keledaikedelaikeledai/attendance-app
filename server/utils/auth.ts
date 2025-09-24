@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { admin, username } from 'better-auth/plugins'
+import { admin, customSession, username } from 'better-auth/plugins'
 import * as schema from '../database/schemas'
 import { useDb } from './db'
 
@@ -18,6 +18,14 @@ export function createBetterAuth() {
     plugins: [
       username(),
       admin(),
+      customSession(async ({ user, session }) => {
+        console.info('Custom session plugin called', user.role, session)
+        return {
+          role: user.role,
+          user,
+          session,
+        }
+      }),
     ],
   })
 }

@@ -6,8 +6,8 @@ export default defineConfig({
   schema: './server/database/schemas/index.ts',
   out: './server/database/migrations',
   dbCredentials: {
-    url: process.env.NUXT_DB_URL as string,
-    authToken: process.env.NUXT_DB_AUTH_TOKEN as string,
-    // url: 'file:./sqlite.db',
+    // url: process.env.NUXT_DB_URL as string,
+    // authToken: process.env.NUXT_DB_AUTH_TOKEN as string,
+    url: 'file:./sqlite.db',
   },
 })

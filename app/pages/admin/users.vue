@@ -43,6 +43,65 @@ const columns: TableColumn<AdminUser>[] = [
 function getDropdownActions(user: AdminUser) {
   const actions = []
   actions.push({ label: 'Edit', value: 'edit', icon: 'i-heroicons-pencil' })
+
+  if (user.role !== 'admin') {
+    actions.push({
+      label: 'Make Admin',
+      value: 'make-admin',
+      icon: 'i-heroicons-shield-check',
+      async onSelect() {
+        const isConfirmed = await confirmation.confirm({
+          icon: 'i-heroicons-shield-check',
+          title: 'Make Admin',
+          description: `Make ${user.name} an admin? They will receive admin permissions.`,
+          btnConfirmProps: { color: 'primary' },
+        })
+
+        if (!isConfirmed)
+          return
+
+        try {
+          const { error } = await authClient.admin.setRole({ userId: user.id, role: 'admin' })
+          if (error) throw error
+          toast.add({ title: 'Role updated', description: `${user.name} is now an admin.`, color: 'success' })
+          await refresh()
+        }
+        catch (err: any) {
+          toast.add({ title: 'Error', description: err?.message || 'Failed to update role', color: 'error' })
+        }
+      },
+    })
+  }
+
+  if (user.role !== 'user') {
+    actions.push({
+      label: 'Make User',
+      value: 'make-user',
+      icon: 'i-heroicons-user',
+      async onSelect() {
+        const isConfirmed = await confirmation.confirm({
+          icon: 'i-heroicons-user',
+          title: 'Make User',
+          description: `Revoke admin privileges from ${user.name} and make them a regular user?`,
+          btnConfirmProps: { color: 'primary' },
+        })
+
+        if (!isConfirmed)
+          return
+
+        try {
+          const { error } = await authClient.admin.setRole({ userId: user.id, role: 'user' })
+          if (error) throw error
+          toast.add({ title: 'Role updated', description: `${user.name} is now a user.`, color: 'success' })
+          await refresh()
+        }
+        catch (err: any) {
+          toast.add({ title: 'Error', description: err?.message || 'Failed to update role', color: 'error' })
+        }
+      },
+    })
+  }
+
   actions.push({
     label: user.banned ? 'Unban' : 'Ban',
     value: user.banned ? 'unban' : 'ban',
@@ -59,32 +118,51 @@ function getDropdownActions(user: AdminUser) {
 
       if (!isConfirmed)
         return
+
       if (user.banned) {
-        // Unban
-        await authClient.admin.unbanUser({
-          userId: user.id, // required
-        })
+        await authClient.admin.unbanUser({ userId: user.id })
       }
       else {
-        // Ban
-        await authClient.admin.banUser({
-          userId: user.id, // required
-          banReason: 'Not valid user',
-        })
+        await authClient.admin.banUser({ userId: user.id, banReason: 'Not valid user' })
       }
+
       toast.add({
         title: user.banned ? 'User unbanned' : 'User banned',
         description: user.banned ? `${user.name} has been unbanned and can log in again.` : `${user.name} has been banned and cannot log in.`,
         color: user.banned ? 'success' : 'error',
       })
+
       await refresh()
     },
   })
-  if (user.role !== 'admin')
-    actions.push({ label: 'Make Admin', value: 'make-admin', icon: 'i-heroicons-shield-check' })
-  if (user.role !== 'user')
-    actions.push({ label: 'Make User', value: 'make-user', icon: 'i-heroicons-user' })
-  actions.push({ label: 'Delete', value: 'delete', icon: 'i-heroicons-trash', color: 'danger' })
+
+  actions.push({
+    label: 'Delete',
+    value: 'delete',
+    icon: 'i-heroicons-trash',
+    color: 'error',
+    async onSelect() {
+      const isConfirmed = await confirmation.confirm({
+        icon: 'i-heroicons-trash',
+        title: 'Delete User',
+        description: `Are you sure you want to permanently delete ${user.name}? This action cannot be undone.`,
+        btnConfirmProps: { color: 'error' },
+      })
+
+      if (!isConfirmed)
+        return
+
+      try {
+        const { error } = await authClient.admin.removeUser({ userId: user.id })
+        if (error) throw error
+        toast.add({ title: 'User deleted', description: `${user.name} has been removed.`, color: 'success' })
+        await refresh()
+      }
+      catch (err: any) {
+        toast.add({ title: 'Error', description: err?.message || 'Failed to delete user', color: 'error' })
+      }
+    },
+  })
   return actions as DropdownMenuItem[]
 }
 
@@ -137,7 +215,13 @@ const onAddModal = ref(false)
         </UBadge>
       </template>
       <template #action-cell="{ row }">
-        <UDropdownMenu :items="getDropdownActions(row.original)" :content="{ align: 'end' }">
+        <UDropdownMenu
+          :items="getDropdownActions(row.original)"
+          :content="{ align: 'end' }"
+          :ui="{
+            content: 'w-48',
+          }"
+        >
           <UButton
             icon="i-lucide-ellipsis-vertical"
             color="neutral"

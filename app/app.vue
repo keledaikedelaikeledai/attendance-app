@@ -9,6 +9,6 @@
 <style>
 body {
   background-color: var(--u-bg);
-  font-family: 'Inter', sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
 }
 </style>

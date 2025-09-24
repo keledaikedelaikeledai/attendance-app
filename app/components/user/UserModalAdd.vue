@@ -12,8 +12,6 @@ const onSubmit = handleSubmit(async (values) => {
   try {
     await authClient.admin.createUser({
       email: values.email,
-      // // @ts-expect-error username should be required
-      // username: values.username,
       name: values.name,
       password: values.password,
       role: values.role,

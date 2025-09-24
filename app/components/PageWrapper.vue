@@ -43,7 +43,9 @@ const isCollapsed = useState('admin-is-collapsed')
       <!-- <title>{{ pathNameItemMap[$route.path]?.label }}</title> -->
       <!-- <h1>{{ pathNameItemMap[$route.path]?.label }} </h1> -->
       <title>{{ route.meta.pageTitle }}</title>
-      <h1>{{ route.meta.title }}</h1>
+      <h1 class="font-semibold">
+        {{ route.meta.title }}
+      </h1>
       <slot name="navLeft" />
     </template>
     <template #middle>
