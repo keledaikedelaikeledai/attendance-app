@@ -50,13 +50,64 @@ jobs:
           tar -czf deploy.tar.gz -C deploy_tmp .
           rm -rf deploy_tmp
 
-      - name: Install Tailscale
+      - name: Install & start Tailscale
         run: |
+          set -euo pipefail
+          # Install tailscale binaries
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscaled --tun=userspace-networking &
-          # wait for the daemon
-          sleep 2
-          sudo tailscale up --authkey ${TAILSCALE_AUTHKEY} --hostname github-runner-${{ github.run_id }}
+
+          # Start tailscaled only if not already running (avoid socket-in-use)
+          if [ -S /var/run/tailscale/tailscaled.sock ] || pgrep -x tailscaled >/dev/null 2>&1; then
+            echo "tailscaled already running; skipping start"
+          else
+            echo "Starting tailscaled..."
+            sudo tailscaled --tun=userspace-networking &>/tmp/tailscaled.log &
+            # wait for the socket or process to show up
+            for i in 1 2 3 4 5; do
+              if [ -S /var/run/tailscale/tailscaled.sock ] || pgrep -x tailscaled >/dev/null 2>&1; then
+                break
+              fi
+              sleep 1
+            done
+          fi
+
+          # Try to bring up tailscale using the provided auth key with retries.
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: tailscale up --authkey (non-interactive)"
+            if sudo tailscale up --authkey "${TAILSCALE_AUTHKEY}" --hostname "github-runner-${{ github.run_id }}" 2>/tmp/tailscale_up.err; then
+              echo "tailscale up succeeded"
+              break
+            else
+              echo "tailscale up failed on attempt $ATTEMPT; dumping stderr (short):"
+              tail -n +1 /tmp/tailscale_up.err || true
+              if grep -qi "invalid key" /tmp/tailscale_up.err || grep -qi "not valid" /tmp/tailscale_up.err; then
+                echo "ERROR: The provided TAILSCALE_AUTHKEY appears invalid or expired. Create a reusable auth key in the Tailscale admin console and add it to GitHub Secrets as TAILSCALE_AUTHKEY." >&2
+                # No point retrying invalid key
+                break
+              fi
+              ATTEMPT=$((ATTEMPT+1))
+              sleep $((ATTEMPT*2))
+            fi
+          done
+
+          echo "--- tailscaled log (tail) ---"
+          sudo sh -c 'tail -n 200 /tmp/tailscaled.log || true'
+          echo "--- tailscale up stderr (tail) ---"
+          sudo sh -c 'tail -n 200 /tmp/tailscale_up.err || true'
+
+          echo "--- tailscale status ---"
+          sudo tailscale status || true
+          echo "--- tailscale ip -4 ---"
+          sudo tailscale ip -4 || true
+
+          # If we ended with an 'invalid key' message, exit non-zero
+          if grep -qi "invalid key" /tmp/tailscale_up.err || grep -qi "not valid" /tmp/tailscale_up.err; then
+            echo "Final error: TAILSCALE_AUTHKEY invalid or rejected. Aborting." >&2
+            exit 1
+          fi
+
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
 
