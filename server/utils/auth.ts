@@ -18,14 +18,6 @@ export function createBetterAuth() {
     plugins: [
       username(),
       admin(),
-      customSession(async ({ user, session }) => {
-        console.info('Custom session plugin called', user.role, session)
-        return {
-          role: user.role,
-          user,
-          session,
-        }
-      }),
     ],
   })
 }
