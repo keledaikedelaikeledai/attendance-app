@@ -1,0 +1,10 @@
+# Example cloudflared config for tunneling HTTP traffic to the local Nuxt app
+tunnel: <YOUR_TUNNEL_ID>
+credentials-file: /etc/cloudflared/<YOUR_TUNNEL_ID>.json
+
+ingress:
+  - hostname: example.yourdomain.com
+    service: http://host.docker.internal:3000
+  - service: http_status:404
+
+# If you prefer to run with --token you can omit the tunnel and credentials-file

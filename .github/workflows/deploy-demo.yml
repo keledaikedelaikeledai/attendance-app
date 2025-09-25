@@ -1,0 +1,118 @@
+name: Deploy to demo via Tailscale
+
+on:
+  push:
+    branches:
+      - demo
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy to Tailnet host
+    runs-on: ubuntu-latest
+    environment: demo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build (Nuxt + Nitro)
+        run: bun run build -- --preset bun
+
+      - name: Prepare deploy archive
+        run: |
+          rm -f deploy.tar.gz
+          # Archive repository except large/unnecessary runtime files
+          tar --exclude='./node_modules' --exclude='./data' --exclude='./.git' --exclude='./.venv' -czf deploy.tar.gz .
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscaled --tun=userspace-networking &
+          # wait for the daemon
+          sleep 2
+          sudo tailscale up --authkey ${TAILSCALE_AUTHKEY} --hostname github-runner-${{ github.run_id }}
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # disable strict host key checking for CI (optional; consider adding known_hosts)
+          printf "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n" > ~/.ssh/config
+
+      - name: Copy archive to target host over Tailscale
+        run: |
+          scp -o StrictHostKeyChecking=no deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy/deploy.tar.gz}
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+          TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+
+      - name: Ensure remote deploy directory exists
+        run: |
+          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}'"
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+          TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+
+      - name: Extract & run docker-compose on target host
+        run: |
+          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" <<'SSH'
+            set -euo pipefail
+            TARGET_DIR='${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}'
+            mkdir -p "$TARGET_DIR"
+            cd "$TARGET_DIR"
+            # stop existing stack if present (try without sudo first, then with passwordless sudo)
+            if docker compose ls >/dev/null 2>&1; then
+              docker compose down || true
+            elif sudo -n docker compose ls >/dev/null 2>&1; then
+              sudo docker compose down || true
+            else
+              echo "ERROR: docker on the target host requires sudo password or is not available.\nPlease either add ${TARGET_SSH_USER} to the 'docker' group or enable passwordless sudo for docker commands."
+              exit 1
+            fi
+
+            # extract uploaded archive into target dir (scp already copied it)
+            tar -xzf "$TARGET_DIR/deploy.tar.gz" -C "$TARGET_DIR"
+            rm -f "$TARGET_DIR/deploy.tar.gz"
+
+            # run docker compose build+up (prefer direct docker, fall back to passwordless sudo)
+            if docker compose up -d --build; then
+              true
+            elif sudo -n docker compose up -d --build; then
+              true
+            else
+              echo "ERROR: docker on the target host requires sudo password or is not available. Aborting."
+              exit 1
+            fi
+          SSH
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+          TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+
+      - name: Notify
+        run: echo "Deploy to ${TARGET_HOST} completed"
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+
+    # required secrets
+    # secrets to set in repository settings:
+    # - TAILSCALE_AUTHKEY
+    # - SSH_PRIVATE_KEY (PEM formatted private key for TARGET_SSH_USER)
+    # - TARGET_HOST (target device Tailscale IP or hostname reachable over tailnet)
+    # - TARGET_SSH_USER (username to SSH as)
+    # - TARGET_DEPLOY_PATH (optional remote path, defaults to /home/<user>/deploy)

@@ -1,0 +1,17 @@
+node_modules
+.output
+.nuxt
+dist
+/.git
+/.github
+venv
+env
+*.log
+*.sqlite
+sqlite.db
+/.env
+/.env.*
+coverage
+tmp
+build
+public/attendance-template*.xlsx
