@@ -33,7 +33,7 @@ function onSignOut() {
             class="w-auto mb-4"
             :class="{ 'h-8': isCollapsed, 'h-20': !isCollapsed }"
           >
-          <span v-if="!isCollapsed" class="text-lg font-bold text-green-500">Attendance App</span>
+          <span v-if="!isCollapsed" class="text-lg font-bold">Attendance App</span>
         </div>
         <UNavigationMenu
           orientation="vertical"
