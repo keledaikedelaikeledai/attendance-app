@@ -15,7 +15,7 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@nuxt/fonts',
     '@vee-validate/nuxt',
-    '@nuxthub/core',
+    // '@nuxthub/core',
     '@vueuse/nuxt',
   ],
 
@@ -29,11 +29,11 @@ export default defineNuxtConfig({
     },
   },
 
-  hub: {
-    bindings: {
-      observability: {
-        logs: true,
-      },
-    },
-  },
+  // hub: {
+  //   bindings: {
+  //     observability: {
+  //       logs: true,
+  //     },
+  //   },
+  // },
 })
