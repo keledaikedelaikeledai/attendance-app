@@ -30,9 +30,25 @@ jobs:
 
       - name: Prepare deploy archive
         run: |
-          rm -f deploy.tar.gz
-          # Archive repository except large/unnecessary runtime files
-          tar --exclude='./node_modules' --exclude='./data' --exclude='./.git' --exclude='./.venv' -czf deploy.tar.gz .
+          # Create a stable snapshot of tracked files (git archive) into a temp dir,
+          # then add build/runtime artifacts (.output, public) if present and compress.
+          rm -rf deploy_tmp deploy.tar.gz
+          mkdir -p deploy_tmp
+
+          # Export tracked files at HEAD to the temp dir
+          git archive HEAD | tar -x -C deploy_tmp
+
+          # Copy build artifacts produced by the previous steps (if any)
+          if [ -d .output ]; then
+            cp -a .output deploy_tmp/.output
+          fi
+          if [ -d public ]; then
+            cp -a public deploy_tmp/public
+          fi
+
+          # Create compressed archive from the stable temp dir
+          tar -czf deploy.tar.gz -C deploy_tmp .
+          rm -rf deploy_tmp
 
       - name: Install Tailscale
         run: |
