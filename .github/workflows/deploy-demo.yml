@@ -121,7 +121,16 @@ jobs:
 
       - name: Ensure remote deploy directory exists
         run: |
-          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}'"
+          # Expand target deploy path on the runner so we don't rely on remote variable expansion
+          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}"
+          echo "Ensuring remote dir: $REMOTE_DIR"
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err || {
+            cat /tmp/ssh_mkdir.err || true
+            if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_mkdir.err 2>/dev/null || grep -q "Authentication check" /tmp/ssh_mkdir.err 2>/dev/null; then
+              echo "ERROR: The target host is enforcing Tailscale SSH SSO and requires interactive authentication. CI cannot proceed non-interactively.\nOptions:\n - Use a host with standard OpenSSH and a deploy public key in ~/.ssh/authorized_keys\n - Configure Tailscale to allow machine authentication for CI or use a different deployment method." >&2
+            fi
+            exit 1
+          }
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
@@ -142,7 +151,13 @@ jobs:
 
       - name: Copy archive to target host over Tailscale
         run: |
-          scp -o StrictHostKeyChecking=no deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy/deploy.tar.gz}
+          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}/deploy.tar.gz"
+          echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:$REMOTE_PATH"
+          scp -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"$REMOTE_PATH" 2>/tmp/scp.err || {
+            cat /tmp/scp.err || true
+            echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
+            exit 1
+          }
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
@@ -150,7 +165,15 @@ jobs:
 
       - name: Verify uploaded archive exists on target
         run: |
-          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy/deploy.tar.gz}' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)"
+          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}/deploy.tar.gz"
+          echo "Verifying archive exists at $REMOTE_PATH"
+          ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '$REMOTE_PATH' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)" 2>/tmp/ssh_verify.err || {
+            cat /tmp/ssh_verify.err || true
+            if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_verify.err 2>/dev/null; then
+              echo "ERROR: Tailscale SSH is requesting interactive SSO authentication. CI cannot continue. See docs: use standard OpenSSH+authorized_keys or configure machine auth for CI." >&2
+            fi
+            exit 1
+          }
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
