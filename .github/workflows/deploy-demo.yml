@@ -68,14 +68,6 @@ jobs:
           # disable strict host key checking for CI (optional; consider adding known_hosts)
           printf "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n" > ~/.ssh/config
 
-      - name: Copy archive to target host over Tailscale
-        run: |
-          scp -o StrictHostKeyChecking=no deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy/deploy.tar.gz}
-        env:
-          TARGET_HOST: ${{ secrets.TARGET_HOST }}
-          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
-          TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
-
       - name: Ensure remote deploy directory exists
         run: |
           ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}'"
@@ -84,11 +76,40 @@ jobs:
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
           TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
 
+      - name: Verify Tailscale connectivity to target host
+        run: |
+          # Try a quick non-interactive SSH check to ensure the Tailscale route is available
+          if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'echo ok' 2>/dev/null; then
+            echo "Target reachable over Tailscale"
+          else
+            echo "ERROR: Target ${TARGET_HOST} is not reachable over Tailscale from the runner. Ensure the TAILSCALE_AUTHKEY is valid and the host is online." >&2
+            exit 1
+          fi
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+
+      - name: Copy archive to target host over Tailscale
+        run: |
+          scp -o StrictHostKeyChecking=no deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy/deploy.tar.gz}
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+          TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+
+      - name: Verify uploaded archive exists on target
+        run: |
+          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy/deploy.tar.gz}' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)"
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+          TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+
       - name: Extract & run docker-compose on target host
         run: |
-          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" <<'SSH'
+          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" <<SSH
             set -euo pipefail
-            TARGET_DIR='${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}'
+            TARGET_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}"
             mkdir -p "$TARGET_DIR"
             cd "$TARGET_DIR"
             # stop existing stack if present (try without sudo first, then with passwordless sudo)
