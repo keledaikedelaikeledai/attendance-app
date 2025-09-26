@@ -119,25 +119,25 @@ jobs:
           # disable strict host key checking for CI (optional; consider adding known_hosts)
           printf "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile=/dev/null\n" > ~/.ssh/config
 
-      # - name: Ensure remote deploy directory exists
-      #   run: |
-      #     # Expand target deploy path on the runner so we don't rely on remote variable expansion
-      #     REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}"
-      #     echo "Ensuring remote dir: $REMOTE_DIR"
-      #     # Prevent the ssh call from hanging indefinitely; timeout after 20s
-      #     if ! timeout 20s ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err; then
-      #       cat /tmp/ssh_mkdir.err || true
-      #       if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_mkdir.err 2>/dev/null || grep -q "Authentication check" /tmp/ssh_mkdir.err 2>/dev/null; then
-      #         echo "ERROR: The target host is enforcing Tailscale SSH SSO and requires interactive authentication. CI cannot proceed non-interactively.\nOptions:\n - Use a host with standard OpenSSH and a deploy public key in ~/.ssh/authorized_keys\n - Configure Tailscale to allow machine authentication for CI or use a different deployment method." >&2
-      #       else
-      #         echo "ERROR: ssh to ${TARGET_HOST} failed or timed out. See /tmp/ssh_mkdir.err for details." >&2
-      #       fi
-      #       exit 1
-      #     fi
-      #   env:
-      #     TARGET_HOST: ${{ secrets.TARGET_HOST }}
-      #     TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
-      #     TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+      - name: Ensure remote deploy directory exists
+        run: |
+          # Expand target deploy path on the runner so we don't rely on remote variable expansion
+          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}"
+          echo "Ensuring remote dir: $REMOTE_DIR"
+          # Prevent the ssh call from hanging indefinitely; timeout after 20s
+          if ! timeout 20s ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err; then
+            cat /tmp/ssh_mkdir.err || true
+            if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_mkdir.err 2>/dev/null || grep -q "Authentication check" /tmp/ssh_mkdir.err 2>/dev/null; then
+              echo "ERROR: The target host is enforcing Tailscale SSH SSO and requires interactive authentication. CI cannot proceed non-interactively.\nOptions:\n - Use a host with standard OpenSSH and a deploy public key in ~/.ssh/authorized_keys\n - Configure Tailscale to allow machine authentication for CI or use a different deployment method." >&2
+            else
+              echo "ERROR: ssh to ${TARGET_HOST} failed or timed out. See /tmp/ssh_mkdir.err for details." >&2
+            fi
+            exit 1
+          fi
+        env:
+          TARGET_HOST: ${{ secrets.TARGET_HOST }}
+          TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+          TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
 
       - name: Verify Tailscale connectivity to target host
         run: |
