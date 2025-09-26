@@ -144,14 +144,30 @@ jobs:
             echo "No TARGET_DEPLOY_PATH provided; will create directory under remote user's HOME: \$HOME/app/attendance/${DEPLOY_ENV} (ssh port: $SSH_PORT)"
             MKDIR_CMD="mkdir -p \"\$HOME/app/attendance/${DEPLOY_ENV}\""
           fi
-          # Prevent the ssh call from hanging indefinitely; timeout after 20s
-          if ! timeout 20s ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "$MKDIR_CMD" 2>/tmp/ssh_mkdir.err; then
-            cat /tmp/ssh_mkdir.err || true
-            if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_mkdir.err 2>/dev/null || grep -q "Authentication check" /tmp/ssh_mkdir.err 2>/dev/null; then
+          # Prevent the ssh call from hanging indefinitely; increase timeout to 60s to allow slow wakeups
+          # Capture verbose SSH stderr into /tmp/ssh_mkdir.err for debugging
+          if ! timeout 60s ssh -vvv -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "$MKDIR_CMD" 2>/tmp/ssh_mkdir.err; then
+            echo "--- SSH mkdir stderr (/tmp/ssh_mkdir.err) ---"
+            sed -n '1,200p' /tmp/ssh_mkdir.err || true
+            echo "--- end stderr ---"
+
+            # Look for known interactive SSO prompts in the ssh stderr
+            if grep -qi "Tailscale SSH requires an additional check" /tmp/ssh_mkdir.err 2>/dev/null || grep -qi "Authentication check" /tmp/ssh_mkdir.err 2>/dev/null; then
               echo "ERROR: The target host is enforcing Tailscale SSH SSO and requires interactive authentication. CI cannot proceed non-interactively.\nOptions:\n - Use a host with standard OpenSSH and a deploy public key in ~/.ssh/authorized_keys\n - Configure Tailscale to allow machine authentication for CI or use a different deployment method." >&2
             else
-              echo "ERROR: ssh to ${TARGET_HOST} failed or timed out. See /tmp/ssh_mkdir.err for details." >&2
+              echo "ERROR: ssh to ${TARGET_HOST} failed or timed out. See /tmp/ssh_mkdir.err above for verbose SSH output." >&2
             fi
+
+            echo "Running an additional non-destructive SSH diagnostic (whoami, HOME, id, uname) to help debug the target environment";
+            # Capture diagnostic output (may also fail) to /tmp/ssh_diag.out
+            if ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} 'whoami; echo HOME="$HOME"; id; uname -a' 2>/tmp/ssh_diag.err | sed -n '1,200p'; then
+              echo "--- SSH diagnostic succeeded ---"
+              sed -n '1,200p' /tmp/ssh_diag.err || true
+            else
+              echo "--- SSH diagnostic failed; stderr (first 200 lines): ---"
+              sed -n '1,200p' /tmp/ssh_diag.err || true
+            fi
+
             exit 1
           fi
           # Also create a matching directory inside the Ubuntu proot (if proot-distro exists)
