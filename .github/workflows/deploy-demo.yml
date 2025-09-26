@@ -146,6 +146,9 @@ jobs:
             fi
             exit 1
           fi
+          # Also create a matching directory inside the Ubuntu proot (if proot-distro exists)
+          echo "Attempting to create distro-side target inside proot (if available)"
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- mkdir -p '/root/app/attendance/${DEPLOY_ENV}'" || true
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
@@ -168,20 +171,34 @@ jobs:
 
       - name: Copy archive to target host over Tailscale
         run: |
-          # If TARGET_DEPLOY_PATH is set, use it; otherwise use a home-relative path (~ expands on remote shell)
-          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
-            REMOTE_PATH="${TARGET_DEPLOY_PATH}/deploy.tar.gz"
-          else
-            REMOTE_PATH="~/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
-          fi
+          # If TARGET_DEPLOY_PATH is absolute (starts with /) we will copy into $HOME/<path-without-leading-slash>
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
-          echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:$REMOTE_PATH (scp port: $SSH_PORT)"
-          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"$REMOTE_PATH" 2>/tmp/scp.err || {
-            cat /tmp/scp.err || true
-            echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
-            exit 1
-          }
+          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
+            if case "${TARGET_DEPLOY_PATH}" in /*) true ;; *) false ;; esac; then
+              echo "TARGET_DEPLOY_PATH is absolute; copying into remote user's HOME under that path"
+              # Use remote $HOME expansion by quoting $HOME in the scp target
+              scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:'$HOME/'"${TARGET_DEPLOY_PATH#/}"/deploy.tar.gz" 2>/tmp/scp.err || {
+                cat /tmp/scp.err || true
+                echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
+                exit 1
+              }
+            else
+              echo "Copying archive to ${TARGET_DEPLOY_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH}/deploy.tar.gz (scp port: $SSH_PORT)"
+              scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"${TARGET_DEPLOY_PATH}/deploy.tar.gz" 2>/tmp/scp.err || {
+                cat /tmp/scp.err || true
+                echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
+                exit 1
+              }
+            fi
+          else
+            echo "No TARGET_DEPLOY_PATH provided; copying to ~/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+            scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:'$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz' 2>/tmp/scp.err || {
+              cat /tmp/scp.err || true
+              echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
+              exit 1
+            }
+          fi
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
@@ -189,15 +206,19 @@ jobs:
 
       - name: Verify uploaded archive exists on target
         run: |
-          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
-            REMOTE_PATH="${TARGET_DEPLOY_PATH}/deploy.tar.gz"
-          else
-            REMOTE_PATH="~/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
-          fi
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
-          echo "Verifying archive exists at $REMOTE_PATH (ssh port: $SSH_PORT)"
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '$REMOTE_PATH' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)" 2>/tmp/ssh_verify.err || {
+          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
+            if case "${TARGET_DEPLOY_PATH}" in /*) true ;; *) false ;; esac; then
+              REMOTE_TEST_CMD='[ -f "$HOME/'"${TARGET_DEPLOY_PATH#/}"'/deploy.tar.gz" ] && echo OK || (echo "ERROR: deploy.tar.gz not found on target" >&2; exit 1)'
+            else
+              REMOTE_TEST_CMD='[ -f "'"${TARGET_DEPLOY_PATH}"'/deploy.tar.gz" ] && echo OK || (echo "ERROR: deploy.tar.gz not found on target" >&2; exit 1)'
+            fi
+          else
+            REMOTE_TEST_CMD='[ -f "$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz" ] && echo OK || (echo "ERROR: deploy.tar.gz not found on target" >&2; exit 1)'
+          fi
+          echo "Verifying archive exists on remote (ssh port: $SSH_PORT)"
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "$REMOTE_TEST_CMD" 2>/tmp/ssh_verify.err || {
             cat /tmp/ssh_verify.err || true
             if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_verify.err 2>/dev/null; then
               echo "ERROR: Tailscale SSH is requesting interactive SSO authentication. CI cannot continue. See docs: use standard OpenSSH+authorized_keys or configure machine auth for CI." >&2
@@ -212,103 +233,24 @@ jobs:
       - name: Extract, build and start with PM2 on target host
         run: |
           # Compute the remote directory on the runner so we inject a literal path into the remote script
-          # If TARGET_DEPLOY_PATH is set, pass it; otherwise pass an empty arg and let the remote side default to $HOME
-          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
-            REMOTE_ARG="${TARGET_DEPLOY_PATH}"
-            echo "Using remote directory (explicit): $REMOTE_ARG"
-          else
-            REMOTE_ARG=""
-            echo "No TARGET_DEPLOY_PATH provided; remote will default to \$HOME/app/attendance/${DEPLOY_ENV}"
-          fi
+          # Pass TARGET_DEPLOY_PATH into the remote environment; the remote script will resolve to $HOME when appropriate
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
-          echo "About to run: ssh -p \"$SSH_PORT\" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'DEPLOY_ENV=${DEPLOY_ENV} bash -s' -- '$REMOTE_ARG'"
+          echo "About to run remote extract/build/start (ssh port: $SSH_PORT)"
 
-          # Remote script: extract, install/build with Bun, and run via PM2 using Bun as the interpreter
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "DEPLOY_ENV=${DEPLOY_ENV} bash -s" -- "$REMOTE_ARG" <<'SSH'
-            set -euo pipefail
-            # Accept an optional argument; if empty, default to $HOME/app/attendance/${DEPLOY_ENV}
-            ARG="$1"
-            if [ -n "$ARG" ]; then
-              TARGET_DIR="$ARG"
-            else
-              TARGET_DIR="$HOME/app/attendance/${DEPLOY_ENV}"
-            fi
-            printf 'REMOTE: Resolved TARGET_DIR=<%s>\n' "$TARGET_DIR"
-            printf 'REMOTE: TARGET_DIR length: %d\n' "$(printf '%s' "$TARGET_DIR" | wc -c)"
-            mkdir -p "$TARGET_DIR"
-            cd "$TARGET_DIR"
-
-            # extract uploaded archive into target dir (scp copied deploy.tar.gz)
-            if [ -f "$TARGET_DIR/deploy.tar.gz" ]; then
-              tar -xzf "$TARGET_DIR/deploy.tar.gz" -C "$TARGET_DIR"
-              rm -f "$TARGET_DIR/deploy.tar.gz"
-            else
-              echo "WARNING: deploy.tar.gz not found in $TARGET_DIR — continuing if files already present"
-            fi
-
-            # Ensure Bun is available (install locally to $HOME/.bun if needed)
-            BUN_BIN="$HOME/.bun/bin/bun"
-            if command -v bun >/dev/null 2>&1; then
-              BUN_BIN="$(command -v bun)"
-            elif [ -x "$BUN_BIN" ]; then
-              true
-            else
-              echo "Bun not found; installing to $HOME/.bun (non-interactive)"
-              curl -fsSL https://bun.sh/install | bash -s -- --bun-install-dir "$HOME/.bun" || true
-              export PATH="$HOME/.bun/bin:$PATH"
-              BUN_BIN="$HOME/.bun/bin/bun"
-            fi
-
-            # Install dependencies (prefer production install; fall back to full if needed)
-            if [ -f package.json ]; then
-              echo "Running: $BUN_BIN install --production"
-              if ! $BUN_BIN install --production >/tmp/bun_install.out 2>&1; then
-                echo "Production install failed; trying full install (logs in /tmp/bun_install.out)"
-                tail -n 200 /tmp/bun_install.out || true
-                $BUN_BIN install || true
-              fi
-            fi
-
-            # Build the project (Nitro) if build script exists
-            if grep -q '"build"' package.json 2>/dev/null || grep -q 'build' package.json 2>/dev/null; then
-              echo "Running build on remote host"
-              $BUN_BIN run build -- --preset bun || (echo 'Build failed' >&2; exit 1)
-            fi
-
-            # Ensure pm2 is available (install globally via npm if absent)
-            if ! command -v pm2 >/dev/null 2>&1; then
-              if command -v npm >/dev/null 2>&1; then
-                echo "Installing pm2 globally via npm"
-                npm install -g pm2 || true
-              else
-                echo "pm2 not found and npm not available; cannot start process manager" >&2
-              fi
-            fi
-
-            PM2_NAME="attendance-app"
-            # Stop and remove existing process if present
-            if command -v pm2 >/dev/null 2>&1 && pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
-              pm2 stop "$PM2_NAME" || true
-              pm2 delete "$PM2_NAME" || true
-            fi
-
-            # Start the app via pm2 using Bun as the interpreter
-            BUN_PATH="$BUN_BIN"
-            if [ ! -x "$BUN_PATH" ]; then
-              BUN_PATH="$(command -v bun || echo "$BUN_PATH")"
-            fi
-            if command -v pm2 >/dev/null 2>&1; then
-              echo "Starting app with pm2 (interpreter: $BUN_PATH)"
-              pm2 start --name "$PM2_NAME" --interpreter "$BUN_PATH" ./.output/server/index.mjs --update-env || {
-                echo "pm2 start failed" >&2
-                exit 1
-              }
-              pm2 save || true
-            else
-              echo "pm2 not available; falling back to running directly with Bun in background"
-              nohup "$BUN_PATH" ./.output/server/index.mjs &>/dev/null &
-            fi
-          SSH
+          # Remote script: move archive from Termux home into distro and run everything inside proot
+          # We'll run proot-distro login ubuntu -- bash -lc '...remote commands ...'
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; \
+            # Resolve target dir inside the distro; prefer TARGET_DEPLOY_PATH if non-empty; default to /root/app/attendance/${DEPLOY_ENV} inside distro; \
+            if [ -n "'"${TARGET_DEPLOY_PATH:-}''" ]; then \
+              case "'"${TARGET_DEPLOY_PATH}''" in /*) TDIR=\"/root/'"${TARGET_DEPLOY_PATH#/}'\" ;; *) TDIR=\"'"${TARGET_DEPLOY_PATH}'\" ;; esac; \
+            else \
+              TDIR=\"/root/app/attendance/${DEPLOY_ENV}\"; \
+            fi; \
+            echo PROOT: resolved distro TARGET_DIR=\"$TDIR\"; \
+            mkdir -p "$HOME/app/attendance/${DEPLOY_ENV}" || true; \
+            # If archive exists in Termux home, copy into distro temporary path and extract; otherwise failing is acceptable\"'" || true
+          # Now run the main proot script which will perform the copy and run bun inside the distro
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- bash -lc 'set -euo pipefail; \n            # ensure distro target dir exists\n            if [ -n \"'"${TARGET_DEPLOY_PATH:-}\"'\" ]; then\n              case \"'"${TARGET_DEPLOY_PATH}\"' in /*) TDIR=\"/root/'"${TARGET_DEPLOY_PATH#/}'\" ;; *) TDIR=\"'"${TARGET_DEPLOY_PATH}'\" ;; esac\n            else\n              TDIR=\"/root/app/attendance/${DEPLOY_ENV}\"\n            fi\n            echo PROOT: using TDIR=\"$TDIR\"\n            mkdir -p \"$TDIR\"\n            # copy archive from Termux home into distro (Termux HOME relative path)\n            if [ -f \"$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz\" ]; then\n              cp \"$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz\" \"/tmp/deploy_${DEPLOY_ENV}.tar.gz\" || true\n              tar -xzf \"/tmp/deploy_${DEPLOY_ENV}.tar.gz\" -C \"$TDIR\" || true\n              rm -f \"/tmp/deploy_${DEPLOY_ENV}.tar.gz\" || true\n            else\n              echo PROOT: no archive found in Termux home; continuing if files already present in distro\n            fi\n            cd \"$TDIR\"\n            # ensure bun exists inside distro\n            if command -v bun >/dev/null 2>&1; then BUN=\"$(command -v bun)\"; else echo PROOT: bun missing in distro; fi\n            # Install deps inside distro if package.json exists\n            if [ -f package.json ]; then\n              echo PROOT: running bun install inside distro\n              bun install || true\n            fi\n            # build inside distro if build script exists\n            if [ -f package.json ] && grep -q '"build"' package.json 2>/dev/null; then\n              bun run build -- --preset bun || true\n            fi\n            # start via pm2 inside distro\n            if command -v pm2 >/dev/null 2>&1; then\n              pm2 stop attendance-app || true; pm2 delete attendance-app || true; pm2 start --name attendance-app --interpreter \"$BUN\" ./.output/server/index.mjs --update-env || true; pm2 save || true\n            else\n              echo PROOT: pm2 missing; attempting to run bun directly in background\n              nohup \"$BUN\" ./.output/server/index.mjs &>/dev/null &\n            fi'" || true
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
