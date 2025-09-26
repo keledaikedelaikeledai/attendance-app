@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ConfirmationOptions } from '@/composables/useConfirmation'
+import type { ConfirmationOptions } from '~/composables/useConfirmation'
 
 const props = defineProps<ConfirmationOptions>()
 
