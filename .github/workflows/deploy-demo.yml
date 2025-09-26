@@ -207,23 +207,28 @@ jobs:
         run: |
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
-          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
-            if case "${TARGET_DEPLOY_PATH}" in /*) true ;; *) false ;; esac; then
-              REMOTE_TEST_CMD='[ -f "$HOME/'"${TARGET_DEPLOY_PATH#/}"'/deploy.tar.gz" ] && echo OK || (echo "ERROR: deploy.tar.gz not found on target" >&2; exit 1)'
-            else
-              REMOTE_TEST_CMD='[ -f "'"${TARGET_DEPLOY_PATH}"'/deploy.tar.gz" ] && echo OK || (echo "ERROR: deploy.tar.gz not found on target" >&2; exit 1)'
-            fi
-          else
-            REMOTE_TEST_CMD='[ -f "$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz" ] && echo OK || (echo "ERROR: deploy.tar.gz not found on target" >&2; exit 1)'
-          fi
-          echo "Verifying archive exists on remote (ssh port: $SSH_PORT)"
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "$REMOTE_TEST_CMD" 2>/tmp/ssh_verify.err || {
-            cat /tmp/ssh_verify.err || true
-            if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_verify.err 2>/dev/null; then
-              echo "ERROR: Tailscale SSH is requesting interactive SSO authentication. CI cannot continue. See docs: use standard OpenSSH+authorized_keys or configure machine auth for CI." >&2
-            fi
+
+          # Query remote HOME so we can check a concrete path (matches the copy step behavior)
+          REMOTE_HOME=$(ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} 'printf "%s" "$HOME"' 2>/tmp/ssh_home_verify.err) || {
+            echo "Failed to determine remote HOME; ssh stderr:"; sed -n '1,200p' /tmp/ssh_home_verify.err || true
             exit 1
           }
+          echo "Remote HOME for verify: $REMOTE_HOME"
+
+          CHECK_PATH="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+          echo "Verifying archive exists at: $CHECK_PATH"
+
+          if ! ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f \"${CHECK_PATH}\" ]" 2>/tmp/ssh_verify.err; then
+            echo "ERROR: deploy.tar.gz not found on target at ${CHECK_PATH}" >&2
+            echo "Remote staging dir listing (for debugging):"
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "ls -la \"${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}\" || true" 2>/tmp/ssh_verify_ls.err || true
+            echo "--- ls stderr (if any) ---"
+            sed -n '1,200p' /tmp/ssh_verify_ls.err || true
+            echo "--- end ls stderr ---"
+            cat /tmp/ssh_verify.err || true
+            exit 1
+          fi
+          echo "OK: deploy.tar.gz found at ${CHECK_PATH}"
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
