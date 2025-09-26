@@ -254,24 +254,26 @@ jobs:
 
           # Create a temporary proot script on the runner. Note: we expand DEPLOY_ENV now, but
           # keep occurrences of $HOME escaped so they resolve on the remote when the script runs.
-          cat > proot_deploy.sh <<'SCRIPT'
+          # Render a template for the proot deploy script, then substitute DEPLOY_ENV
+          # on the runner (so the remote script contains a concrete deploy env value).
+          cat > proot_deploy.sh.tmpl <<'TEMPLATE'
           #!/usr/bin/env bash
           set -euo pipefail
-          REMOTE_HOME="$HOME"
-          TDIR="/root/app/attendance/${DEPLOY_ENV}"
-          mkdir -p "$TDIR"
-          ARCHIVE_PATH="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
-          if [ -f "$ARCHIVE_PATH" ]; then
-            cp "$ARCHIVE_PATH" "/tmp/deploy_${DEPLOY_ENV}.tar.gz" 2>/dev/null || true
-            if [ -f "/tmp/deploy_${DEPLOY_ENV}.tar.gz" ]; then
-              tar -xzf "/tmp/deploy_${DEPLOY_ENV}.tar.gz" -C "$TDIR" || true
-              rm -f "/tmp/deploy_${DEPLOY_ENV}.tar.gz" || true
+          REMOTE_HOME="${REMOTE_HOME_PLACEHOLDER}"
+          TDIR="/root/app/attendance/__DEPLOY_ENV__"
+          mkdir -p "${TDIR}"
+          ARCHIVE_PATH="${REMOTE_HOME_PLACEHOLDER}/app/attendance/__DEPLOY_ENV__/deploy.tar.gz"
+          if [ -f "${ARCHIVE_PATH}" ]; then
+            cp "${ARCHIVE_PATH}" "/tmp/deploy___DEPLOY_ENV___.tar.gz" 2>/dev/null || true
+            if [ -f "/tmp/deploy___DEPLOY_ENV___.tar.gz" ]; then
+              tar -xzf "/tmp/deploy___DEPLOY_ENV___.tar.gz" -C "${TDIR}" || true
+              rm -f "/tmp/deploy___DEPLOY_ENV___.tar.gz" || true
             fi
           else
-            echo "PROOT: no archive found at $ARCHIVE_PATH; exiting"
+            echo "PROOT: no archive found at ${ARCHIVE_PATH}; exiting"
             exit 0
           fi
-          cd "$TDIR" || exit 0
+          cd "${TDIR}" || exit 0
           if command -v bun >/dev/null 2>&1; then
             echo "PROOT: running bun install"
             bun install || true
@@ -290,7 +292,16 @@ jobs:
             echo "PROOT: pm2 missing; attempting to run bun directly in background"
             nohup "$(command -v bun || true)" ./.output/server/index.mjs &>/dev/null &
           fi
-          SCRIPT
+          TEMPLATE
+
+          # Now substitute placeholders with concrete values on the runner.
+          # Ensure DEPLOY_ENV has a fallback so sed substitution always works.
+          DEPLOY_ENV_VAL="${DEPLOY_ENV:-demo}"
+          # Use REMOTE_HOME literal ($HOME) in the template; substitute a placeholder with that literal
+          REMOTE_HOME_LITERAL='\$HOME'
+          sed -e "s|__DEPLOY_ENV__|${DEPLOY_ENV_VAL}|g" -e "s|${REMOTE_HOME_PLACEHOLDER}|${REMOTE_HOME_LITERAL}|g" proot_deploy.sh.tmpl > proot_deploy.sh
+          chmod +x proot_deploy.sh
+          rm -f proot_deploy.sh.tmpl
 
           # Ensure remote staging dir exists, copy the script there, and run it under proot-distro
           ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p \"${REMOTE_STAGE_DIR}\"" 2>/tmp/ssh_proot_mkdir.err || {
