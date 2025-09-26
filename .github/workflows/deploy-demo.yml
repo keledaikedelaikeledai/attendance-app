@@ -199,16 +199,17 @@ jobs:
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
-            if case "${TARGET_DEPLOY_PATH}" in /*) true ;; *) false ;; esac; then
+            # Use bash pattern check to detect absolute path (starts with /)
+            if [[ "${TARGET_DEPLOY_PATH}" == /* ]]; then
               echo "TARGET_DEPLOY_PATH is absolute; copying into remote user's HOME under that path"
-              # Use remote $HOME expansion by quoting $HOME in the scp target
+              # Use remote $HOME expansion by quoting $HOME in the scp target; preserve runner expansion of TARGET_DEPLOY_PATH#/ via concatenation
               scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:'$HOME/'"${TARGET_DEPLOY_PATH#/}"/deploy.tar.gz" 2>/tmp/scp.err || {
                 cat /tmp/scp.err || true
                 echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
                 exit 1
               }
             else
-              echo "Copying archive to ${TARGET_DEPLOY_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH}/deploy.tar.gz (scp port: $SSH_PORT)"
+              echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH}/deploy.tar.gz (scp port: $SSH_PORT)"
               scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"${TARGET_DEPLOY_PATH}/deploy.tar.gz" 2>/tmp/scp.err || {
                 cat /tmp/scp.err || true
                 echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
