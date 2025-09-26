@@ -15,6 +15,7 @@ jobs:
     environment: demo
     env:
       DEPLOY_ENV: demo
+      TARGET_SSH_PORT: 8022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
