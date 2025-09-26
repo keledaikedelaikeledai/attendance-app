@@ -174,9 +174,24 @@ jobs:
           # The subsequent Extract step runs inside the distro and will copy/move the archive into the distro as needed.
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
-          REMOTE_STAGE_DIR="$HOME/app/attendance/${DEPLOY_ENV}"
-          echo "Copying deploy.tar.gz to remote staging: \$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz (ssh port: $SSH_PORT)"
-          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:'$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz' 2>/tmp/scp.err || {
+          # Query the remote user's HOME explicitly to avoid quoting problems
+          echo "Querying remote HOME via SSH"
+          REMOTE_HOME=$(ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} 'printf "%s" "$HOME"' 2>/tmp/ssh_home.err) || {
+            echo "Failed to query remote HOME; ssh stderr:"; sed -n '1,200p' /tmp/ssh_home.err || true
+            echo "Cannot proceed without knowing remote HOME" >&2
+            exit 1
+          }
+          echo "Remote HOME: $REMOTE_HOME"
+
+          REMOTE_STAGE_DIR="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}"
+          echo "Ensuring remote staging dir exists: $REMOTE_STAGE_DIR"
+          if ! ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p \"${REMOTE_STAGE_DIR}\"" 2>/tmp/ssh_mkdir_for_scp.err; then
+            echo "Failed to create remote staging dir; stderr:"; sed -n '1,200p' /tmp/ssh_mkdir_for_scp.err || true
+            exit 1
+          fi
+
+          echo "Copying deploy.tar.gz to remote staging: ${REMOTE_STAGE_DIR}/deploy.tar.gz (ssh port: $SSH_PORT)"
+          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"${REMOTE_STAGE_DIR}/deploy.tar.gz" 2>/tmp/scp.err || {
             echo "--- scp stderr ---"
             sed -n '1,200p' /tmp/scp.err || true
             echo "--- end scp stderr ---"
