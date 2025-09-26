@@ -122,7 +122,7 @@ jobs:
       - name: Ensure remote deploy directory exists
         run: |
           # Expand target deploy path on the runner so we don't rely on remote variable expansion
-          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}"
+          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}"
           echo "Ensuring remote dir: $REMOTE_DIR"
           # Prevent the ssh call from hanging indefinitely; timeout after 20s
           if ! timeout 20s ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err; then
@@ -154,7 +154,7 @@ jobs:
 
       - name: Copy archive to target host over Tailscale
         run: |
-          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}/deploy.tar.gz"
+          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}/deploy.tar.gz"
           echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:$REMOTE_PATH"
           scp -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"$REMOTE_PATH" 2>/tmp/scp.err || {
             cat /tmp/scp.err || true
@@ -168,7 +168,7 @@ jobs:
 
       - name: Verify uploaded archive exists on target
         run: |
-          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}/deploy.tar.gz"
+          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}/deploy.tar.gz"
           echo "Verifying archive exists at $REMOTE_PATH"
           ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '$REMOTE_PATH' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)" 2>/tmp/ssh_verify.err || {
             cat /tmp/ssh_verify.err || true
@@ -184,11 +184,17 @@ jobs:
 
       - name: Extract & run docker-compose on target host
         run: |
+          # Compute the remote directory on the runner so we inject a literal path into the remote script
+          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}"
+          echo "Using remote directory: $REMOTE_DIR"
+
+          # Inject the pre-expanded REMOTE_DIR into the remote script (safe against remote/local expansion confusion)
           ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" <<SSH
             set -euo pipefail
-            TARGET_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/deploy}"
+            TARGET_DIR='$REMOTE_DIR'
             mkdir -p "$TARGET_DIR"
             cd "$TARGET_DIR"
+
             # stop existing stack if present (try without sudo first, then with passwordless sudo)
             if docker compose ls >/dev/null 2>&1; then
               docker compose down || true
