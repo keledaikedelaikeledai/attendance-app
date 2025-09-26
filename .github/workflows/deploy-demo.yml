@@ -187,11 +187,28 @@ jobs:
           # Compute the remote directory on the runner so we inject a literal path into the remote script
           REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}"
           echo "Using remote directory: $REMOTE_DIR"
+          echo "REMOTE_DIR length: ${#REMOTE_DIR}"
+          echo "About to run: ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'bash -s' -- '$REMOTE_DIR'"
 
-          # Inject the pre-expanded REMOTE_DIR into the remote script (safe against remote/local expansion confusion)
-          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" <<SSH
+          # Runner-side guard: fail early if REMOTE_DIR is empty (prevents calling ssh with an empty arg)
+          if [ -z "$REMOTE_DIR" ]; then
+            echo "ERROR: REMOTE_DIR resolved to an empty string on the runner. Aborting before SSH." >&2
+            echo "Ensure TARGET_DEPLOY_PATH or TARGET_SSH_USER secrets are set and non-empty." >&2
+            exit 2
+          fi
+
+          # Pass pre-expanded REMOTE_DIR as an argument to the remote bash to avoid expansion issues
+          # Use a single-quoted heredoc so the local shell doesn't expand variables inside the script body
+          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" -- "$REMOTE_DIR" <<'SSH'
             set -euo pipefail
-            TARGET_DIR='$REMOTE_DIR'
+            TARGET_DIR="$1"
+            # Diagnostic: echo the received TARGET_DIR and its byte-length
+            printf 'REMOTE: Received TARGET_DIR=<%s>\n' "$TARGET_DIR"
+            printf 'REMOTE: TARGET_DIR length: %d\n' "$(printf '%s' "$TARGET_DIR" | wc -c)"
+            if [ -z "$TARGET_DIR" ]; then
+              echo "ERROR: TARGET_DIR is empty on the remote side. Aborting." >&2
+              exit 2
+            fi
             mkdir -p "$TARGET_DIR"
             cd "$TARGET_DIR"
 
