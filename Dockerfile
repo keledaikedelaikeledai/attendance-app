@@ -3,11 +3,21 @@ FROM oven/bun:latest AS builder
 WORKDIR /app
 
 # Install build deps required for native modules (better-sqlite3, etc.)
+# Add nodejs/npm, pkg-config and libsqlite3-dev so native modules can be
+# built from source in the builder. Also install node-gyp globally so
+# install scripts can call it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
   python3 \
   make \
   g++ \
+  nodejs \
+  npm \
+  pkg-config \
+  libsqlite3-dev \
   && rm -rf /var/lib/apt/lists/*
+
+# Install node-gyp globally so native module install scripts can find it.
+RUN npm install -g node-gyp || true
 
 # Copy lockfiles / package manifest for cached install
 COPY package.json bun.lock* package-lock.json* ./
@@ -17,8 +27,12 @@ COPY package.json bun.lock* package-lock.json* ./
 # preserves Bun's cache across build runs and makes subsequent installs much faster.
 # We also pass --frozen to ensure the lockfile is respected and the install is deterministic.
 ARG BUN_INSTALL_FLAGS="--frozen"
+# Force native modules (e.g. better-sqlite3) to be built from source instead
+# of using prebuilt binaries that may not match the runtime ABI inside this
+# image. Set npm_config_build_from_source=1 during the install. Keep the
+# BuildKit cache mount for Bun's cache to speed repeated installs.
 RUN --mount=type=cache,id=bun-cache,target=/root/.bun \
-  bun install $BUN_INSTALL_FLAGS
+  env npm_config_build_from_source=1 bun install $BUN_INSTALL_FLAGS
 
 # Copy source and build (use Bun preset for Nitro)
 COPY . .
