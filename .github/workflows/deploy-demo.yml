@@ -238,63 +238,78 @@ jobs:
         run: |
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "About to run remote extract/build/start (ssh port: $SSH_PORT)"
+          # Safer approach: render a small proot-runner script on the CI runner (expanding DEPLOY_ENV),
+          # scp it into the remote staging dir, then invoke it inside the distro. This avoids nested
+          # heredocs and complex printf quoting inside YAML.
 
-          # Run a remote script via SSH. We pass DEPLOY_ENV into the remote shell so it's available there and inside the proot heredoc.
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "DEPLOY_ENV='${DEPLOY_ENV}' bash -s" <<'SSH'
-            set -euo pipefail
-            echo "REMOTE: running extract/build/start (DEPLOY_ENV=$DEPLOY_ENV)"
-            REMOTE_HOME="$HOME"
-            STAGE="$REMOTE_HOME/app/attendance/${DEPLOY_ENV}"
-            mkdir -p "$STAGE"
+          # Query remote HOME so we know where to place the proot runner script
+          REMOTE_HOME=$(ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} 'printf "%s" "$HOME"' 2>/tmp/ssh_home_for_proot.err) || {
+            echo "Failed to query remote HOME for proot step; ssh stderr:"; sed -n '1,200p' /tmp/ssh_home_for_proot.err || true
+            exit 1
+          }
+          echo "Remote HOME for proot step: $REMOTE_HOME"
 
-            if [ -f "$STAGE/deploy.tar.gz" ]; then
-              echo "REMOTE: archive found in home-staging: $STAGE/deploy.tar.gz"
-              # Run a script inside the Ubuntu proot distro to extract, build and start
-              proot-distro login ubuntu -- bash -s <<'PROOT'
-                set -euo pipefail
-                echo "PROOT: running inside distro (DEPLOY_ENV=$DEPLOY_ENV)"
-                TDIR="/root/app/attendance/${DEPLOY_ENV}"
-                mkdir -p "$TDIR"
-                # copy archive from Termux home (available at /data/home path forwarded) into /tmp inside distro
-                if cp "$REMOTE_HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz" "/tmp/deploy_${DEPLOY_ENV}.tar.gz" 2>/dev/null; then
-                  tar -xzf "/tmp/deploy_${DEPLOY_ENV}.tar.gz" -C "$TDIR" || true
-                  rm -f "/tmp/deploy_${DEPLOY_ENV}.tar.gz" || true
-                else
-                  echo "PROOT: could not copy archive into distro; maybe path not visible; attempting to extract directly from host path" || true
-                fi
+          REMOTE_STAGE_DIR="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}"
+          PROOT_SCRIPT_REMOTE="${REMOTE_STAGE_DIR}/proot_deploy_${DEPLOY_ENV}.sh"
 
-                cd "$TDIR" || exit 0
-
-                # Ensure bun is available
-                if command -v bun >/dev/null 2>&1; then
-                  BUN="$(command -v bun)"
-                else
-                  echo "PROOT: bun not found in distro; please install bun inside the distro" >&2
-                fi
-
-                # Install dependencies and build if package.json exists
-                if [ -f package.json ]; then
-                  echo "PROOT: running bun install inside distro"
-                  bun install || true
-                  if grep -q '"build"' package.json 2>/dev/null; then
-                    bun run build -- --preset bun || true
-                  fi
-                fi
-
-                # Start the app via pm2 if available
-                if command -v pm2 >/dev/null 2>&1; then
-                  pm2 stop attendance-app || true; pm2 delete attendance-app || true
-                  pm2 start --name attendance-app --interpreter "$BUN" ./.output/server/index.mjs --update-env || true
-                  pm2 save || true
-                else
-                  echo "PROOT: pm2 not available; attempting to run bun directly in background"
-                  nohup "$BUN" ./.output/server/index.mjs &>/dev/null &
-                fi
-              PROOT
-            else
-              echo "REMOTE: no archive found in $STAGE; skipping extract/build/start"
+          # Create a temporary proot script on the runner. Note: we expand DEPLOY_ENV now, but
+          # keep occurrences of $HOME escaped so they resolve on the remote when the script runs.
+          cat > proot_deploy.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          REMOTE_HOME="$HOME"
+          TDIR="/root/app/attendance/${DEPLOY_ENV}"
+          mkdir -p "$TDIR"
+          ARCHIVE_PATH="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+          if [ -f "$ARCHIVE_PATH" ]; then
+            cp "$ARCHIVE_PATH" "/tmp/deploy_${DEPLOY_ENV}.tar.gz" 2>/dev/null || true
+            if [ -f "/tmp/deploy_${DEPLOY_ENV}.tar.gz" ]; then
+              tar -xzf "/tmp/deploy_${DEPLOY_ENV}.tar.gz" -C "$TDIR" || true
+              rm -f "/tmp/deploy_${DEPLOY_ENV}.tar.gz" || true
             fi
-          SSH
+          else
+            echo "PROOT: no archive found at $ARCHIVE_PATH; exiting"
+            exit 0
+          fi
+          cd "$TDIR" || exit 0
+          if command -v bun >/dev/null 2>&1; then
+            echo "PROOT: running bun install"
+            bun install || true
+            if [ -f package.json ] && grep -q '"build"' package.json 2>/dev/null; then
+              bun run build -- --preset bun || true
+            fi
+          else
+            echo "PROOT: bun missing in distro" >&2
+          fi
+          if command -v pm2 >/dev/null 2>&1; then
+            pm2 stop attendance-app || true
+            pm2 delete attendance-app || true
+            pm2 start --name attendance-app --interpreter "$(command -v bun || true)" ./.output/server/index.mjs --update-env || true
+            pm2 save || true
+          else
+            echo "PROOT: pm2 missing; attempting to run bun directly in background"
+            nohup "$(command -v bun || true)" ./.output/server/index.mjs &>/dev/null &
+          fi
+          SCRIPT
+
+          # Ensure remote staging dir exists, copy the script there, and run it under proot-distro
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p \"${REMOTE_STAGE_DIR}\"" 2>/tmp/ssh_proot_mkdir.err || {
+            echo "Failed to create remote staging dir for proot script; stderr:"; sed -n '1,200p' /tmp/ssh_proot_mkdir.err || true
+            exit 1
+          }
+
+          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 proot_deploy.sh ${TARGET_SSH_USER}@${TARGET_HOST}:"${PROOT_SCRIPT_REMOTE}" 2>/tmp/scp_proot.err || {
+            echo "Failed to scp proot script to remote; scp stderr:"; sed -n '1,200p' /tmp/scp_proot.err || true
+            exit 1
+          }
+
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "chmod +x \"${PROOT_SCRIPT_REMOTE}\" && proot-distro login ubuntu -- \"${PROOT_SCRIPT_REMOTE}\"" 2>/tmp/ssh_proot_run.err || {
+            echo "Failed to execute proot script inside distro; stderr:"; sed -n '1,200p' /tmp/ssh_proot_run.err || true
+            exit 1
+          }
+
+          # local cleanup
+          rm -f proot_deploy.sh || true
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
