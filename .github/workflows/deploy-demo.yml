@@ -195,35 +195,19 @@ jobs:
 
       - name: Copy archive to target host over Tailscale
         run: |
-          # If TARGET_DEPLOY_PATH is absolute (starts with /) we will copy into $HOME/<path-without-leading-slash>
+          # Always copy the archive into a home-staging directory on the remote (Termux home).
+          # The subsequent Extract step runs inside the distro and will copy/move the archive into the distro as needed.
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
-          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
-            # Use bash pattern check to detect absolute path (starts with /)
-            if [[ "${TARGET_DEPLOY_PATH}" == /* ]]; then
-              echo "TARGET_DEPLOY_PATH is absolute; copying into remote user's HOME under that path"
-              # Use remote $HOME expansion by quoting $HOME in the scp target; preserve runner expansion of TARGET_DEPLOY_PATH#/ via concatenation
-              scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:'$HOME/'"${TARGET_DEPLOY_PATH#/}"/deploy.tar.gz" 2>/tmp/scp.err || {
-                cat /tmp/scp.err || true
-                echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
-                exit 1
-              }
-            else
-              echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:${TARGET_DEPLOY_PATH}/deploy.tar.gz (scp port: $SSH_PORT)"
-              scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"${TARGET_DEPLOY_PATH}/deploy.tar.gz" 2>/tmp/scp.err || {
-                cat /tmp/scp.err || true
-                echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
-                exit 1
-              }
-            fi
-          else
-            echo "No TARGET_DEPLOY_PATH provided; copying to ~/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
-            scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:'$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz' 2>/tmp/scp.err || {
-              cat /tmp/scp.err || true
-              echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
-              exit 1
-            }
-          fi
+          REMOTE_STAGE_DIR="$HOME/app/attendance/${DEPLOY_ENV}"
+          echo "Copying deploy.tar.gz to remote staging: \$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz (ssh port: $SSH_PORT)"
+          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:'$HOME/app/attendance/${DEPLOY_ENV}/deploy.tar.gz' 2>/tmp/scp.err || {
+            echo "--- scp stderr ---"
+            sed -n '1,200p' /tmp/scp.err || true
+            echo "--- end scp stderr ---"
+            echo "ERROR: scp failed. Check that the deploy user has a matching public key, the host is reachable over Tailscale, and the remote path is writable." >&2
+            exit 1
+          }
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
