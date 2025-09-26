@@ -130,7 +130,15 @@ jobs:
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           if [ -n "$REMOTE_DIR_RUNNER" ]; then
             echo "Ensuring remote dir: $REMOTE_DIR_RUNNER (ssh port: $SSH_PORT)"
-            MKDIR_CMD="mkdir -p '$REMOTE_DIR_RUNNER'"
+            # If an absolute path was provided, don't try to create it directly on Termux's / (may be read-only).
+            # Prefer creating the absolute path inside the Ubuntu proot via proot-distro; if that fails, fall back to creating
+            # a home-prefixed path instead ($HOME/<path-without-leading-slash>) so Termux user can write it.
+            if case "$REMOTE_DIR_RUNNER" in /*) true ;; *) false ;; esac; then
+              # Note: we escape $HOME as \$HOME so it is evaluated on the remote side, not by the runner
+              MKDIR_CMD="proot-distro login ubuntu -- mkdir -p '$REMOTE_DIR_RUNNER' || mkdir -p \"\$HOME/${REMOTE_DIR_RUNNER#/}\""
+            else
+              MKDIR_CMD="mkdir -p '$REMOTE_DIR_RUNNER'"
+            fi
           else
             # Use a home-relative default on the remote side to avoid trying to write to / on proot/termux
             echo "No TARGET_DEPLOY_PATH provided; will create directory under remote user's HOME: \$HOME/app/attendance/${DEPLOY_ENV} (ssh port: $SSH_PORT)"
