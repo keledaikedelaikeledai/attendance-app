@@ -13,6 +13,8 @@ jobs:
     name: Build & deploy to Tailnet host
     runs-on: ubuntu-latest
     environment: demo
+    env:
+      DEPLOY_ENV: demo
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -122,10 +124,11 @@ jobs:
       - name: Ensure remote deploy directory exists
         run: |
           # Expand target deploy path on the runner so we don't rely on remote variable expansion
-          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}"
-          echo "Ensuring remote dir: $REMOTE_DIR"
+          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}"
+          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          echo "Ensuring remote dir: $REMOTE_DIR (ssh port: $SSH_PORT)"
           # Prevent the ssh call from hanging indefinitely; timeout after 20s
-          if ! timeout 20s ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err; then
+          if ! timeout 20s ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err; then
             cat /tmp/ssh_mkdir.err || true
             if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_mkdir.err 2>/dev/null || grep -q "Authentication check" /tmp/ssh_mkdir.err 2>/dev/null; then
               echo "ERROR: The target host is enforcing Tailscale SSH SSO and requires interactive authentication. CI cannot proceed non-interactively.\nOptions:\n - Use a host with standard OpenSSH and a deploy public key in ~/.ssh/authorized_keys\n - Configure Tailscale to allow machine authentication for CI or use a different deployment method." >&2
@@ -138,11 +141,13 @@ jobs:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
           TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
       - name: Verify Tailscale connectivity to target host
         run: |
           # Try a quick non-interactive SSH check to ensure the Tailscale route is available
-          if ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'echo ok' 2>/dev/null; then
+          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          if ssh -p "$SSH_PORT" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'echo ok' 2>/dev/null; then
             echo "Target reachable over Tailscale"
           else
             echo "ERROR: Target ${TARGET_HOST} is not reachable over Tailscale from the runner. Ensure the TAILSCALE_AUTHKEY is valid and the host is online." >&2
@@ -151,12 +156,14 @@ jobs:
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
+          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
       - name: Copy archive to target host over Tailscale
         run: |
-          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}/deploy.tar.gz"
-          echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:$REMOTE_PATH"
-          scp -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"$REMOTE_PATH" 2>/tmp/scp.err || {
+          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}/deploy.tar.gz"
+          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:$REMOTE_PATH (scp port: $SSH_PORT)"
+          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"$REMOTE_PATH" 2>/tmp/scp.err || {
             cat /tmp/scp.err || true
             echo "ERROR: scp failed. Check that the deploy user has a matching public key and that Tailscale connectivity is available." >&2
             exit 1
@@ -165,12 +172,14 @@ jobs:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
           TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
       - name: Verify uploaded archive exists on target
         run: |
-          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}/deploy.tar.gz"
-          echo "Verifying archive exists at $REMOTE_PATH"
-          ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '$REMOTE_PATH' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)" 2>/tmp/ssh_verify.err || {
+          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}/deploy.tar.gz"
+          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          echo "Verifying archive exists at $REMOTE_PATH (ssh port: $SSH_PORT)"
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '$REMOTE_PATH' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)" 2>/tmp/ssh_verify.err || {
             cat /tmp/ssh_verify.err || true
             if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_verify.err 2>/dev/null; then
               echo "ERROR: Tailscale SSH is requesting interactive SSO authentication. CI cannot continue. See docs: use standard OpenSSH+authorized_keys or configure machine auth for CI." >&2
@@ -181,8 +190,9 @@ jobs:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
           TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
+          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
-      - name: Extract & run docker-compose on target host
+      - name: Extract, build and start with PM2 on target host
         run: |
           # Compute the remote directory on the runner so we inject a literal path into the remote script
           REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}"
@@ -197,12 +207,10 @@ jobs:
             exit 2
           fi
 
-          # Pass pre-expanded REMOTE_DIR as an argument to the remote bash to avoid expansion issues
-          # Use a single-quoted heredoc so the local shell doesn't expand variables inside the script body
-          ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" -- "$REMOTE_DIR" <<'SSH'
+          # Remote script: extract, install/build with Bun, and run via PM2 using Bun as the interpreter
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" -- "$REMOTE_DIR" <<'SSH'
             set -euo pipefail
             TARGET_DIR="$1"
-            # Diagnostic: echo the received TARGET_DIR and its byte-length
             printf 'REMOTE: Received TARGET_DIR=<%s>\n' "$TARGET_DIR"
             printf 'REMOTE: TARGET_DIR length: %d\n' "$(printf '%s' "$TARGET_DIR" | wc -c)"
             if [ -z "$TARGET_DIR" ]; then
@@ -212,28 +220,75 @@ jobs:
             mkdir -p "$TARGET_DIR"
             cd "$TARGET_DIR"
 
-            # stop existing stack if present (try without sudo first, then with passwordless sudo)
-            if docker compose ls >/dev/null 2>&1; then
-              docker compose down || true
-            elif sudo -n docker compose ls >/dev/null 2>&1; then
-              sudo docker compose down || true
+            # extract uploaded archive into target dir (scp copied deploy.tar.gz)
+            if [ -f "$TARGET_DIR/deploy.tar.gz" ]; then
+              tar -xzf "$TARGET_DIR/deploy.tar.gz" -C "$TARGET_DIR"
+              rm -f "$TARGET_DIR/deploy.tar.gz"
             else
-              echo "ERROR: docker on the target host requires sudo password or is not available.\nPlease either add ${TARGET_SSH_USER} to the 'docker' group or enable passwordless sudo for docker commands."
-              exit 1
+              echo "WARNING: deploy.tar.gz not found in $TARGET_DIR — continuing if files already present"
             fi
 
-            # extract uploaded archive into target dir (scp already copied it)
-            tar -xzf "$TARGET_DIR/deploy.tar.gz" -C "$TARGET_DIR"
-            rm -f "$TARGET_DIR/deploy.tar.gz"
-
-            # run docker compose build+up (prefer direct docker, fall back to passwordless sudo)
-            if docker compose up -d --build; then
-              true
-            elif sudo -n docker compose up -d --build; then
+            # Ensure Bun is available (install locally to $HOME/.bun if needed)
+            BUN_BIN="$HOME/.bun/bin/bun"
+            if command -v bun >/dev/null 2>&1; then
+              BUN_BIN="$(command -v bun)"
+            elif [ -x "$BUN_BIN" ]; then
               true
             else
-              echo "ERROR: docker on the target host requires sudo password or is not available. Aborting."
-              exit 1
+              echo "Bun not found; installing to $HOME/.bun (non-interactive)"
+              curl -fsSL https://bun.sh/install | bash -s -- --bun-install-dir "$HOME/.bun" || true
+              export PATH="$HOME/.bun/bin:$PATH"
+              BUN_BIN="$HOME/.bun/bin/bun"
+            fi
+
+            # Install dependencies (prefer production install; fall back to full if needed)
+            if [ -f package.json ]; then
+              echo "Running: $BUN_BIN install --production"
+              if ! $BUN_BIN install --production >/tmp/bun_install.out 2>&1; then
+                echo "Production install failed; trying full install (logs in /tmp/bun_install.out)"
+                tail -n 200 /tmp/bun_install.out || true
+                $BUN_BIN install || true
+              fi
+            fi
+
+            # Build the project (Nitro) if build script exists
+            if grep -q '"build"' package.json 2>/dev/null || grep -q 'build' package.json 2>/dev/null; then
+              echo "Running build on remote host"
+              $BUN_BIN run build -- --preset bun || (echo 'Build failed' >&2; exit 1)
+            fi
+
+            # Ensure pm2 is available (install globally via npm if absent)
+            if ! command -v pm2 >/dev/null 2>&1; then
+              if command -v npm >/dev/null 2>&1; then
+                echo "Installing pm2 globally via npm"
+                npm install -g pm2 || true
+              else
+                echo "pm2 not found and npm not available; cannot start process manager" >&2
+              fi
+            fi
+
+            PM2_NAME="attendance-app"
+            # Stop and remove existing process if present
+            if command -v pm2 >/dev/null 2>&1 && pm2 describe "$PM2_NAME" >/dev/null 2>&1; then
+              pm2 stop "$PM2_NAME" || true
+              pm2 delete "$PM2_NAME" || true
+            fi
+
+            # Start the app via pm2 using Bun as the interpreter
+            BUN_PATH="$BUN_BIN"
+            if [ ! -x "$BUN_PATH" ]; then
+              BUN_PATH="$(command -v bun || echo "$BUN_PATH")"
+            fi
+            if command -v pm2 >/dev/null 2>&1; then
+              echo "Starting app with pm2 (interpreter: $BUN_PATH)"
+              pm2 start --name "$PM2_NAME" --interpreter "$BUN_PATH" ./.output/server/index.mjs --update-env || {
+                echo "pm2 start failed" >&2
+                exit 1
+              }
+              pm2 save || true
+            else
+              echo "pm2 not available; falling back to running directly with Bun in background"
+              nohup "$BUN_PATH" ./.output/server/index.mjs &>/dev/null &
             fi
           SSH
         env:

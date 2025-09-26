@@ -1,3 +1,7 @@
+# syntax=docker/dockerfile:1.7
+# Use Docker BuildKit syntax to enable features like --mount=type=cache
+# This requires Docker BuildKit (DOCKER_BUILDKIT=1) or buildx in CI.
+# See: https://docs.docker.com/develop/develop-images/dockerfile_best-practices/#using-the-buildkit-syntax
 # Multi-stage Bun-based Dockerfile for Nuxt 4 application
 FROM oven/bun:latest AS builder
 WORKDIR /app
@@ -36,12 +40,12 @@ COPY package.json bun.lock* package-lock.json* ./
 # preserves Bun's cache across build runs and makes subsequent installs much faster.
 # We also pass --frozen to ensure the lockfile is respected and the install is deterministic.
 ARG BUN_INSTALL_FLAGS="--frozen"
-# Force native modules (e.g. better-sqlite3) to be built from source instead
-# of using prebuilt binaries that may not match the runtime ABI inside this
-# image. Set npm_config_build_from_source=1 during the install. Keep the
-# BuildKit cache mount for Bun's cache to speed repeated installs.
+# Install dependencies. We no longer force a global build-from-source so that
+# packages like sharp can download their prebuilt binaries (avoids failing
+# native builds on some arches). If we later still see an ABI issue with
+# better-sqlite3 we can selectively rebuild just that module.
 RUN --mount=type=cache,id=bun-cache,target=/root/.bun \
-  env npm_config_build_from_source=1 bun install $BUN_INSTALL_FLAGS
+  bun install $BUN_INSTALL_FLAGS || (echo 'Initial bun install failed; retrying once' >&2 && bun install $BUN_INSTALL_FLAGS)
 
 # Copy source and build (use Bun preset for Nitro)
 COPY . .
