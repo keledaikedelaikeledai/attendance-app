@@ -14,6 +14,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   npm \
   pkg-config \
   libsqlite3-dev \
+  # image processing deps for sharp
+  libvips-dev \
+  libvips-tools \
+  libjpeg-dev \
+  libpng-dev \
+  libcairo2-dev \
+  libgif-dev \
+  librsvg2-dev \
+  build-essential \
   && rm -rf /var/lib/apt/lists/*
 
 # Install node-gyp globally so native module install scripts can find it.
@@ -46,6 +55,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
   libstdc++6 \
   sqlite3 \
+  # runtime libvips present so sharp can run
+  libvips-tools \
+  libvips-dev \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
