@@ -124,13 +124,20 @@ jobs:
 
       - name: Ensure remote deploy directory exists
         run: |
-          # Expand target deploy path on the runner so we don't rely on remote variable expansion
-          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}"
+          # If TARGET_DEPLOY_PATH is provided, create that path; otherwise create a path under the remote user's $HOME
+          REMOTE_DIR_RUNNER="${TARGET_DEPLOY_PATH:-}"
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
-          echo "Ensuring remote dir: $REMOTE_DIR (ssh port: $SSH_PORT)"
+          if [ -n "$REMOTE_DIR_RUNNER" ]; then
+            echo "Ensuring remote dir: $REMOTE_DIR_RUNNER (ssh port: $SSH_PORT)"
+            MKDIR_CMD="mkdir -p '$REMOTE_DIR_RUNNER'"
+          else
+            # Use a home-relative default on the remote side to avoid trying to write to / on proot/termux
+            echo "No TARGET_DEPLOY_PATH provided; will create directory under remote user's HOME: \$HOME/app/attendance/${DEPLOY_ENV} (ssh port: $SSH_PORT)"
+            MKDIR_CMD="mkdir -p \"\$HOME/app/attendance/${DEPLOY_ENV}\""
+          fi
           # Prevent the ssh call from hanging indefinitely; timeout after 20s
-          if ! timeout 20s ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err; then
+          if ! timeout 20s ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "$MKDIR_CMD" 2>/tmp/ssh_mkdir.err; then
             cat /tmp/ssh_mkdir.err || true
             if grep -q "Tailscale SSH requires an additional check" /tmp/ssh_mkdir.err 2>/dev/null || grep -q "Authentication check" /tmp/ssh_mkdir.err 2>/dev/null; then
               echo "ERROR: The target host is enforcing Tailscale SSH SSO and requires interactive authentication. CI cannot proceed non-interactively.\nOptions:\n - Use a host with standard OpenSSH and a deploy public key in ~/.ssh/authorized_keys\n - Configure Tailscale to allow machine authentication for CI or use a different deployment method." >&2
@@ -161,7 +168,12 @@ jobs:
 
       - name: Copy archive to target host over Tailscale
         run: |
-          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}/deploy.tar.gz"
+          # If TARGET_DEPLOY_PATH is set, use it; otherwise use a home-relative path (~ expands on remote shell)
+          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
+            REMOTE_PATH="${TARGET_DEPLOY_PATH}/deploy.tar.gz"
+          else
+            REMOTE_PATH="~/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+          fi
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:$REMOTE_PATH (scp port: $SSH_PORT)"
@@ -177,7 +189,11 @@ jobs:
 
       - name: Verify uploaded archive exists on target
         run: |
-          REMOTE_PATH="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}/deploy.tar.gz"
+          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
+            REMOTE_PATH="${TARGET_DEPLOY_PATH}/deploy.tar.gz"
+          else
+            REMOTE_PATH="~/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+          fi
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
           echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           echo "Verifying archive exists at $REMOTE_PATH (ssh port: $SSH_PORT)"
@@ -196,29 +212,29 @@ jobs:
       - name: Extract, build and start with PM2 on target host
         run: |
           # Compute the remote directory on the runner so we inject a literal path into the remote script
-          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}"
-          SSH_PORT="${TARGET_SSH_PORT:-22}"
-          echo "Using remote directory: $REMOTE_DIR (ssh port: $SSH_PORT)"
-          echo "REMOTE_DIR length: ${#REMOTE_DIR}"
-          echo "About to run: ssh -p \"$SSH_PORT\" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'bash -s' -- '$REMOTE_DIR'"
-
-          # Runner-side guard: fail early if REMOTE_DIR is empty (prevents calling ssh with an empty arg)
-          if [ -z "$REMOTE_DIR" ]; then
-            echo "ERROR: REMOTE_DIR resolved to an empty string on the runner. Aborting before SSH." >&2
-            echo "Ensure TARGET_DEPLOY_PATH or TARGET_SSH_USER secrets are set and non-empty." >&2
-            exit 2
+          # If TARGET_DEPLOY_PATH is set, pass it; otherwise pass an empty arg and let the remote side default to $HOME
+          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
+            REMOTE_ARG="${TARGET_DEPLOY_PATH}"
+            echo "Using remote directory (explicit): $REMOTE_ARG"
+          else
+            REMOTE_ARG=""
+            echo "No TARGET_DEPLOY_PATH provided; remote will default to \$HOME/app/attendance/${DEPLOY_ENV}"
           fi
+          SSH_PORT="${TARGET_SSH_PORT:-8022}"
+          echo "About to run: ssh -p \"$SSH_PORT\" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'DEPLOY_ENV=${DEPLOY_ENV} bash -s' -- '$REMOTE_ARG'"
 
           # Remote script: extract, install/build with Bun, and run via PM2 using Bun as the interpreter
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "bash -s" -- "$REMOTE_DIR" <<'SSH'
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} "DEPLOY_ENV=${DEPLOY_ENV} bash -s" -- "$REMOTE_ARG" <<'SSH'
             set -euo pipefail
-            TARGET_DIR="$1"
-            printf 'REMOTE: Received TARGET_DIR=<%s>\n' "$TARGET_DIR"
-            printf 'REMOTE: TARGET_DIR length: %d\n' "$(printf '%s' "$TARGET_DIR" | wc -c)"
-            if [ -z "$TARGET_DIR" ]; then
-              echo "ERROR: TARGET_DIR is empty on the remote side. Aborting." >&2
-              exit 2
+            # Accept an optional argument; if empty, default to $HOME/app/attendance/${DEPLOY_ENV}
+            ARG="$1"
+            if [ -n "$ARG" ]; then
+              TARGET_DIR="$ARG"
+            else
+              TARGET_DIR="$HOME/app/attendance/${DEPLOY_ENV}"
             fi
+            printf 'REMOTE: Resolved TARGET_DIR=<%s>\n' "$TARGET_DIR"
+            printf 'REMOTE: TARGET_DIR length: %d\n' "$(printf '%s' "$TARGET_DIR" | wc -c)"
             mkdir -p "$TARGET_DIR"
             cd "$TARGET_DIR"
 
