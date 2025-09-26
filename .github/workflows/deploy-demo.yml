@@ -126,7 +126,8 @@ jobs:
         run: |
           # Expand target deploy path on the runner so we don't rely on remote variable expansion
           REMOTE_DIR="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}"
-          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          SSH_PORT="${TARGET_SSH_PORT:-8022}"
+          echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           echo "Ensuring remote dir: $REMOTE_DIR (ssh port: $SSH_PORT)"
           # Prevent the ssh call from hanging indefinitely; timeout after 20s
           if ! timeout 20s ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '$REMOTE_DIR'" 2>/tmp/ssh_mkdir.err; then
@@ -142,12 +143,12 @@ jobs:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
           TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
-          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
       - name: Verify Tailscale connectivity to target host
         run: |
           # Try a quick non-interactive SSH check to ensure the Tailscale route is available
-          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          SSH_PORT="${TARGET_SSH_PORT:-8022}"
+          echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           if ssh -p "$SSH_PORT" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'echo ok' 2>/dev/null; then
             echo "Target reachable over Tailscale"
           else
@@ -157,12 +158,12 @@ jobs:
         env:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
-          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
       - name: Copy archive to target host over Tailscale
         run: |
           REMOTE_PATH="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}/deploy.tar.gz"
-          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          SSH_PORT="${TARGET_SSH_PORT:-8022}"
+          echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           echo "Copying archive to ${TARGET_SSH_USER}@${TARGET_HOST}:$REMOTE_PATH (scp port: $SSH_PORT)"
           scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"$REMOTE_PATH" 2>/tmp/scp.err || {
             cat /tmp/scp.err || true
@@ -173,12 +174,12 @@ jobs:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
           TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
-          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
       - name: Verify uploaded archive exists on target
         run: |
           REMOTE_PATH="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}/deploy.tar.gz"
-          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          SSH_PORT="${TARGET_SSH_PORT:-8022}"
+          echo "Raw TARGET_SSH_PORT: '${TARGET_SSH_PORT:-<unset>}'"
           echo "Verifying archive exists at $REMOTE_PATH (ssh port: $SSH_PORT)"
           ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f '$REMOTE_PATH' ] && echo OK || (echo 'ERROR: deploy.tar.gz not found on target' >&2; exit 1)" 2>/tmp/ssh_verify.err || {
             cat /tmp/ssh_verify.err || true
@@ -191,15 +192,15 @@ jobs:
           TARGET_HOST: ${{ secrets.TARGET_HOST }}
           TARGET_SSH_USER: ${{ secrets.TARGET_SSH_USER }}
           TARGET_DEPLOY_PATH: ${{ secrets.TARGET_DEPLOY_PATH }}
-          TARGET_SSH_PORT: ${{ secrets.TARGET_SSH_PORT }}
 
       - name: Extract, build and start with PM2 on target host
         run: |
           # Compute the remote directory on the runner so we inject a literal path into the remote script
-          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/home/${TARGET_SSH_USER}/apps/attendance/demo}"
-          echo "Using remote directory: $REMOTE_DIR"
+          REMOTE_DIR="${TARGET_DEPLOY_PATH:-/root/app/attendance/${DEPLOY_ENV}}"
+          SSH_PORT="${TARGET_SSH_PORT:-22}"
+          echo "Using remote directory: $REMOTE_DIR (ssh port: $SSH_PORT)"
           echo "REMOTE_DIR length: ${#REMOTE_DIR}"
-          echo "About to run: ssh -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'bash -s' -- '$REMOTE_DIR'"
+          echo "About to run: ssh -p \"$SSH_PORT\" -o StrictHostKeyChecking=no ${TARGET_SSH_USER}@${TARGET_HOST} 'bash -s' -- '$REMOTE_DIR'"
 
           # Runner-side guard: fail early if REMOTE_DIR is empty (prevents calling ssh with an empty arg)
           if [ -z "$REMOTE_DIR" ]; then
