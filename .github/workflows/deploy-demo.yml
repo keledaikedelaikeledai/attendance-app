@@ -259,21 +259,15 @@ jobs:
           cat > proot_deploy.sh.tmpl <<'TEMPLATE'
           #!/usr/bin/env bash
           set -euo pipefail
-          REMOTE_HOME="${REMOTE_HOME_PLACEHOLDER}"
           TDIR="/root/app/attendance/__DEPLOY_ENV__"
-          mkdir -p "${TDIR}"
-          ARCHIVE_PATH="${REMOTE_HOME_PLACEHOLDER}/app/attendance/__DEPLOY_ENV__/deploy.tar.gz"
-          if [ -f "${ARCHIVE_PATH}" ]; then
-            cp "${ARCHIVE_PATH}" "/tmp/deploy___DEPLOY_ENV___.tar.gz" 2>/dev/null || true
-            if [ -f "/tmp/deploy___DEPLOY_ENV___.tar.gz" ]; then
-              tar -xzf "/tmp/deploy___DEPLOY_ENV___.tar.gz" -C "${TDIR}" || true
-              rm -f "/tmp/deploy___DEPLOY_ENV___.tar.gz" || true
-            fi
-          else
-            echo "PROOT: no archive found at ${ARCHIVE_PATH}; exiting"
+          if [ ! -d "${TDIR}" ]; then
+            echo "PROOT: target directory ${TDIR} not found; nothing to do" >&2
             exit 0
           fi
-          cd "${TDIR}" || exit 0
+          cd "${TDIR}" || { echo "PROOT: cannot cd into ${TDIR}" >&2; exit 1; }
+          echo "PROOT: operating inside $(pwd)"
+          echo "PROOT: listing directory contents (first 50 entries)"
+          ls -la | head -n 50 || true
           if command -v bun >/dev/null 2>&1; then
             echo "PROOT: running bun install"
             bun install || true
