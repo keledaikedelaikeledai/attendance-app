@@ -295,26 +295,31 @@ jobs:
           TEMPLATE
 
           # Now substitute placeholders with concrete values on the runner.
-          # Ensure DEPLOY_ENV has a fallback so sed substitution always works.
           DEPLOY_ENV_VAL="${DEPLOY_ENV:-demo}"
-          # Use REMOTE_HOME literal ($HOME) in the template; substitute a placeholder with that literal
-          REMOTE_HOME_LITERAL='\$HOME'
-          sed -e "s|__DEPLOY_ENV__|${DEPLOY_ENV_VAL}|g" -e "s|${REMOTE_HOME_PLACEHOLDER}|${REMOTE_HOME_LITERAL}|g" proot_deploy.sh.tmpl > proot_deploy.sh
+          sed -e "s|__DEPLOY_ENV__|${DEPLOY_ENV_VAL}|g" proot_deploy.sh.tmpl > proot_deploy.sh
           chmod +x proot_deploy.sh
           rm -f proot_deploy.sh.tmpl
 
-          # Ensure remote staging dir exists, copy the script there, and run it under proot-distro
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p \"${REMOTE_STAGE_DIR}\"" 2>/tmp/ssh_proot_mkdir.err || {
-            echo "Failed to create remote staging dir for proot script; stderr:"; sed -n '1,200p' /tmp/ssh_proot_mkdir.err || true
+          # Ensure the target directory exists inside the proot distro, then stream the archive
+          # directly into the distro and execute the proot script via stdin (no scp to Termux).
+          echo "Ensuring /root/app/attendance/${DEPLOY_ENV} exists inside proot"
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- mkdir -p '/root/app/attendance/${DEPLOY_ENV}'" 2>/tmp/ssh_proot_mkdir.err || {
+            echo "Failed to create target dir inside proot; stderr:"; sed -n '1,200p' /tmp/ssh_proot_mkdir.err || true
             exit 1
           }
 
-          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 proot_deploy.sh ${TARGET_SSH_USER}@${TARGET_HOST}:"${PROOT_SCRIPT_REMOTE}" 2>/tmp/scp_proot.err || {
-            echo "Failed to scp proot script to remote; scp stderr:"; sed -n '1,200p' /tmp/scp_proot.err || true
-            exit 1
-          }
+          if [ -f deploy.tar.gz ]; then
+            echo "Streaming deploy.tar.gz into proot (/root/app/attendance/${DEPLOY_ENV})"
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=120 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- tar -xzf - -C '/root/app/attendance/${DEPLOY_ENV}'" < deploy.tar.gz 2>/tmp/ssh_stream_tar.err || {
+              echo "Failed to stream deploy.tar.gz into proot; stderr:"; sed -n '1,200p' /tmp/ssh_stream_tar.err || true
+              exit 1
+            }
+          else
+            echo "Local deploy.tar.gz not found; nothing to stream into proot" >&2
+          fi
 
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "chmod +x \"${PROOT_SCRIPT_REMOTE}\" && proot-distro login ubuntu -- \"${PROOT_SCRIPT_REMOTE}\"" 2>/tmp/ssh_proot_run.err || {
+          echo "Executing proot deploy script inside proot via stdin"
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=120 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- bash -s" < proot_deploy.sh 2>/tmp/ssh_proot_run.err || {
             echo "Failed to execute proot script inside distro; stderr:"; sed -n '1,200p' /tmp/ssh_proot_run.err || true
             exit 1
           }
