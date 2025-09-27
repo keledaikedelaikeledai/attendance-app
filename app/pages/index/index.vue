@@ -3,6 +3,8 @@ import type { ShiftDef } from '@/composables/useAttendance'
 import { onMounted, ref } from 'vue'
 import { getShiftLabel, useAttendance } from '@/composables/useAttendance'
 
+const toast = useToast()
+
 const {
   clockedIn,
   clockInTime,
@@ -137,6 +139,10 @@ async function ensurePermission() {
 
 async function handleClock(action: 'in' | 'out') {
   await requestLocationOnce()
+  if (permissionStatus.value !== 'granted') {
+    toast.add({ title: 'Location required', description: 'Please allow location permission to clock in/out', color: 'error' })
+    return
+  }
   if (action === 'in') {
     const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
     clockIn({ coords: c, shiftCode: selectedShiftCode.value })
@@ -160,6 +166,10 @@ async function handleClock(action: 'in' | 'out') {
 async function onConfirmClockOut() {
   showConfirmOut.value = false
   await requestLocationOnce()
+  if (permissionStatus.value !== 'granted') {
+    toast.add({ title: 'Location required', description: 'Please allow location permission to clock in/out', color: 'error' })
+    return
+  }
   const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
   clockOut(c)
 }
