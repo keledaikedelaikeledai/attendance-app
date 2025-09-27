@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
-import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
+import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -11,20 +11,59 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, shiftType, coords } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number } }
+  const { shiftCode, shiftType, coords, date: clientDate } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number }, date?: string }
 
   const db = useDb()
   const userId = session.user.id
-  const date = new Date().toISOString().slice(0, 10)
+  // Prefer client-provided local date when available to avoid server/UTC calendar drift
   const now = new Date()
+  const date = typeof clientDate === 'string' && clientDate ? clientDate : new Date().toISOString().slice(0, 10)
 
-  // upsert day
-  const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date))).limit(1)
+  // If the user's selected shift for the previous day crosses midnight and
+  // the current clock-in happens after midnight but before that shift's end,
+  // attribute the clock-in to the previous date so the shift remains grouped.
+  let targetDate = date
+  try {
+    const prev = new Date(now)
+    prev.setDate(prev.getDate() - 1)
+    const prevDateStr = prev.toISOString().slice(0, 10)
+    const [prevDayRow] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, prevDateStr))).limit(1)
+    const prevShiftCode = (prevDayRow as any)?.selectedShiftCode ?? null
+    if (prevShiftCode) {
+      const [sd] = await db.select().from(shift).where(eq(shift.code, prevShiftCode)).limit(1)
+      if (sd) {
+        const partsStart = (sd.start || '').split(':')
+        const partsEnd = (sd.end || '').split(':')
+        const sh = Number(partsStart[0])
+        const sm = Number(partsStart[1])
+        const eh = Number(partsEnd[0])
+        const em = Number(partsEnd[1])
+        if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
+          const startMin = sh * 60 + sm
+          const endMin = eh * 60 + em
+          if (startMin > endMin) {
+            // crossing midnight, compute end anchored to prev date + 1
+            const endDate = new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), eh, em, 0, 0)
+            endDate.setDate(endDate.getDate() + 1)
+            if (now.getTime() <= endDate.getTime()) {
+              targetDate = prevDateStr
+            }
+          }
+        }
+      }
+    }
+  }
+  catch {
+    // ignore and use today's date
+  }
+
+  // upsert day (use targetDate so clock-ins attributed correctly)
+  const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
   if (!existing) {
     await db.insert(attendanceDay).values({
       id: randomUUID(),
       userId,
-      date,
+      date: targetDate,
       selectedShiftCode: shiftCode,
       shiftType: (shiftType as any) || 'harian',
       createdAt: now,
@@ -39,14 +78,14 @@ export default defineEventHandler(async (event) => {
         ...(shiftType ? { shiftType: shiftType as any } : {}),
         updatedAt: now,
       })
-      .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date)))
+      .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate)))
   }
 
   // insert log
   await db.insert(attendanceLog).values({
     id: randomUUID(),
     userId,
-    date,
+    date: targetDate,
     type: 'clock-in',
     timestamp: now,
     lat: coords?.latitude,

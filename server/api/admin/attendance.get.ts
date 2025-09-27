@@ -134,10 +134,11 @@ export default defineEventHandler(async (event) => {
       const _shiftDef = (explicitShift?.code && shiftMap[explicitShift.code]) || undefined
       // Compute lateMs server-side to keep UI simple and consistent
       // For admin grid, compute aggregated values: count of distinct shiftTypes with a clock-in, earliest clock-in per shift, latest clock-out per shift
-      const groupedByShiftType: Record<string, { clockIn?: string, clockInLat?: number | null, clockInLng?: number | null, clockInAccuracy?: number | null, clockOut?: string, clockOutLat?: number | null, clockOutLng?: number | null, clockOutAccuracy?: number | null, shiftCode?: string | null }> = {}
+      const groupedByShiftType: Record<string, any> = {}
       for (const e of entries) {
         const st = e.shiftType || 'unknown'
-        groupedByShiftType[st] ||= {}
+        groupedByShiftType[st] ||= {} as any
+        // keep earliest clock-in for "start of shift" calculations (existing behavior)
         if (e.type === 'clock-in') {
           if (!groupedByShiftType[st].clockIn || new Date(e.timestamp) < new Date(groupedByShiftType[st].clockIn)) {
             groupedByShiftType[st].clockIn = e.timestamp
@@ -145,6 +146,15 @@ export default defineEventHandler(async (event) => {
             groupedByShiftType[st].clockInLng = e.lng
             groupedByShiftType[st].clockInAccuracy = e.accuracy
             groupedByShiftType[st].shiftCode = e.shiftCode
+          }
+          // also track the latest clock-in so callers can see the most recent activity
+          if (!groupedByShiftType[st].clockInLast || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockInLast)) {
+            groupedByShiftType[st].clockInLast = e.timestamp
+            groupedByShiftType[st].clockInLastLat = e.lat
+            groupedByShiftType[st].clockInLastLng = e.lng
+            groupedByShiftType[st].clockInLastAccuracy = e.accuracy
+            // keep the most recent shiftCode too (may be null)
+            groupedByShiftType[st].shiftCodeLast = e.shiftCode
           }
         }
         else if (e.type === 'clock-out') {

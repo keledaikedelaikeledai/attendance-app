@@ -24,6 +24,21 @@ export function getShiftLabel(code?: ShiftCode | null) {
   return shifts.value.find(s => s.code === code)?.label || code || '-'
 }
 
+function pickClosestShiftFromShifts(now = new Date()) {
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  let closest: { code: string, diff: number } | null = null
+  for (const s of shifts.value ?? []) {
+    const [shStr, smStr] = s.start.split(':')
+    const sh = Number(shStr)
+    const sm = Number(smStr)
+    const startMin = sh * 60 + sm
+    let diff = Math.abs(startMin - nowMin)
+    diff = Math.min(diff, 1440 - diff)
+    if (!closest || diff < closest.diff) closest = { code: s.code, diff }
+  }
+  return closest?.code
+}
+
 const clockedIn = ref<boolean>(false)
 const clockInTime = ref<string | undefined>()
 const clockOutTime = ref<string | undefined>()
@@ -32,7 +47,11 @@ const selectedShiftCode = ref<ShiftCode | undefined>()
 const selectedShiftType = ref<'harian' | 'bantuan' | undefined>()
 
 async function refresh() {
-  const s = await $fetch<any>('/api/attendance', { method: 'GET', credentials: 'include', query: { ts: Date.now() } })
+  // compute client's local date in YYYY-MM-DD to ask server for the correct day
+  const now = new Date()
+  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const tzOffset = now.getTimezoneOffset() // minutes (same as Date.getTimezoneOffset())
+  const s = await $fetch<any>('/api/attendance', { method: 'GET', credentials: 'include', query: { ts: Date.now(), date: localDate, tzOffset } })
   if (!s)
     return
   if (!shifts.value.length) {
@@ -133,10 +152,25 @@ const lateByHuman = computed(() => {
   return h ? `${h}h ${m}m` : `${m}m`
 })
 
-async function setShift(code: ShiftCode | undefined) {
+async function setShift(code: ShiftCode | undefined, type?: 'harian' | 'bantuan' | undefined) {
   selectedShiftCode.value = code
-  await $fetch('/api/attendance/shift', { method: 'POST', body: { shiftCode: code }, credentials: 'include' })
+  if (type) selectedShiftType.value = type
+  await $fetch('/api/attendance/shift', { method: 'POST', body: { shiftCode: code, shiftType: type }, credentials: 'include' })
   await refresh()
+}
+
+// Ensure a sensible default shift is chosen based on current time
+async function ensureDefaultShift() {
+  if (!shifts.value.length) {
+    await loadShifts()
+  }
+  if (!selectedShiftCode.value) {
+    const def = pickClosestShiftFromShifts(new Date())
+    if (def) await setShift(def, 'harian')
+  }
+  if (!selectedShiftType.value) {
+    selectedShiftType.value = 'harian'
+  }
 }
 
 interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCode | undefined }
@@ -145,11 +179,16 @@ async function clockIn(opts?: ClockInOptions) {
     return
   if (opts?.shiftCode)
     selectedShiftCode.value = opts.shiftCode
+  const now = new Date()
+  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const tzOffset = now.getTimezoneOffset()
   const res = await $fetch<any>('/api/attendance/clock-in', {
     method: 'POST',
     body: {
       shiftCode: selectedShiftCode.value,
       shiftType: selectedShiftType.value,
+      date: localDate,
+      tzOffset,
       coords: opts?.coords
         ? {
             latitude: opts.coords.latitude,
@@ -175,6 +214,9 @@ async function clockIn(opts?: ClockInOptions) {
 async function clockOut(coords?: GeolocationCoordinates) {
   if (!clockedIn.value)
     return
+  const now = new Date()
+  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const tzOffset = now.getTimezoneOffset()
   const res = await $fetch<any>('/api/attendance/clock-out', {
     method: 'POST',
     body: coords
@@ -185,8 +227,10 @@ async function clockOut(coords?: GeolocationCoordinates) {
             accuracy: coords.accuracy,
           },
           shiftType: selectedShiftType.value,
+          date: localDate,
+          tzOffset,
         }
-      : { shiftType: selectedShiftType.value },
+      : { shiftType: selectedShiftType.value, date: localDate, tzOffset },
     credentials: 'include',
   })
   if (res) {
@@ -220,12 +264,20 @@ export function useAttendance() {
     selectedShiftCode,
     selectedShiftType,
     setShift,
-    // returns true if the given shiftType already has a clock-in entry today
+    ensureDefaultShift,
+    // returns true if the given shiftType currently has an active (unclosed) clock-in today
     isShiftActive: (shiftType?: 'harian' | 'bantuan' | undefined) => {
       if (!shiftType) return false
-      // find any clock-in log with this shiftType
-      const ins = logs.value.filter(l => l.type === 'clock-in' && l.shiftType === shiftType)
-      return ins.length > 0
+      // find the latest clock-in for this shiftType
+      const cis = logs.value
+        .filter(l => l.type === 'clock-in' && l.shiftType === shiftType)
+        .sort((a, b) => Date.parse(b.timestamp as any) - Date.parse(a.timestamp as any))
+      if (!cis.length) return false
+      const latestCi = cis[0]
+      if (!latestCi) return false
+      // find any clock-out that happened after that clock-in
+      const coAfter = logs.value.find(l => l.type === 'clock-out' && Date.parse(l.timestamp as any) > Date.parse(latestCi.timestamp as any))
+      return !coAfter
     },
     getShiftLabel,
     refresh,

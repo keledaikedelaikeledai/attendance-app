@@ -501,7 +501,6 @@ async function exportWithExcelJS() {
             try {
               const topCell = ws.getRow(topSheetRow).getCell(col)
               const botCell = ws.getRow(botSheetRow).getCell(col)
-              const topVal = (topCell && topCell.value) ? String(topCell.value).trim() : ''
               const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
               // If bottom is empty (regardless of top), and not already merged, merge them.
               if (!botVal) {
@@ -513,7 +512,10 @@ async function exportWithExcelJS() {
                   if (Array.isArray(merges)) {
                     for (const m of merges) {
                       if (typeof m === 'string') {
-                        if (m.includes(addr)) { alreadyMerged = true; break }
+                        if (m.includes(addr)) {
+                          alreadyMerged = true
+                          break
+                        }
                       }
                     }
                   }
@@ -522,8 +524,10 @@ async function exportWithExcelJS() {
                 if (!alreadyMerged) {
                   try {
                     ws.mergeCells(topSheetRow, col, botSheetRow, col)
-                    try { topCell.alignment = { ...topCell.alignment, vertical: 'middle' } }
-                    catch {}
+                  }
+                  catch {}
+                  try {
+                    topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
                   }
                   catch {}
                 }
@@ -912,7 +916,6 @@ async function exportWithExcelJS() {
           try {
             const topCell = ws.getRow(topSheetRow).getCell(col)
             const botCell = ws.getRow(botSheetRow).getCell(col)
-            const topVal = (topCell && topCell.value) ? String(topCell.value).trim() : ''
             const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
             if (!botVal) {
               let alreadyMerged = false
@@ -922,7 +925,10 @@ async function exportWithExcelJS() {
                 if (Array.isArray(merges)) {
                   for (const m of merges) {
                     if (typeof m === 'string') {
-                      if (m.includes(addr)) { alreadyMerged = true; break }
+                      if (m.includes(addr)) {
+                        alreadyMerged = true
+                        break
+                      }
                     }
                   }
                 }
@@ -930,8 +936,11 @@ async function exportWithExcelJS() {
               catch {}
               if (!alreadyMerged) {
                 try {
-                  ws.mergeCells(topSheetRow, col, botSheetRow, col); try { topCell.alignment = { ...topCell.alignment, vertical: 'middle' } }
-                  catch {}
+                  ws.mergeCells(topSheetRow, col, botSheetRow, col)
+                }
+                catch {}
+                try {
+                  topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
                 }
                 catch {}
               }

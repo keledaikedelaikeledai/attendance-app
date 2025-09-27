@@ -14,11 +14,11 @@ const {
   clockIn,
   clockOut,
   selectedShiftCode,
-  setShift,
   refresh,
   shifts,
   selectedShiftType,
   isShiftActive,
+  ensureDefaultShift,
 } = useAttendance()
 
 const shiftItems = computed(() => {
@@ -41,20 +41,6 @@ function formatTime(iso?: string) {
   if (!iso)
     return '-'
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-function minutesSinceMidnight(date: Date) {
-  return date.getHours() * 60 + date.getMinutes()
-}
-
-function shiftToMinutes(start: string, end: string) {
-  const [shStr, smStr] = start.split(':')
-  const [ehStr, emStr] = end.split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  return { startMin: sh * 60 + sm, endMin: eh * 60 + em }
 }
 
 function getShiftByCode(code?: string | null) {
@@ -100,27 +86,7 @@ function formatHumanMinutes(totalMinutes: number) {
   return h ? `${h}h ${m}m` : `${m}m`
 }
 
-function pickClosestShift(now = new Date()) {
-  const nowMin = minutesSinceMidnight(now)
-  let closest: { code: string, diff: number } | null = null
-  const list: ShiftDef[] = (shifts as any)?.value ?? (shifts as any) ?? []
-  for (const s of list) {
-    const { startMin } = shiftToMinutes(s.start, s.end)
-    let diff = Math.abs(startMin - nowMin)
-    diff = Math.min(diff, 1440 - diff)
-    if (!closest || diff < closest.diff)
-      closest = { code: s.code, diff }
-  }
-  return (closest?.code as typeof selectedShiftCode.value) || (list[0]?.code as any)
-}
-
-function ensureDefaultShift() {
-  if (!selectedShiftCode.value) {
-    const def = pickClosestShift()
-    if (def)
-      setShift(def)
-  }
-}
+// Use ensureDefaultShift from composable (keeps logic centralized)
 
 async function requestLocationOnce() {
   geoError.value = null
@@ -201,10 +167,14 @@ async function onConfirmClockOut() {
 onMounted(async () => {
   await refresh()
   ensurePermission()
-  ensureDefaultShift()
+  await ensureDefaultShift()
+  // Minimal fallback: if ensureDefaultShift didn't set a code, pick the first available shift so the select has a value
+  if (!selectedShiftCode.value && (shifts as any)?.value && (shifts as any).value.length) {
+    selectedShiftCode.value = (shifts as any).value[0].code
+  }
 })
 
-function onLogout() {
+function _onLogout() {
   authClient.signOut({
     fetchOptions: {
       onSuccess() {
@@ -216,29 +186,7 @@ function onLogout() {
 </script>
 
 <template>
-  <!-- <UContainer class="py-8 space-y-8"> -->
   <div>
-    <!-- <div class="flex items-center justify-between"> -->
-    <!--   <div> -->
-    <!--     <h1 class="text-2xl font-semibold"> -->
-    <!--       Today's Attendance -->
-    <!--     </h1> -->
-    <!--     <p class="text-sm text-gray-500 dark:text-gray-400"> -->
-    <!--       Manage your clock-in and clock-out with location. -->
-    <!--     </p> -->
-    <!--   </div> -->
-    <!--   <div class="flex gap-2"> -->
-    <!--     <UButton -->
-    <!--       color="neutral" -->
-    <!--       variant="soft" -->
-    <!--       icon="i-heroicons-arrow-right-start-on-rectangle" -->
-    <!--       @click="onLogout" -->
-    <!--     > -->
-    <!--       Logout -->
-    <!--     </UButton> -->
-    <!--   </div> -->
-    <!-- </div> -->
-
     <UCard>
       <div class="grid sm:grid-cols-2 gap-6">
         <div class="space-y-5">
