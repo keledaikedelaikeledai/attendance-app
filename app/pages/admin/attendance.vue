@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { TabsItem } from '@nuxt/ui'
 
+import * as attendanceTime from '~/composables/useAttendanceTime'
+
 const toast = useToast()
 
 const month = ref<string>(new Date().toISOString().slice(0, 7)) // YYYY-MM
@@ -46,78 +48,33 @@ const activeType = ref<'table' | 'grid'>('grid')
 
 const attendances = computed(() => data.value?.rows || [])
 
-function computeShiftStart(ciIso?: string, def?: { start: string, end: string }) {
-  if (!ciIso || !def)
-    return null
-  const d = new Date(ciIso)
-  const [shStr, smStr] = (def.start || '').split(':')
-  const [ehStr, emStr] = (def.end || '').split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  if ([sh, sm, eh, em].some(n => Number.isNaN(n)))
-    return null
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  const ciMin = d.getHours() * 60 + d.getMinutes()
-  const crosses = startMin > endMin
-  let y = d.getFullYear()
-  let m = d.getMonth()
-  let day = d.getDate()
-  if (crosses && ciMin < endMin) {
-    const prev = new Date(d)
-    prev.setDate(prev.getDate() - 1)
-    y = prev.getFullYear()
-    m = prev.getMonth()
-    day = prev.getDate()
+// legacy per-cell lateMs helper removed in favor of entry-level calculations
+
+// dayEarlyMs removed; entryEarlyMs handles entry-level early calculations
+
+// Shifts cache so export uses same shift defs as table rendering
+// re-exported from composable
+
+// Entry-level helpers mirror AttendanceTable.vue logic
+// imported: entryLateMs, entryEarlyMs
+
+// computeEntryEarlyMs removed - use entryEarlyMs which mirrors table logic
+
+// Compute validated cell-level earlyMs: sum per-entry values and compare to server-provided aggregate
+// keep local validator helper but use composable helpers
+function cellTotalEarlyMs(cell: any) {
+  if (!cell) return 0
+  const es = attendanceTime.normalizeCellForExport(cell)
+  const perEntry = es.reduce((a: number, e: any) => a + attendanceTime.entryEarlyMs(e, cell, es), 0)
+  if (typeof cell?.earlyMs === 'number') {
+    if (es.length > 0) {
+      const diff = Math.abs(cell.earlyMs - perEntry)
+      if (diff > 60 * 60 * 1000) return perEntry
+      return cell.earlyMs
+    }
+    return cell.earlyMs
   }
-  return new Date(y, m, day, sh, sm, 0, 0)
-}
-
-function humanizeMinutes(ms: number) {
-  if (!ms)
-    return '0m'
-  const total = Math.ceil(ms / 60000)
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return h ? `${h}h ${m}m` : `${m}m`
-}
-
-function dayLateMs(cell: any) {
-  if (!cell?.clockIn)
-    return 0
-  if (typeof cell?.lateMs === 'number')
-    return cell.lateMs
-  const start = computeShiftStart(cell.clockIn, cell.shift)
-  if (!start)
-    return 0
-  const diff = new Date(cell.clockIn).getTime() - start.getTime()
-  return Math.max(0, diff)
-}
-
-function dayEarlyMs(cell: any) {
-  if (!cell?.clockOut || !cell?.shift)
-    return 0
-  const start = computeShiftStart(cell.clockIn || cell.clockOut, cell.shift)
-  if (!start)
-    return 0
-  const [ehStr, emStr] = (cell.shift.end || '').split(':')
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  if (Number.isNaN(eh) || Number.isNaN(em))
-    return 0
-  const [shStr, smStr] = (cell.shift.start || '').split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const crosses = (sh * 60 + sm) > (eh * 60 + em)
-  const end = new Date(start)
-  if (crosses)
-    end.setDate(end.getDate() + 1)
-  end.setHours(eh, em, 0, 0)
-  const co = new Date(cell.clockOut)
-  const diff = end.getTime() - co.getTime()
-  return Math.max(0, diff)
+  return perEntry
 }
 
 function toDateLabel(iso?: string) {
@@ -130,37 +87,76 @@ function toDateLabel(iso?: string) {
 function buildDataAoA() {
   const days = data.value?.days || []
   const rows: any[][] = []
+  // ensure we have shift defs available for accurate per-entry calculations
+  // (no-op if already cached)
+  // Note: exportWithExcelJS will await this before calling buildDataAoA
   for (const r of attendances.value as any[]) {
     const byDate = (r?.byDate) || {}
-    const cells: any[] = Object.values(byDate)
-    const workingDays = cells.filter(c => c?.clockIn).length
-    const harian = cells.filter(c => c?.clockIn && c?.shiftType === 'harian').length
-    const bantuan = cells.filter(c => c?.clockIn && c?.shiftType === 'bantuan').length
-    const totalLate = cells.reduce((acc, c) => acc + (dayLateMs(c) || 0), 0)
-    const totalEarly = cells.reduce((acc, c) => acc + (dayEarlyMs(c) || 0), 0)
+    // Work per-date so we can respect any aggregated values the server provides
+    const cellsRaw: any[] = Object.values(byDate)
+    const entriesAll: any[] = cellsRaw.flatMap(c => attendanceTime.normalizeCellForExport(c))
+    // Count working days as total number of shifts worked.
+    // Use server-provided `workingShifts` if present for a date; otherwise count entries with clockIn.
+    const workingDays = Object.values(byDate).reduce((sum: number, c: any) => {
+      if (!c) return sum
+      if (typeof c?.workingShifts === 'number') return sum + Math.max(0, Math.floor(c.workingShifts))
+      const es = attendanceTime.normalizeCellForExport(c)
+      return sum + es.filter((e: any) => e?.clockIn).length
+    }, 0)
+    const harian = entriesAll.filter(c => c?.clockIn && c?.shiftType === 'harian').length
+    const bantuan = entriesAll.filter(c => c?.clockIn && c?.shiftType === 'bantuan').length
+    const totalLate = cellsRaw.reduce((acc: number, cell: any) => {
+      if (!cell) return acc
+      if (typeof cell?.lateMs === 'number') return acc + cell.lateMs
+      const es = attendanceTime.normalizeCellForExport(cell)
+      return acc + es.reduce((a: number, e: any) => a + attendanceTime.entryLateMs(e, cell, es), 0)
+    }, 0)
+    const totalEarly = cellsRaw.reduce((acc: number, cell: any) => acc + cellTotalEarlyMs(cell), 0)
 
     const row: any[] = [
       r.name || r.username || r.email || 'N/A',
       workingDays,
       harian,
       bantuan,
-      humanizeMinutes(totalLate),
-      humanizeMinutes(totalEarly),
+      attendanceTime.humanizeMinutes(totalLate),
+      attendanceTime.humanizeMinutes(totalEarly),
     ]
     for (const day of days) {
       const c = byDate[day] || {}
-      row.push(
-        toDateLabel(c.clockIn),
-        toDateLabel(c.clockOut),
-        humanizeMinutes(dayLateMs(c)),
-        humanizeMinutes(dayEarlyMs(c)),
-        c?.shiftType === 'bantuan' ? 'Shift Bantuan' : (c?.shiftType ? 'Shift Harian' : '-'),
-      )
+      const entries = attendanceTime.normalizeCellForExport(c)
+      // We'll export top/bottom values in the same cell separated by a newline so Excel shows split cells
+      const topE = entries[0] || {}
+      const botE = entries[1] || {}
+      const topM = topE?.clockIn ? toDateLabel(topE.clockIn) : ''
+      const botM = botE?.clockIn ? toDateLabel(botE.clockIn) : ''
+      const topP = topE?.clockOut ? toDateLabel(topE.clockOut) : ''
+      const botP = botE?.clockOut ? toDateLabel(botE.clockOut) : ''
+      // Per-slot T and CP: prefer entry-level values, else compute via dayLateMs/dayEarlyMs
+      const topTms = typeof topE?.lateMs === 'number' ? topE.lateMs : attendanceTime.entryLateMs(topE, c, entries)
+      const botTms = typeof botE?.lateMs === 'number' ? botE.lateMs : attendanceTime.entryLateMs(botE, c, entries)
+      const topCpms = typeof topE?.earlyMs === 'number' ? topE.earlyMs : attendanceTime.entryEarlyMs(topE, c, entries)
+      const botCpms = typeof botE?.earlyMs === 'number' ? botE.earlyMs : attendanceTime.entryEarlyMs(botE, c, entries)
+      const topT = topTms ? attendanceTime.humanizeMinutes(topTms) : ''
+      const botT = botTms ? attendanceTime.humanizeMinutes(botTms) : ''
+      const topCp = topCpms ? attendanceTime.humanizeMinutes(topCpms) : ''
+      const botCp = botCpms ? attendanceTime.humanizeMinutes(botCpms) : ''
+      const m = [topM, botM].filter(Boolean).join('\n')
+      const p = [topP, botP].filter(Boolean).join('\n')
+      // For T and CP keep per-slot strings (empty lines allowed)
+      const t = [topT, botT].join('\n')
+      const cp = [topCp, botCp].join('\n')
+      // Shift label: use shiftType if present else shiftCode
+      const topSh = topE?.shiftType ? (topE.shiftType === 'bantuan' ? 'Shift Bantuan' : 'Shift Harian') : (topE?.shiftCode || '')
+      const botSh = botE?.shiftType ? (botE.shiftType === 'bantuan' ? 'Shift Bantuan' : 'Shift Harian') : (botE?.shiftCode || '')
+      const sh = [topSh, botSh].filter(Boolean).join('\n')
+      row.push(m, p, t, cp, sh)
     }
     rows.push(row)
   }
   return rows
 }
+
+// imported normalizeCellForExport
 
 async function getExcelJS() {
   if (process.server)
@@ -187,6 +183,8 @@ function buildHeaderAoA() {
 }
 
 async function exportWithExcelJS() {
+  // ensure shifts are loaded so per-entry calculations use shift defs when available
+  await attendanceTime.ensureShifts()
   const ExcelJS = await getExcelJS()
   // Try template first
   try {
@@ -223,7 +221,59 @@ async function exportWithExcelJS() {
     }
     catch {}
 
-    ws.spliceRows(insertAt, 0, headerRow1, headerRow2, ...(rows || []))
+    // Expand each logical row into two physical rows (top/bottom) so every user occupies two rows by default.
+    // Summary columns (1..6) will be merged across the two rows. For per-day subcols (M,P,T,CP,Shift):
+    // - If there's a single value (no newline), we'll place it on the top row and merge vertically.
+    // - If there are two values, place them on top and bottom respectively without merging.
+    const expandedRows: any[] = []
+    const dayTwoFlagsList: boolean[][] = []
+    for (const r of (rows || [])) {
+      const dayTwoFlags: boolean[] = []
+      const top: any[] = []
+      const bot: any[] = []
+      // summary columns (1..6)
+      for (let c = 0; c < 6; c++) {
+        top.push(r[c])
+        bot.push('')
+      }
+      // per-day subcolumns
+      const dayCount = days.length
+      const subLen = subCols.length
+      for (let d = 0; d < dayCount; d++) {
+        const start = 6 + d * subLen
+        let dayHasTwo = false
+        for (let s = 0; s < subLen; s++) {
+          const raw = r[start + s]
+          if (raw == null || String(raw).trim() === '') {
+            top.push('')
+            bot.push('')
+            continue
+          }
+          const parts = String(raw).split(/\r?\n/).map(p => String(p ?? '').trim())
+          // Normalize cases where the string is '\nvalue' (leading empty top) into a single top value
+          if (parts.length > 1 && parts[0] === '' && parts[1]) {
+            // treat as single top value (so it will be merged later)
+            top.push(parts[1])
+            bot.push('')
+          }
+          else if (parts.length === 1) {
+            // single value => put on top and leave bottom empty so we can merge later
+            top.push(parts[0])
+            bot.push('')
+          }
+          else {
+            if (parts.length > 1) dayHasTwo = true
+            top.push(parts[0])
+            bot.push(parts[1] ?? '')
+          }
+        }
+        dayTwoFlags.push(dayHasTwo)
+      }
+      dayTwoFlagsList.push(dayTwoFlags)
+      expandedRows.push(top, bot)
+    }
+
+    ws.spliceRows(insertAt, 0, headerRow1, headerRow2, ...expandedRows)
 
     // Merge headers: base columns vertically and day groups horizontally
     const base = 6
@@ -234,13 +284,31 @@ async function exportWithExcelJS() {
       ws.mergeCells(insertAt, start, insertAt, end)
     }
 
+    // Ensure all header cells (both header rows) are centered vertically and horizontally and wrap text
+    try {
+      const headerCols = headerRow1.length || ws.columnCount
+      for (let c = 1; c <= headerCols; c++) {
+        try {
+          const h1 = ws.getCell(insertAt, c)
+          h1.alignment = { ...h1.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+        }
+        catch {}
+        try {
+          const h2 = ws.getCell(insertAt + 1, c)
+          h2.alignment = { ...h2.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+        }
+        catch {}
+      }
+    }
+    catch {}
+
     // Style header rows (insertAt and insertAt+1)
     for (const r of [insertAt, insertAt + 1]) {
       const row = ws.getRow(r)
       row.height = 24
       row.eachCell((cell: any) => {
         cell.font = { name: 'Arial', size: 12, bold: true, ...cell.font }
-        cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle' }
+        cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
         cell.border = cell.border || {
           top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
           left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
@@ -251,14 +319,15 @@ async function exportWithExcelJS() {
     }
 
     // Light borders + vertical centering for data rows (if any), without disturbing template styles
-    const dataCount = rows.length
+    const dataCount = expandedRows.length
     const endDataRow = insertAt + 1 + dataCount
-    for (let r = insertAt + 2; r <= endDataRow; r++) {
-      const row = ws.getRow(r)
-      row.height = 24
+    for (let rr = insertAt + 2; rr <= endDataRow; rr++) {
+      const row = ws.getRow(rr)
+      // increase height to show two lines comfortably
+      row.height = 36
       row.eachCell((cell: any) => {
         cell.font = { name: 'Arial', size: 12, ...cell.font }
-        cell.alignment = { ...cell.alignment, vertical: 'middle' }
+        cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true }
         cell.border = cell.border || {
           top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
           left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
@@ -268,27 +337,94 @@ async function exportWithExcelJS() {
       })
     }
 
-    // Highlight M if T != '0m' and P if CP != '0m' for each date
+    // Ensure summary columns (1..6) are vertically centered for all data rows (covers merged/unmerged cells)
     try {
-      const base = 6
+      for (let rr = insertAt + 2; rr <= endDataRow; rr++) {
+        const row = ws.getRow(rr)
+        for (let c = 1; c <= 6; c++) {
+          try {
+            const cell = row.getCell(c)
+            cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+          }
+          catch {}
+        }
+      }
+    }
+    catch {}
+
+    // Highlight M/P per slot: iterate over pairs of rows (top/bottom) and highlight only that slot's M or P when
+    // the corresponding T or CP value for the same slot is non-empty.
+    try {
       const subLen = 5
-      for (let i = 0; i < rows.length; i++) {
-        const sheetRow = insertAt + 2 + i
-        const rowArr = rows[i] || []
+      const pairCount = expandedRows.length / 2
+      for (let i = 0; i < pairCount; i++) {
+        const topSheetRow = insertAt + 2 + i * 2
+        const botSheetRow = topSheetRow + 1
+        const topArr = expandedRows[i * 2] || []
+        const botArr = expandedRows[i * 2 + 1] || []
         for (let dIdx = 0; dIdx < days.length; dIdx++) {
           const startIdx = 6 + dIdx * subLen
-          const tVal = rowArr[startIdx + 2]
-          const cpVal = rowArr[startIdx + 3]
           const startCol = base + dIdx * subLen + 1
           const mCol = startCol + 0
           const pCol = startCol + 1
-          if (tVal && String(tVal).trim() !== '0m') {
-            const cell = ws.getRow(sheetRow).getCell(mCol)
+          // top slot
+          const topT = String(topArr[startIdx + 2] || '').trim()
+          const topCp = String(topArr[startIdx + 3] || '').trim()
+          if (topT) {
+            const cell = ws.getRow(topSheetRow).getCell(mCol)
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
           }
-          if (cpVal && String(cpVal).trim() !== '0m') {
-            const cell = ws.getRow(sheetRow).getCell(pCol)
+          if (topCp) {
+            const cell = ws.getRow(topSheetRow).getCell(pCol)
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+          }
+          // bottom slot
+          const botT = String(botArr[startIdx + 2] || '').trim()
+          const botCp = String(botArr[startIdx + 3] || '').trim()
+          if (botT) {
+            const cell = ws.getRow(botSheetRow).getCell(mCol)
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+          }
+          if (botCp) {
+            const cell = ws.getRow(botSheetRow).getCell(pCol)
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+          }
+          // If the original logical row had two shifts for this date, do NOT merge any subcolumns for the day.
+          const pairIndex = i
+          const dayHasTwo = Array.isArray(dayTwoFlagsList[pairIndex]) ? !!dayTwoFlagsList[pairIndex][dIdx] : false
+          if (!dayHasTwo) {
+            // If a slot is empty on bottom, merge top+bottom for that column to present as single cell
+            for (let colOffset = 0; colOffset < subLen; colOffset++) {
+              const botVal = String(botArr[startIdx + colOffset] || '').trim()
+              const col = startCol + colOffset
+              if (!botVal) {
+                try {
+                  ws.mergeCells(topSheetRow, col, botSheetRow, col)
+                  try {
+                    const topCell = ws.getRow(topSheetRow).getCell(col)
+                    topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
+                  }
+                  catch {}
+                }
+                catch {
+                  // ignore merge errors
+                }
+              }
+            }
+          }
+        }
+        // Merge summary columns (1..6) vertically for this pair
+        for (let c = 1; c <= 6; c++) {
+          try {
+            ws.mergeCells(topSheetRow, c, botSheetRow, c)
+            try {
+              const topCell = ws.getRow(topSheetRow).getCell(c)
+              topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
+            }
+            catch {}
+          }
+          catch {
+            // ignore
           }
         }
       }
@@ -301,9 +437,13 @@ async function exportWithExcelJS() {
     }
     catch {}
 
-    // Set summary columns (2..6) to ~250px (~36 chars)
+    // Set summary columns (2..6) to ~250px (~36 chars) and ensure vertical centering
     try {
-      for (let c = 2; c <= 6; c++) ws.getColumn(c).width = 36
+      for (let c = 2; c <= 6; c++) {
+        const col = ws.getColumn(c)
+        col.width = 36
+        col.alignment = { ...col.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+      }
     }
     catch {}
 
@@ -312,19 +452,86 @@ async function exportWithExcelJS() {
       const subLen = 5
       for (let i = 0; i < days.length; i++) {
         const shiftCol = 6 + i * subLen + 5
-        ws.getColumn(shiftCol).width = 28
+        const col = ws.getColumn(shiftCol)
+        col.width = 28
+        // Ensure wrapText and vertical centering for shift column
+        col.alignment = { ...col.alignment, wrapText: true, vertical: 'middle' }
+        // Also set wrapText for M,P,T,CP columns for this day
+        for (let j = 0; j < 4; j++) {
+          // columns start at base+1 (base=6), so add +1 to align with cell indexing used elsewhere
+          const cidx = 6 + i * subLen + j + 1
+          try {
+            const colc = ws.getColumn(cidx)
+            // ~22 characters ~= 160px
+            colc.width = 22
+            colc.alignment = { ...colc.alignment, wrapText: true, vertical: 'middle' }
+          }
+          catch {}
+        }
       }
     }
     catch {}
 
     // Restore footer merges shifted by inserted rows to prevent duplicated visible text
     try {
-      const rowsAdded = 2 + rows.length
+      const rowsAdded = 2 + expandedRows.length
       for (const m of mergesBefore) {
         try {
           ws.mergeCells(m.sRow + rowsAdded, m.sCol, m.eRow + rowsAdded, m.eCol)
         }
         catch {}
+      }
+    }
+    catch {}
+
+    // Defensive pass: ensure any per-day subcolumn where the top cell has content
+    // and the bottom cell is empty is merged. This covers edge cases where
+    // newline normalization produced a top value but for some reason the
+    // earlier merge pass did not create the merge record.
+    try {
+      const subLen = 5
+      const pairCount = expandedRows.length / 2
+      for (let i = 0; i < pairCount; i++) {
+        const topSheetRow = insertAt + 2 + i * 2
+        const botSheetRow = topSheetRow + 1
+        for (let dIdx = 0; dIdx < days.length; dIdx++) {
+          const startCol = base + dIdx * subLen + 1
+          for (let colOffset = 0; colOffset < subLen; colOffset++) {
+            const col = startCol + colOffset
+            try {
+              const topCell = ws.getRow(topSheetRow).getCell(col)
+              const botCell = ws.getRow(botSheetRow).getCell(col)
+              const topVal = (topCell && topCell.value) ? String(topCell.value).trim() : ''
+              const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
+              // If bottom is empty (regardless of top), and not already merged, merge them.
+              if (!botVal) {
+                // check whether already part of a merge by inspecting model.merges if available
+                let alreadyMerged = false
+                try {
+                  const addr = `${topCell.address}`
+                  const merges = (ws.model && ws.model.merges) ? ws.model.merges : null
+                  if (Array.isArray(merges)) {
+                    for (const m of merges) {
+                      if (typeof m === 'string') {
+                        if (m.includes(addr)) { alreadyMerged = true; break }
+                      }
+                    }
+                  }
+                }
+                catch {}
+                if (!alreadyMerged) {
+                  try {
+                    ws.mergeCells(topSheetRow, col, botSheetRow, col)
+                    try { topCell.alignment = { ...topCell.alignment, vertical: 'middle' } }
+                    catch {}
+                  }
+                  catch {}
+                }
+              }
+            }
+            catch {}
+          }
+        }
       }
     }
     catch {}
@@ -435,6 +642,29 @@ async function exportWithExcelJS() {
     }
     catch {}
 
+    // Reapply horizontal centering for day group headers and subheaders (fixes day labels alignment)
+    try {
+      const headerCols = headerRow1.length || ws.columnCount
+      // Center each merged day label (top header row) by targeting its start column
+      for (let i = 0; i < days.length; i++) {
+        try {
+          const start = base + i * subCols.length + 1
+          const topCell = ws.getCell(insertAt, start)
+          topCell.alignment = { ...topCell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+        }
+        catch {}
+      }
+      // Ensure subheaders (second header row) are centered as well
+      for (let c = 1; c <= headerCols; c++) {
+        try {
+          const sub = ws.getCell(insertAt + 1, c)
+          sub.alignment = { ...sub.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+        }
+        catch {}
+      }
+    }
+    catch {}
+
     // Download
     const out = await wb.xlsx.writeBuffer()
     const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -456,8 +686,56 @@ async function exportWithExcelJS() {
   ws.addRow(headerRow1)
   ws.addRow(headerRow2)
   const dataRows = buildDataAoA()
-  if (dataRows.length)
-    ws.addRows(dataRows)
+
+  // Expand data rows into top/bottom physical rows (same behavior as template branch)
+  const expandedRows: any[] = []
+  const dayTwoFlagsList: boolean[][] = []
+  for (const r of (dataRows || [])) {
+    const dayTwoFlags: boolean[] = []
+    const top: any[] = []
+    const bot: any[] = []
+    // summary columns (1..6)
+    for (let c = 0; c < 6; c++) {
+      top.push(r[c])
+      bot.push('')
+    }
+    // per-day subcolumns
+    const dayCount = days.length
+    const subLen = subCols.length
+    for (let d = 0; d < dayCount; d++) {
+      const start = 6 + d * subLen
+      let dayHasTwo = false
+      for (let s = 0; s < subLen; s++) {
+        const raw = r[start + s]
+        if (raw == null || String(raw).trim() === '') {
+          top.push('')
+          bot.push('')
+          continue
+        }
+        const parts = String(raw).split(/\r?\n/).map(p => String(p ?? '').trim())
+        // Normalize cases where the string is '\nvalue' (leading empty top) into a single top value
+        if (parts.length > 1 && parts[0] === '' && parts[1]) {
+          top.push(parts[1])
+          bot.push('')
+        }
+        else if (parts.length === 1) {
+          top.push(parts[0])
+          bot.push('')
+        }
+        else {
+          if (parts.length > 1) dayHasTwo = true
+          top.push(parts[0])
+          bot.push(parts[1] ?? '')
+        }
+      }
+      dayTwoFlags.push(dayHasTwo)
+    }
+    dayTwoFlagsList.push(dayTwoFlags)
+    expandedRows.push(top, bot)
+  }
+
+  if (expandedRows.length)
+    ws.addRows(expandedRows)
 
   // Merge day group headers
   const base = 6
@@ -466,27 +744,30 @@ async function exportWithExcelJS() {
     const end = start + subCols.length - 1
     ws.mergeCells(1, start, 1, end)
   }
+  // Ensure headers are centered
+  try {
+    const headerCols = headerRow1.length || ws.columnCount
+    for (let c = 1; c <= headerCols; c++) {
+      try {
+        const h1 = ws.getCell(1, c)
+        h1.alignment = { ...h1.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+      }
+      catch {}
+      try {
+        const h2 = ws.getCell(2, c)
+        h2.alignment = { ...h2.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+      }
+      catch {}
+    }
+  }
+  catch {}
   // Style headers
   for (const r of [1, 2]) {
     const row = ws.getRow(r)
     row.height = 24
     row.eachCell((cell: any) => {
       cell.font = { ...cell.font, bold: true }
-      cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle' }
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-      }
-    })
-  }
-  // Borders for all data cells
-  for (let r = 3; r < 3 + dataRows.length; r++) {
-    const row = ws.getRow(r)
-    row.height = 24
-    row.eachCell((cell: any) => {
-      cell.alignment = { ...cell.alignment, vertical: 'middle' }
+      cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
       cell.border = {
         top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
         left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
@@ -496,46 +777,212 @@ async function exportWithExcelJS() {
     })
   }
 
-  // Highlight M if T != '0m' and P if CP != '0m' for each date (fallback)
+  // Style data rows and ensure vertical centering
+  const dataCount = expandedRows.length
+  const endDataRow = 2 + dataCount
+  for (let rr = 3; rr <= endDataRow; rr++) {
+    const row = ws.getRow(rr)
+    row.height = 36
+    row.eachCell((cell: any) => {
+      cell.font = { name: 'Arial', size: 12, ...cell.font }
+      cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true }
+      cell.border = cell.border || {
+        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+        right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
+      }
+    })
+  }
+
+  // Ensure summary columns (1..6) are vertically centered for all data rows
   try {
-    const base = 6
+    for (let rr = 3; rr <= endDataRow; rr++) {
+      const row = ws.getRow(rr)
+      for (let c = 1; c <= 6; c++) {
+        try {
+          const cell = row.getCell(c)
+          cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+        }
+        catch {}
+      }
+    }
+  }
+  catch {}
+
+  // Highlight M/P per slot and merge empty bottoms (per-day) and merge summary columns per pair
+  try {
     const subLen = 5
-    for (let i = 0; i < dataRows.length; i++) {
-      const sheetRow = 3 + i
-      const rowArr = dataRows[i] || []
+    const pairCount = expandedRows.length / 2
+    for (let i = 0; i < pairCount; i++) {
+      const topSheetRow = 3 + i * 2
+      const botSheetRow = topSheetRow + 1
+      const topArr = expandedRows[i * 2] || []
+      const botArr = expandedRows[i * 2 + 1] || []
       for (let dIdx = 0; dIdx < days.length; dIdx++) {
         const startIdx = 6 + dIdx * subLen
-        const tVal = rowArr[startIdx + 2]
-        const cpVal = rowArr[startIdx + 3]
         const startCol = base + dIdx * subLen + 1
         const mCol = startCol + 0
         const pCol = startCol + 1
-        if (tVal && String(tVal).trim() !== '0m') {
-          const cell = ws.getRow(sheetRow).getCell(mCol)
+        // top slot
+        const topT = String(topArr[startIdx + 2] || '').trim()
+        const topCp = String(topArr[startIdx + 3] || '').trim()
+        if (topT && topT !== '0m') {
+          const cell = ws.getRow(topSheetRow).getCell(mCol)
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
         }
-        if (cpVal && String(cpVal).trim() !== '0m') {
-          const cell = ws.getRow(sheetRow).getCell(pCol)
+        if (topCp && topCp !== '0m') {
+          const cell = ws.getRow(topSheetRow).getCell(pCol)
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+        }
+        // bottom slot
+        const botT = String(botArr[startIdx + 2] || '').trim()
+        const botCp = String(botArr[startIdx + 3] || '').trim()
+        if (botT && botT !== '0m') {
+          const cell = ws.getRow(botSheetRow).getCell(mCol)
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+        }
+        if (botCp && botCp !== '0m') {
+          const cell = ws.getRow(botSheetRow).getCell(pCol)
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
+        }
+        const pairIndex = i
+        const dayHasTwo = Array.isArray(dayTwoFlagsList[pairIndex]) ? !!dayTwoFlagsList[pairIndex][dIdx] : false
+        if (!dayHasTwo) {
+          for (let colOffset = 0; colOffset < subLen; colOffset++) {
+            const botVal = String(botArr[startIdx + colOffset] || '').trim()
+            const col = startCol + colOffset
+            if (!botVal) {
+              try {
+                ws.mergeCells(topSheetRow, col, botSheetRow, col)
+                try {
+                  const topCell = ws.getRow(topSheetRow).getCell(col)
+                  topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
+                }
+                catch {}
+              }
+              catch {
+                // ignore
+              }
+            }
+          }
+        }
+      }
+      // Merge summary columns (1..6) vertically for this pair
+      for (let c = 1; c <= 6; c++) {
+        try {
+          // Ensure both top and bottom cells are centered before merging to avoid visual misalignment
+          try {
+            const tRow = ws.getRow(topSheetRow)
+            const bRow = ws.getRow(botSheetRow)
+            const tc = tRow.getCell(c)
+            const bc = bRow.getCell(c)
+            tc.alignment = { ...tc.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+            bc.alignment = { ...bc.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+          }
+          catch {}
+          ws.mergeCells(topSheetRow, c, botSheetRow, c)
+          try {
+            const topCell = ws.getRow(topSheetRow).getCell(c)
+            topCell.alignment = { ...topCell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+          }
+          catch {}
+        }
+        catch {
+          // ignore
         }
       }
     }
   }
   catch {}
+
+  // Defensive post-pass for fallback: ensure per-day subcolumns where top has content
+  // and bottom is empty are merged. This ensures consistent appearance regardless
+  // of earlier normalization edge cases.
+  try {
+    const subLen = 5
+    const pairCount = expandedRows.length / 2
+    for (let i = 0; i < pairCount; i++) {
+      const topSheetRow = 3 + i * 2
+      const botSheetRow = topSheetRow + 1
+      for (let dIdx = 0; dIdx < days.length; dIdx++) {
+        const startCol = base + dIdx * subLen + 1
+        for (let colOffset = 0; colOffset < subLen; colOffset++) {
+          const col = startCol + colOffset
+          try {
+            const topCell = ws.getRow(topSheetRow).getCell(col)
+            const botCell = ws.getRow(botSheetRow).getCell(col)
+            const topVal = (topCell && topCell.value) ? String(topCell.value).trim() : ''
+            const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
+            if (!botVal) {
+              let alreadyMerged = false
+              try {
+                const addr = `${topCell.address}`
+                const merges = (ws.model && ws.model.merges) ? ws.model.merges : null
+                if (Array.isArray(merges)) {
+                  for (const m of merges) {
+                    if (typeof m === 'string') {
+                      if (m.includes(addr)) { alreadyMerged = true; break }
+                    }
+                  }
+                }
+              }
+              catch {}
+              if (!alreadyMerged) {
+                try {
+                  ws.mergeCells(topSheetRow, col, botSheetRow, col); try { topCell.alignment = { ...topCell.alignment, vertical: 'middle' } }
+                  catch {}
+                }
+                catch {}
+              }
+            }
+          }
+          catch {}
+        }
+      }
+    }
+  }
+  catch {}
+
   // Column widths
   try {
     const colCount = ws.columnCount
     // Name ~50 chars (~350px)
     ws.getColumn(1).width = 50
-    // Summary columns 2..6 ~36 chars (~250px)
-    for (let c = 2; c <= 6; c++) ws.getColumn(c).width = 36
+    // Summary columns 2..6 ~36 chars (~250px) and ensure vertical centering
+    for (let c = 2; c <= 6; c++) {
+      try {
+        const col = ws.getColumn(c)
+        col.width = 36
+        col.alignment = { ...col.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+      }
+      catch {}
+    }
     // Day columns default to 12-10 chars
     for (let c = 7; c <= colCount; c++) ws.getColumn(c).width = 12
     // Per-day Shift column ~28 chars (~200px)
-    const subLen = 5
+    const subLen2 = 5
     for (let i = 0; i < days.length; i++) {
-      const shiftCol = 6 + i * subLen + 5
-      ws.getColumn(shiftCol).width = 28
+      const baseIdx = 6 + i * subLen2
+      // M, P, T, CP
+      for (let j = 0; j < 4; j++) {
+        try {
+          // baseIdx is 6 + i*subLen2; cells start at 1 so shift by +1 to match getColumn indexes used elsewhere
+          const cidx = baseIdx + j + 1
+          const colc = ws.getColumn(cidx)
+          colc.width = 22
+          colc.alignment = { ...colc.alignment, wrapText: true, vertical: 'middle' }
+        }
+        catch {}
+      }
+      // Shift column
+      try {
+        const shiftCol = baseIdx + 4
+        const sc = ws.getColumn(shiftCol)
+        sc.width = 28
+        sc.alignment = { ...sc.alignment, wrapText: true, vertical: 'middle' }
+      }
+      catch {}
     }
   }
   catch {}
@@ -557,6 +1004,27 @@ async function exportWithExcelJS() {
       ws.getCell(3, 2).value = `${mname} - ${dt.getFullYear()}`.toUpperCase()
     }
     catch {}
+  }
+  catch {}
+
+  // Reapply horizontal centering for day group headers and subheaders in fallback
+  try {
+    const headerCols = headerRow1.length || ws.columnCount
+    for (let i = 0; i < days.length; i++) {
+      try {
+        const start = base + i * subCols.length + 1
+        const topCell = ws.getCell(1, start)
+        topCell.alignment = { ...topCell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+      }
+      catch {}
+    }
+    for (let c = 1; c <= headerCols; c++) {
+      try {
+        const sub = ws.getCell(2, c)
+        sub.alignment = { ...sub.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
+      }
+      catch {}
+    }
   }
   catch {}
 

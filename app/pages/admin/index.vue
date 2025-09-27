@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import * as attendanceTime from '~/composables/useAttendanceTime'
 // `computed`, `ref`, `onMounted`, etc. are auto-imported by Nuxt; do not import from 'vue' explicitly
 
 const month = ref(new Date().toISOString().slice(0, 7)) // YYYY-MM
@@ -40,6 +41,9 @@ onMounted(async () => {
     }
   }
   // initial fetch is handled by useFetch; nothing else needed here
+
+  // preload shifts definitions for local calculations
+  await attendanceTime.ensureShifts().catch(() => {})
 })
 
 const totalUsers = computed(() => data.value.rows?.length || 0)
@@ -48,7 +52,15 @@ const totalDays = computed(() => data.value.days?.length || 0)
 const presentCountsPerDay = computed(() => {
   const days = data.value.days || []
   return days.map((d: string) => {
-    return (data.value.rows || []).reduce((acc: number, row: any) => acc + (row.byDate?.[d]?.clockIn ? 1 : 0), 0)
+    return (data.value.rows || []).reduce((acc: number, row: any) => {
+      const cell = row.byDate?.[d]
+      if (!cell) return acc
+      if (typeof cell.workingShifts === 'number') return acc + Math.max(0, Math.floor(cell.workingShifts))
+      // fallback: count entries with a clockIn (supports multiple shifts per day)
+      const entries = attendanceTime.normalizeCell(cell)
+      const countIns = entries.filter((e: any) => e?.clockIn).length
+      return acc + countIns
+    }, 0)
   })
 })
 
@@ -60,7 +72,15 @@ const percentPresent = computed(() => {
 
 const lateCountsPerUser = computed(() => (data.value.rows || []).map((row: any) => {
   const days = data.value.days || []
-  const count = days.reduce((acc: number, d: string) => acc + ((row.byDate?.[d]?.lateMs || 0) > 0 ? 1 : 0), 0)
+  const count = days.reduce((acc: number, d: string) => {
+    const cell = row.byDate?.[d]
+    if (!cell) return acc
+    // prefer server aggregate if present, else compute per-entry
+    if (typeof cell?.lateMs === 'number') return acc + (cell.lateMs > 0 ? 1 : 0)
+    const es = attendanceTime.normalizeCell(cell)
+    const hasLate = es.some((e: any) => attendanceTime.entryLateMs(e, cell, es) > 0)
+    return acc + (hasLate ? 1 : 0)
+  }, 0)
   return { userId: row.userId, name: row.name, username: row.username, email: row.email, lateCount: count }
 }))
 
@@ -83,36 +103,33 @@ const recentRecap = computed(() => {
     let bantuan = 0
     let lateMsTotal = 0
     let earlyMsTotal = 0
-
     for (const d of days) {
       const v = row.byDate?.[d]
       if (!v) continue
-      const present = !!(v.clockIn || v.clockOut)
-      if (!present) continue
-      totalWorkingDays++
-      if (v.shiftType === 'harian') harian++
-      if (v.shiftType === 'bantuan') bantuan++
-      lateMsTotal += Number(v.lateMs || 0)
+      // Count working shifts: prefer server-provided workingShifts, else count entries with clockIn
+      const esAll = attendanceTime.normalizeCell(v)
+      const presentCount = typeof v?.workingShifts === 'number' ? Math.max(0, Math.floor(v.workingShifts)) : esAll.filter((e: any) => e?.clockIn).length
+      if (!presentCount) continue
+      totalWorkingDays += presentCount
+      harian += v.harian || 0
+      bantuan += v.bantuan || 0
+      // late total: prefer server aggregate if present, else sum per-entry
+      if (typeof v?.lateMs === 'number') lateMsTotal += Number(v.lateMs)
+      else lateMsTotal += esAll.reduce((a: number, e: any) => a + attendanceTime.entryLateMs(e, v, esAll), 0)
 
-      if (v.clockOut && v.shift?.end) {
-        try {
-          const parts = d.split('-').map(s => Number(s))
-          const [y, m, day] = parts
-          const [ehStr, emStr] = (v.shift.end || '').split(':')
-          const eh = Number(ehStr)
-          const em = Number(emStr)
-          if ([y, m, day, eh, em].every(n => typeof n === 'number' && !Number.isNaN(n))) {
-            const expectedEnd = new Date(y as number, (m as number) - 1, day as number, eh as number, em as number, 0, 0)
-            const actualOut = new Date(v.clockOut)
-            const diff = expectedEnd.getTime() - actualOut.getTime()
-            if (diff > 0) {
-              earlyMsTotal += diff
-            }
-          }
+      // early total: compute per-entry earlyMs and validate server aggregate using 1-hour heuristic
+      const computedEarly = esAll.reduce((a: number, e: any) => a + attendanceTime.entryEarlyMs(e, v, esAll), 0)
+      if (typeof v?.earlyMs === 'number') {
+        if (esAll.length > 0) {
+          const diff = Math.abs(Number(v.earlyMs) - computedEarly)
+          earlyMsTotal += diff > 60 * 60 * 1000 ? computedEarly : Number(v.earlyMs)
         }
-        catch {
-          // ignore parse errors
+        else {
+          earlyMsTotal += Number(v.earlyMs)
         }
+      }
+      else {
+        earlyMsTotal += computedEarly
       }
     }
 
@@ -158,6 +175,12 @@ const chartSeries = computed(() => ([{ name: 'Present', data: presentCountsPerDa
 function formatPercent(v: number) {
   return `${v}%`
 }
+
+// Helpers copied/kept lightweight for recap calculations
+
+// dayEarlyMs removed; use entry-level helpers below
+
+// helpers imported from composable: ensureShifts, shiftsMap, normalizeCell, entryLateMs, entryEarlyMs, humanizeMinutes
 
 // month is changed via `v-model` on USelect; use `load()` when needed
 

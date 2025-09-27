@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import * as attendanceTime from '~/composables/useAttendanceTime'
+
 interface ShiftDef { code: string, label: string, start: string, end: string }
 interface DayCell {
   clockIn?: string
@@ -7,90 +9,44 @@ interface DayCell {
   shiftType?: 'harian' | 'bantuan'
   shift?: ShiftDef
   lateMs?: number
+  // grouped entries when server returns multiple shifts per day
+  grouped?: Record<string, any>
 }
-
+// humanizeMinutes provided by composable if needed elsewhere
 const props = defineProps<{ user: { name?: string | null, username?: string | null, email?: string | null, byDate?: Record<string, DayCell> } }>()
 
-const cells = computed(() => Object.values(props.user?.byDate || {}))
-
-function computeShiftStart(ciIso?: string, def?: ShiftDef | undefined) {
-  if (!ciIso || !def)
-    return null
-  const d = new Date(ciIso)
-  const [shStr, smStr] = (def.start || '').split(':')
-  const [ehStr, emStr] = (def.end || '').split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  if ([sh, sm, eh, em].some(n => Number.isNaN(n)))
-    return null
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  const ciMin = d.getHours() * 60 + d.getMinutes()
-  const crosses = startMin > endMin
-  let y = d.getFullYear()
-  let m = d.getMonth()
-  let day = d.getDate()
-  if (crosses && ciMin < endMin) {
-    const prev = new Date(d)
-    prev.setDate(prev.getDate() - 1)
-    y = prev.getFullYear()
-    m = prev.getMonth()
-    day = prev.getDate()
+onMounted(() => {
+  const byDate = props.user?.byDate || {}
+  for (const v of Object.values(byDate)) {
+    if (!v) continue
+    if ((v as any).shiftCode || ((v as any).grouped && Object.values((v as any).grouped).some((e: any) => e?.shiftCode))) {
+      void attendanceTime.ensureShifts()
+      break
+    }
   }
-  return new Date(y, m, day, sh, sm, 0, 0)
-}
+})
+
+const cells = computed(() => {
+  const byDate = props.user?.byDate || {}
+  const vals = Object.values(byDate || {})
+  return vals.flatMap(v => attendanceTime.normalizeCell(v))
+})
 
 const workedDays = computed(() => cells.value.filter(c => !!c.clockIn).length)
 const harianDays = computed(() => cells.value.filter(c => c.clockIn && c.shiftType === 'harian').length)
 const bantuanDays = computed(() => cells.value.filter(c => c.clockIn && c.shiftType === 'bantuan').length)
 const lateMsTotal = computed(() => cells.value.reduce((acc, c) => {
-  if (!c.clockIn)
-    return acc
-  if (typeof c.lateMs === 'number')
-    return acc + c.lateMs
-  const start = computeShiftStart(c.clockIn, c.shift)
-  if (!start)
-    return acc
-  const diff = new Date(c.clockIn).getTime() - start.getTime()
-  return acc + Math.max(0, diff)
+  if (!c.clockIn) return acc
+  if (typeof c.lateMs === 'number') return acc + c.lateMs
+  return acc + attendanceTime.entryLateMs(c)
 }, 0))
 
 const earlyMsTotal = computed(() => cells.value.reduce((acc, c) => {
-  if (!c.clockOut || !c.shift)
-    return acc
-  const start = computeShiftStart(c.clockIn || c.clockOut, c.shift)
-  if (!start)
-    return acc
-  const [shStr, smStr] = (c.shift.start || '').split(':')
-  const [ehStr, emStr] = (c.shift.end || '').split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  if ([sh, sm, eh, em].some(n => Number.isNaN(n)))
-    return acc
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  const crosses = startMin > endMin
-  const end = new Date(start)
-  if (crosses)
-    end.setDate(end.getDate() + 1)
-  end.setHours(eh, em, 0, 0)
-  const co = new Date(c.clockOut)
-  const diff = end.getTime() - co.getTime()
-  return acc + Math.max(0, diff)
+  if (typeof c.earlyMs === 'number') return acc + c.earlyMs
+  return acc + attendanceTime.entryEarlyMs(c)
 }, 0))
 
-function humanizeMinutes(ms: number) {
-  if (!ms)
-    return '0m'
-  const total = Math.ceil(ms / 60000)
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return h ? `${h}h ${m}m` : `${m}m`
-}
+// Removed duplicate humanizeMinutes function
 
 const displayName = computed(() => props.user?.name || props.user?.username || props.user?.email || 'N/A')
 </script>
@@ -119,10 +75,10 @@ const displayName = computed(() => props.user?.name || props.user?.username || p
     </div>
     <template #footer>
       <div class="text-sm mt-1 dark:text-gray-400 font-medium" :class="{ 'text-red-500': lateMsTotal > 0, 'text-green-500': lateMsTotal === 0 }">
-        Late: {{ humanizeMinutes(lateMsTotal) }}
+        Late: {{ attendanceTime.humanizeMinutes(lateMsTotal) }}
       </div>
       <div class="text-sm dark:text-gray-400 font-medium" :class="{ 'text-red-500': earlyMsTotal > 0, 'text-green-500': earlyMsTotal === 0 }">
-        Early Leave: {{ humanizeMinutes(earlyMsTotal) }}
+        Early Leave: {{ attendanceTime.humanizeMinutes(earlyMsTotal) }}
       </div>
     </template>
   </UCard>

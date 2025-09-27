@@ -18,7 +18,16 @@ const {
   refresh,
   shifts,
   selectedShiftType,
+  isShiftActive,
 } = useAttendance()
+
+const shiftItems = computed(() => {
+  const list: any[] = (shifts as any)?.value ?? (shifts as any) ?? []
+  return list.map(s => ({
+    label: getShiftLabel(s.code) || s?.name || s?.label || s.code,
+    value: s.code,
+  }))
+})
 
 const geoSupported = ref<boolean>(false)
 const permissionStatus = ref<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt')
@@ -207,27 +216,28 @@ function onLogout() {
 </script>
 
 <template>
-  <UContainer class="py-8 space-y-8">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold">
-          Today's Attendance
-        </h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          Manage your clock-in and clock-out with location.
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <UButton
-          color="neutral"
-          variant="soft"
-          icon="i-heroicons-arrow-right-start-on-rectangle"
-          @click="onLogout"
-        >
-          Logout
-        </UButton>
-      </div>
-    </div>
+  <!-- <UContainer class="py-8 space-y-8"> -->
+  <div>
+    <!-- <div class="flex items-center justify-between"> -->
+    <!--   <div> -->
+    <!--     <h1 class="text-2xl font-semibold"> -->
+    <!--       Today's Attendance -->
+    <!--     </h1> -->
+    <!--     <p class="text-sm text-gray-500 dark:text-gray-400"> -->
+    <!--       Manage your clock-in and clock-out with location. -->
+    <!--     </p> -->
+    <!--   </div> -->
+    <!--   <div class="flex gap-2"> -->
+    <!--     <UButton -->
+    <!--       color="neutral" -->
+    <!--       variant="soft" -->
+    <!--       icon="i-heroicons-arrow-right-start-on-rectangle" -->
+    <!--       @click="onLogout" -->
+    <!--     > -->
+    <!--       Logout -->
+    <!--     </UButton> -->
+    <!--   </div> -->
+    <!-- </div> -->
 
     <UCard>
       <div class="grid sm:grid-cols-2 gap-6">
@@ -271,11 +281,12 @@ function onLogout() {
             <UFormField label="Shift" help="Select your scheduled shift.">
               <USelect
                 v-model="selectedShiftCode"
-                :items="(shifts as any)"
+                :items="shiftItems"
                 class="w-full"
                 :disabled="clockedIn"
                 placeholder="Select shift"
-                value-key="code"
+                option-attribute="label"
+                value-attribute="code"
               />
             </UFormField>
             <UFormField label="Tipe Shift" help="Pilih tipe kehadiran Anda.">
@@ -285,6 +296,8 @@ function onLogout() {
                 class="w-full"
                 :disabled="clockedIn"
                 placeholder="Pilih tipe shift"
+                option-attribute="label"
+                value-attribute="value"
               />
             </UFormField>
           </div>
@@ -295,8 +308,8 @@ function onLogout() {
               color="primary"
               icon="i-heroicons-play"
               :loading="locating"
-              :disabled="!selectedShiftCode || !selectedShiftType"
-              @click="handleClock('in')"
+              :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
+              @click="() => handleClock('in')"
             >
               Clock In
             </UButton>
@@ -396,5 +409,5 @@ function onLogout() {
         </div>
       </template>
     </UModal>
-  </UContainer>
+  </div>
 </template>

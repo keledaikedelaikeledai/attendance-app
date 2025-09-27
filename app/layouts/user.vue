@@ -20,23 +20,48 @@ const items = ref([
 </script>
 
 <template>
-  <div>
+  <UContainer class="py-8 space-y-8 pb-28 md:pb-8">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold">
+          Today's Attendance
+        </h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          Manage your clock-in and clock-out with location.
+        </p>
+      </div>
+      <div class="hidden md:block">
+        <UNavigationMenu :items="items" highlight />
+      </div>
+    </div>
+
     <slot />
 
-    <KeepAlive>
-      <UDrawer
-        direction="bottom"
-        :handle="false"
-        :open="true"
-        :overlay="false"
-        :modal="false"
-      >
-        <template #content>
-          <UContainer class="py-2">
-            <UNavigationMenu :items="items" highlight />
-          </UContainer>
-        </template>
-      </UDrawer>
-    </KeepAlive>
-  </div>
+    <UDrawer
+      direction="bottom"
+      :handle="false"
+      :open="true"
+      :overlay="false"
+      :modal="false"
+      class="md:hidden"
+    >
+      <template #content>
+        <UContainer>
+          <UNavigationMenu
+            :items="items"
+            variant="pill"
+            class="w-full"
+            :ui="{ root: 'flex [&>div]:w-full', list: 'w-full', item: 'flex-1' }"
+          >
+            <template #item="{ item }">
+              <div class="w-full flex flex-col justify-center items-center">
+                <UIcon :name="item.icon" class="w-5 h-5 mb-1" />
+                {{ item.label }}
+              </div>
+            </template>
+          </UNavigationMenu>
+        </UContainer>
+      </template>
+    </UDrawer>
+  </UContainer>
 </template>

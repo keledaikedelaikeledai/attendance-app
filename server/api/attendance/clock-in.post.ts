@@ -52,6 +52,7 @@ export default defineEventHandler(async (event) => {
     lat: coords?.latitude,
     lng: coords?.longitude,
     accuracy: coords?.accuracy,
+    shiftType: shiftType ?? null,
     shiftCode,
     createdAt: now,
     updatedAt: now,

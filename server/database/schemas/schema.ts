@@ -48,6 +48,7 @@ export const attendanceLog = sqliteTable('attendance_log', {
   lat: real('lat'),
   lng: real('lng'),
   accuracy: real('accuracy'),
+  shiftType: text('shift_type'),
   shiftCode: text('shift_code'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),

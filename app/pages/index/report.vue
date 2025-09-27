@@ -27,6 +27,18 @@ interface DaySummary {
   logs?: Array<any>
 }
 
+function summarizeDay(d: DaySummary) {
+  const res = { harian: 0, bantuan: 0, unknown: 0 }
+  const logs = d.logs || []
+  for (const l of logs) {
+    const t = l.shiftType || 'unknown'
+    if (t === 'harian') res.harian++
+    else if (t === 'bantuan') res.bantuan++
+    else res.unknown++
+  }
+  return { ...res, total: res.harian + res.bantuan + res.unknown }
+}
+
 const loading = ref(false)
 const errorMsg = ref<string | null>(null)
 const summary = ref<ReportSummary | null>(null)
@@ -201,13 +213,25 @@ watch(selectedMonth, fetchReport)
                   <div class="font-medium">
                     {{ new Date(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) }}
                   </div>
-                  <div class="text-sm text-gray-500">
-                    {{ d.shiftType ?? '' }}
+                  <div class="text-sm text-gray-500 flex items-center gap-2">
+                    <template v-if="(d.logs || []).length">
+                      <span v-if="summarizeDay(d).harian" class="text-xs px-2 py-0.5 bg-green-100 rounded">Harian: {{ summarizeDay(d).harian }}</span>
+                      <span v-if="summarizeDay(d).bantuan" class="text-xs px-2 py-0.5 bg-blue-100 rounded">Bantuan: {{ summarizeDay(d).bantuan }}</span>
+                      <span v-if="summarizeDay(d).unknown" class="text-xs px-2 py-0.5 bg-gray-100 rounded">Other: {{ summarizeDay(d).unknown }}</span>
+                    </template>
+                    <template v-else>
+                      <span class="text-xs text-muted">No logs</span>
+                    </template>
                   </div>
                 </div>
               </template>
               <div class="space-y-2 p-4">
-                <AttendanceLogItem v-for="log in d.logs ?? []" :key="log.id" :log="log" />
+                <div class="text-xs text-gray-500">
+                  Late: {{ fmtMinutes(Math.ceil((d.lateMs || 0) / 60000)) }} • Early: {{ fmtMinutes(Math.ceil(((d as any).earlyMs || 0) / 60000)) }}
+                </div>
+                <div class="space-y-2 mt-2">
+                  <AttendanceLogItem v-for="log in d.logs ?? []" :key="log.id" :log="log" />
+                </div>
               </div>
             </UCard>
           </div>

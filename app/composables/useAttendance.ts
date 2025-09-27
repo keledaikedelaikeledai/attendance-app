@@ -6,6 +6,7 @@ export interface AttendanceLog {
   lng?: number
   accuracy?: number
   shiftCode?: ShiftCode
+  shiftType?: 'harian' | 'bantuan'
 }
 
 export type ShiftCode = string
@@ -48,6 +49,7 @@ async function refresh() {
     lng: l.lng ?? undefined,
     accuracy: l.accuracy ?? undefined,
     shiftCode: l.shiftCode ?? undefined,
+    shiftType: l.shiftType ?? undefined,
   }))
   selectedShiftCode.value = s.selectedShiftCode ?? undefined
   selectedShiftType.value = s.shiftType ?? undefined
@@ -182,8 +184,9 @@ async function clockOut(coords?: GeolocationCoordinates) {
             longitude: coords.longitude,
             accuracy: coords.accuracy,
           },
+          shiftType: selectedShiftType.value,
         }
-      : undefined,
+      : { shiftType: selectedShiftType.value },
     credentials: 'include',
   })
   if (res) {
@@ -217,6 +220,13 @@ export function useAttendance() {
     selectedShiftCode,
     selectedShiftType,
     setShift,
+    // returns true if the given shiftType already has a clock-in entry today
+    isShiftActive: (shiftType?: 'harian' | 'bantuan' | undefined) => {
+      if (!shiftType) return false
+      // find any clock-in log with this shiftType
+      const ins = logs.value.filter(l => l.type === 'clock-in' && l.shiftType === shiftType)
+      return ins.length > 0
+    },
     getShiftLabel,
     refresh,
   }
