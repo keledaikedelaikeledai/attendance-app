@@ -12,7 +12,6 @@ const {
   durationHuman,
   isLate,
   lateByHuman,
-  logs,
   clockIn,
   clockOut,
   selectedShiftCode,
@@ -39,6 +38,7 @@ const geoError = ref<string | null>(null)
 const showConfirmOut = ref(false)
 const confirmOutMessage = ref('Are you sure you want to clock out?')
 const earlyReason = ref<string>('')
+const isEarlyOut = ref(false)
 
 function formatTime(iso?: string) {
   if (!iso)
@@ -156,9 +156,11 @@ async function handleClock(action: 'in' | 'out') {
       const remaining = Math.max(0, Math.ceil((se.end.getTime() - now.getTime()) / 60000))
       const endStr = se.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       confirmOutMessage.value = `You're clocking out before your shift ends at ${endStr} (${formatHumanMinutes(remaining)} remaining). Continue?`
+      isEarlyOut.value = true
     }
     else {
       confirmOutMessage.value = 'Confirm clock out?'
+      isEarlyOut.value = false
     }
     showConfirmOut.value = true
   }
@@ -174,6 +176,13 @@ async function onConfirmClockOut() {
   const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
   await clockOut(c, earlyReason.value && earlyReason.value.length ? earlyReason.value.slice(0, 200) : undefined)
   earlyReason.value = ''
+}
+
+function onCancelClockOut() {
+  showConfirmOut.value = false
+  // reset the early reason when the user cancels to avoid leftover text
+  earlyReason.value = ''
+  isEarlyOut.value = false
 }
 
 onMounted(async () => {
@@ -269,6 +278,7 @@ function _onLogout() {
               icon="i-heroicons-play"
               :loading="locating"
               :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
+              size="lg"
               @click="() => handleClock('in')"
             >
               Clock In
@@ -279,6 +289,7 @@ function _onLogout() {
               variant="solid"
               icon="i-heroicons-stop"
               :loading="locating"
+              size="lg"
               @click="handleClock('out')"
             >
               Clock Out
@@ -321,45 +332,13 @@ function _onLogout() {
       </div>
     </UCard>
 
-    <UCard>
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span class="font-medium">Activity Log</span>
-        </div>
-      </template>
-      <div class="space-y-2 text-sm">
-        <p v-if="!logs.length" class="text-gray-500 dark:text-gray-400">
-          No activity yet.
-        </p>
-        <div v-for="log in [...logs].reverse()" :key="log.id" class="flex items-center justify-between border rounded-md px-3 py-2 bg-gray-50 dark:bg-gray-800/40">
-          <div class="flex items-center gap-3">
-            <UIcon :name="log.type === 'clock-in' ? 'i-heroicons-play' : 'i-heroicons-stop'" class="w-5 h-5" />
-            <div>
-              <p class="font-medium">
-                {{ log.type === 'clock-in' ? 'Clock In' : 'Clock Out' }}
-              </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }}
-              </p>
-              <p v-if="log.shiftCode" class="text-[10px] uppercase tracking-wide text-primary-600 dark:text-primary-400">
-                {{ getShiftLabel(log.shiftCode) }}
-              </p>
-            </div>
-          </div>
-          <div class="text-xs text-right text-gray-500 dark:text-gray-400">
-            <span v-if="log.lat && log.lng">{{ log.lat.toFixed(3) }}, {{ log.lng.toFixed(3) }}</span>
-            <span v-else>-</span>
-          </div>
-        </div>
-      </div>
-    </UCard>
     <UModal v-model:open="showConfirmOut" title="Confirm Clock Out">
       <template #body>
         <p class="text-sm text-gray-600 dark:text-gray-300">
           {{ confirmOutMessage }}
         </p>
 
-        <div class="mt-3">
+        <div v-if="isEarlyOut" class="mt-3">
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Reason for early clock out (optional)</label>
           <textarea
             v-model="earlyReason"
@@ -374,7 +353,7 @@ function _onLogout() {
         </div>
 
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="neutral" variant="soft" @click="showConfirmOut = false">
+          <UButton color="neutral" variant="soft" @click="onCancelClockOut">
             Cancel
           </UButton>
           <UButton color="primary" icon="i-heroicons-check" @click="onConfirmClockOut">

@@ -2,6 +2,7 @@ export interface AttendanceLog {
   id: string
   type: 'clock-in' | 'clock-out'
   timestamp: string // ISO
+  date?: string
   lat?: number
   lng?: number
   accuracy?: number
@@ -70,6 +71,16 @@ async function refresh() {
     accuracy: l.accuracy ?? undefined,
     shiftCode: l.shiftCode ?? undefined,
     shiftType: l.shiftType ?? undefined,
+    // preserve server-provided date if present, else compute from timestamp (local date)
+    date: l.date ?? (() => {
+      try {
+        const dd = new Date(l.timestamp)
+        return `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`
+      }
+      catch {
+        return undefined
+      }
+    })(),
     earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
   }))
   selectedShiftCode.value = s.selectedShiftCode ?? undefined
@@ -179,6 +190,35 @@ interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCod
 async function clockIn(opts?: ClockInOptions) {
   if (clockedIn.value)
     return
+  // Prevent multiple clock-ins for the same shiftType on the same local day.
+  try {
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const shiftTypeToCheck = selectedShiftType.value
+    if (shiftTypeToCheck) {
+      for (const l of logs.value) {
+        if (l.type !== 'clock-in') continue
+        if (l.shiftType !== shiftTypeToCheck) continue
+        try {
+          const dd = new Date(l.timestamp as any)
+          const ldate = `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`
+          if (ldate === today) {
+            try {
+              try {
+                const _t = (typeof useToast === 'function') ? useToast() : null
+                if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
+              }
+              catch {}
+            }
+            catch {}
+            return
+          }
+        }
+        catch {}
+      }
+    }
+  }
+  catch {}
   if (opts?.shiftCode)
     selectedShiftCode.value = opts.shiftCode
   const now = new Date()
@@ -271,16 +311,24 @@ export function useAttendance() {
     // returns true if the given shiftType currently has an active (unclosed) clock-in today
     isShiftActive: (shiftType?: 'harian' | 'bantuan' | undefined) => {
       if (!shiftType) return false
-      // find the latest clock-in for this shiftType
-      const cis = logs.value
-        .filter(l => l.type === 'clock-in' && l.shiftType === shiftType)
-        .sort((a, b) => Date.parse(b.timestamp as any) - Date.parse(a.timestamp as any))
-      if (!cis.length) return false
-      const latestCi = cis[0]
-      if (!latestCi) return false
-      // find any clock-out that happened after that clock-in
-      const coAfter = logs.value.find(l => l.type === 'clock-out' && Date.parse(l.timestamp as any) > Date.parse(latestCi.timestamp as any))
-      return !coAfter
+      // One shift per day policy: if user already has a clock-in for this shiftType today,
+      // consider the shift type 'active' (i.e. not allowed to clock-in again).
+      try {
+        const now = new Date()
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+        for (const l of logs.value) {
+          if (l.type !== 'clock-in') continue
+          if (l.shiftType !== shiftType) continue
+          try {
+            const dd = new Date(l.timestamp as any)
+            const ldate = `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`
+            if (ldate === today) return true
+          }
+          catch {}
+        }
+      }
+      catch {}
+      return false
     },
     getShiftLabel,
     refresh,
