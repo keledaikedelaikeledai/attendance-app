@@ -205,6 +205,12 @@ async function exportWithExcelJS() {
     if (!ws)
       throw new Error('Template has no worksheets')
 
+    // Freeze the first column (Name) so it stays visible when horizontally scrolling
+    try {
+      ws.views = [{ state: 'frozen', xSplit: 1 }]
+    }
+    catch {}
+
     const { rows, dayTwoFlagsList: dayTwoFlagsFromBuild } = buildDataAoA()
     const { headerRow1, headerRow2, subCols, days } = buildHeaderAoA()
     const insertAt = 5
@@ -280,6 +286,29 @@ async function exportWithExcelJS() {
 
     ws.spliceRows(insertAt, 0, headerRow1, headerRow2, ...expandedRows)
 
+    // Robust pass: find exact 'Ket' subheader cells in the inserted header rows (insertAt and insertAt+1)
+    try {
+      const headerRows = [insertAt, insertAt + 1]
+      for (const subHeaderRow of headerRows) {
+        try {
+          const hr = ws.getRow(subHeaderRow)
+          for (let c = 1; c <= ws.columnCount; c++) {
+            try {
+              const v = hr.getCell(c).value
+              if (v && String(v).trim().toLowerCase() === 'ket') {
+                const col = ws.getColumn(c)
+                col.width = 50
+                col.alignment = { ...col.alignment, wrapText: true, vertical: 'middle' }
+              }
+            }
+            catch {}
+          }
+        }
+        catch {}
+      }
+    }
+    catch {}
+
     // Merge headers: base columns vertically and day groups horizontally
     const base = 6
     for (let c = 1; c <= base; c++) ws.mergeCells(insertAt, c, insertAt + 1, c)
@@ -332,6 +361,23 @@ async function exportWithExcelJS() {
             catch {}
           }
         }
+      }
+    }
+    catch {}
+
+    // Ensure per-day Ket columns are wide (~350px). Do this after footer insertion to avoid template overrides.
+    try {
+      const subLen = subCols.length
+      for (let i = 0; i < days.length; i++) {
+        const baseIdx = 6 + i * subLen
+        try {
+          const ketCol = baseIdx + 6
+          const kc = ws.getColumn(ketCol)
+          // ~50 chars approximates 350px in Excel column width units
+          kc.width = 50
+          kc.alignment = { ...kc.alignment, wrapText: true, vertical: 'middle' }
+        }
+        catch {}
       }
     }
     catch {}
@@ -546,6 +592,7 @@ async function exportWithExcelJS() {
             catch {}
           }
         }
+        // (noop) ket width handled in a dedicated pass below
       }
     }
     catch {}
@@ -700,7 +747,8 @@ async function exportWithExcelJS() {
             const targetRow = ws.getRow(startRow + rowNumber - 1)
             targetRow.height = 24
             row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
-              const tcell = targetRow.getCell(colNumber)
+              // Shift footer content to start at column B to avoid freezing into column A
+              const tcell = targetRow.getCell(colNumber + 1)
               const merge = findMerge(rowNumber, colNumber)
               if (merge && !(rowNumber === merge.sRow && colNumber === merge.sCol)) {
                 tcell.value = null
@@ -715,12 +763,12 @@ async function exportWithExcelJS() {
               if ((cell as any).numFmt) (tcell as any).numFmt = (cell as any).numFmt
             })
           })
-          // Recreate merges from footer with row offset
+          // Recreate merges from footer with row offset and column shift (+1)
           try {
             const rDelta = startRow - 1
             for (const m of footerMerges) {
               try {
-                ws.mergeCells(m.sRow + rDelta, m.sCol, m.eRow + rDelta, m.eCol)
+                ws.mergeCells(m.sRow + rDelta, m.sCol + 1, m.eRow + rDelta, m.eCol + 1)
               }
               catch {}
             }
@@ -795,6 +843,28 @@ async function exportWithExcelJS() {
   const { headerRow1, headerRow2, subCols, days } = buildHeaderAoA()
   ws.addRow(headerRow1)
   ws.addRow(headerRow2)
+  // Robust pass (fallback): find 'Ket' subheaders in header rows (1 and 2) and set their width to 50
+  try {
+    const headerRows = [1, 2]
+    for (const hrNum of headerRows) {
+      try {
+        const hr = ws.getRow(hrNum)
+        for (let c = 1; c <= ws.columnCount; c++) {
+          try {
+            const v = hr.getCell(c).value
+            if (v && String(v).trim().toLowerCase() === 'ket') {
+              const col = ws.getColumn(c)
+              col.width = 50
+              col.alignment = { ...col.alignment, wrapText: true, vertical: 'middle' }
+            }
+          }
+          catch {}
+        }
+      }
+      catch {}
+    }
+  }
+  catch {}
   const dataRows = buildDataAoA()
 
   // Expand data rows into top/bottom physical rows (same behavior as template branch)
@@ -1128,11 +1198,12 @@ async function exportWithExcelJS() {
         sc.alignment = { ...sc.alignment, wrapText: true, vertical: 'middle' }
       }
       catch {}
-      // Ket column (~220px), approximate width in characters
+      // Ket column (~350px), approximate width in characters
       try {
         const ketCol = baseIdx + 5
         const kc = ws.getColumn(ketCol)
-        kc.width = 31
+        // ~50 chars approximates 350px in Excel column width units
+        kc.width = 50
         kc.alignment = { ...kc.alignment, wrapText: true, vertical: 'middle' }
       }
       catch {}

@@ -103,39 +103,39 @@ watch(selectedMonth, fetchReport)
 </script>
 
 <template>
-  <UContainer class="py-8 space-y-8">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold">
-          Monthly Attendance Report
-        </h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          Summary of your attendance for the selected month.
-        </p>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <UButton
-          size="sm"
-          color="neutral"
-          variant="soft"
-          icon="i-heroicons-chevron-left"
-          :loading="loading"
-          @click="changeMonth(-1)"
-        />
-        <UBadge class="px-3 py-1" variant="soft">
-          {{ monthLabel(selectedMonth) }}
-        </UBadge>
-        <UButton
-          size="sm"
-          color="neutral"
-          variant="soft"
-          icon="i-heroicons-chevron-right"
-          :loading="loading"
-          @click="changeMonth(1)"
-        />
-      </div>
-    </div>
+  <div class="py-8 space-y-8">
+    <!-- <div class="flex items-center justify-between"> -->
+    <!--   <div> -->
+    <!--     <h1 class="text-2xl font-semibold"> -->
+    <!--       Monthly Attendance Report -->
+    <!--     </h1> -->
+    <!--     <p class="text-sm text-gray-500 dark:text-gray-400"> -->
+    <!--       Summary of your attendance for the selected month. -->
+    <!--     </p> -->
+    <!--   </div> -->
+    <!---->
+    <!--   <div class="flex items-center gap-2"> -->
+    <!--     <UButton -->
+    <!--       size="sm" -->
+    <!--       color="neutral" -->
+    <!--       variant="soft" -->
+    <!--       icon="i-heroicons-chevron-left" -->
+    <!--       :loading="loading" -->
+    <!--       @click="changeMonth(-1)" -->
+    <!--     /> -->
+    <!--     <UBadge class="px-3 py-1" variant="soft"> -->
+    <!--       {{ monthLabel(selectedMonth) }} -->
+    <!--     </UBadge> -->
+    <!--     <UButton -->
+    <!--       size="sm" -->
+    <!--       color="neutral" -->
+    <!--       variant="soft" -->
+    <!--       icon="i-heroicons-chevron-right" -->
+    <!--       :loading="loading" -->
+    <!--       @click="changeMonth(1)" -->
+    <!--     /> -->
+    <!--   </div> -->
+    <!-- </div> -->
 
     <div v-if="loading" class="text-sm text-gray-500">
       Loading...
@@ -238,5 +238,5 @@ watch(selectedMonth, fetchReport)
         </div>
       </div>
     </div>
-  </UContainer>
+  </div>
 </template>

@@ -23,48 +23,48 @@ function onLogout() {
 </script>
 
 <template>
-  <UContainer class="py-8">
-    <div class="max-w-md mx-auto space-y-6">
-      <UCard>
-        <template #header>
-          <div class="font-medium">
-            Profile
-          </div>
-        </template>
-        <div class="p-4 space-y-3">
-          <div v-if="loading" class="text-sm text-gray-500">
-            Loading...
-          </div>
-          <div v-else>
-            <p class="text-sm text-gray-500">
-              Name
-            </p>
-            <p class="font-medium">
-              {{ user?.user?.displayName ?? user?.user?.username ?? '-' }}
-            </p>
-
-            <p class="text-sm text-gray-500 mt-3">
-              Email
-            </p>
-            <p class="font-medium">
-              {{ user?.user?.email ?? '-' }}
-            </p>
-
-            <p class="text-sm text-gray-500 mt-3">
-              Role
-            </p>
-            <p class="font-medium">
-              {{ (user?.user?.role) ?? 'user' }}
-            </p>
-          </div>
+  <!-- <UContainer class="py-8"> -->
+  <div class="max-w-md mx-auto space-y-6">
+    <UCard>
+      <template #header>
+        <div class="font-medium">
+          Profile
         </div>
-      </UCard>
+      </template>
+      <div class="p-4 space-y-3">
+        <div v-if="loading" class="text-sm text-gray-500">
+          Loading...
+        </div>
+        <div v-else>
+          <p class="text-sm text-gray-500">
+            Name
+          </p>
+          <p class="font-medium">
+            {{ user?.user?.displayName ?? user?.user?.username ?? '-' }}
+          </p>
 
-      <div class="flex justify-end">
-        <UButton color="neutral" variant="soft" @click="onLogout">
-          Logout
-        </UButton>
+          <p class="text-sm text-gray-500 mt-3">
+            Email
+          </p>
+          <p class="font-medium">
+            {{ user?.user?.email ?? '-' }}
+          </p>
+
+          <p class="text-sm text-gray-500 mt-3">
+            Role
+          </p>
+          <p class="font-medium">
+            {{ (user?.user?.role) ?? 'user' }}
+          </p>
+        </div>
       </div>
+    </UCard>
+
+    <div class="flex justify-end">
+      <UButton color="neutral" variant="soft" @click="onLogout">
+        Logout
+      </UButton>
     </div>
-  </UContainer>
+  </div>
+  <!-- </UContainer> -->
 </template>
