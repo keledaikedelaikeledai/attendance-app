@@ -169,6 +169,7 @@ export default defineEventHandler(async (event) => {
       accuracy: l.accuracy ?? null,
       shiftCode: l.shiftCode ?? null,
       shiftType: l.shiftType ?? null,
+      earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
     }))
 
     // compute lateMs as sum of per-shift lateness for this date

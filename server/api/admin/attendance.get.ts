@@ -71,6 +71,7 @@ export default defineEventHandler(async (event) => {
       accuracy: attendanceLog.accuracy,
       shiftCode: attendanceLog.shiftCode,
       shiftType: attendanceLog.shiftType,
+      earlyReason: (attendanceLog as any).earlyReason,
     })
     .from(attendanceLog)
     .where(and(inArray(attendanceLog.userId, userIds), gte(attendanceLog.date, startDate), lte(attendanceLog.date, endDate)))
@@ -108,7 +109,8 @@ export default defineEventHandler(async (event) => {
       accuracy: l.accuracy ?? null,
       shiftCode: (l as any).shiftCode ?? null,
       shiftType: (l as any).shiftType ?? null,
-    })
+      earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
+    } as any)
   }
 
   // Map selected shift code and type from days table
@@ -163,6 +165,8 @@ export default defineEventHandler(async (event) => {
             groupedByShiftType[st].clockOutLat = e.lat
             groupedByShiftType[st].clockOutLng = e.lng
             groupedByShiftType[st].clockOutAccuracy = e.accuracy
+            // attach any early clock-out reason so admin UI/export can show it
+            groupedByShiftType[st].earlyReason = (e as any).earlyReason ?? (e as any).early_reason ?? null
           }
         }
       }

@@ -1,0 +1,1 @@
+ALTER TABLE `attendance_log` ADD `early_reason` text;

@@ -50,6 +50,8 @@ export const attendanceLog = sqliteTable('attendance_log', {
   accuracy: real('accuracy'),
   shiftType: text('shift_type'),
   shiftCode: text('shift_code'),
+  // Optional short reason for early clock-out (max 200 chars enforced by application)
+  earlyReason: text('early_reason'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 })

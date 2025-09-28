@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { coords, shiftType: bodyShiftType, date: clientDate } = body as { coords?: { latitude?: number, longitude?: number, accuracy?: number }, shiftType?: 'harian' | 'bantuan' | null, date?: string }
+  const { coords, shiftType: bodyShiftType, date: clientDate, earlyReason } = body as { coords?: { latitude?: number, longitude?: number, accuracy?: number }, shiftType?: 'harian' | 'bantuan' | null, date?: string, earlyReason?: string }
 
   const db = useDb()
   const userId = session.user.id
@@ -90,6 +90,7 @@ export default defineEventHandler(async (event) => {
     lng: coords?.longitude,
     accuracy: coords?.accuracy,
     shiftType: shiftTypeToPersist,
+    earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : null,
     createdAt: now,
     updatedAt: now,
   })

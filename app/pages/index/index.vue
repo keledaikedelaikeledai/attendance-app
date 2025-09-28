@@ -38,6 +38,7 @@ const locating = ref(false)
 const geoError = ref<string | null>(null)
 const showConfirmOut = ref(false)
 const confirmOutMessage = ref('Are you sure you want to clock out?')
+const earlyReason = ref<string>('')
 
 function formatTime(iso?: string) {
   if (!iso)
@@ -171,7 +172,8 @@ async function onConfirmClockOut() {
     return
   }
   const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
-  clockOut(c)
+  await clockOut(c, earlyReason.value && earlyReason.value.length ? earlyReason.value.slice(0, 200) : undefined)
+  earlyReason.value = ''
 }
 
 onMounted(async () => {
@@ -356,6 +358,20 @@ function _onLogout() {
         <p class="text-sm text-gray-600 dark:text-gray-300">
           {{ confirmOutMessage }}
         </p>
+
+        <div class="mt-3">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Reason for early clock out (optional)</label>
+          <textarea
+            v-model="earlyReason"
+            maxlength="200"
+            rows="3"
+            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2"
+            placeholder="Optional: why you're leaving early (max 200 chars)"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            {{ earlyReason.length }}/200
+          </p>
+        </div>
 
         <div class="flex justify-end gap-2 mt-4">
           <UButton color="neutral" variant="soft" @click="showConfirmOut = false">

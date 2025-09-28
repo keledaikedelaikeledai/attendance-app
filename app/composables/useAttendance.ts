@@ -7,6 +7,7 @@ export interface AttendanceLog {
   accuracy?: number
   shiftCode?: ShiftCode
   shiftType?: 'harian' | 'bantuan'
+  earlyReason?: string | null
 }
 
 export type ShiftCode = string
@@ -69,6 +70,7 @@ async function refresh() {
     accuracy: l.accuracy ?? undefined,
     shiftCode: l.shiftCode ?? undefined,
     shiftType: l.shiftType ?? undefined,
+    earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
   }))
   selectedShiftCode.value = s.selectedShiftCode ?? undefined
   selectedShiftType.value = s.shiftType ?? undefined
@@ -211,7 +213,7 @@ async function clockIn(opts?: ClockInOptions) {
   await refresh()
 }
 
-async function clockOut(coords?: GeolocationCoordinates) {
+async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | null) {
   if (!clockedIn.value)
     return
   const now = new Date()
@@ -229,6 +231,7 @@ async function clockOut(coords?: GeolocationCoordinates) {
           shiftType: selectedShiftType.value,
           date: localDate,
           tzOffset,
+          earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
         }
       : { shiftType: selectedShiftType.value, date: localDate, tzOffset },
     credentials: 'include',

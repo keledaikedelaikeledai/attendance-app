@@ -217,8 +217,12 @@ const columns = computed(() => {
             const topEarly = topT ? attendanceTime.entryEarlyMs(eTop, cell, entries) > 0 : false
             const botEarly = botT ? attendanceTime.entryEarlyMs(eBot, cell, entries) > 0 : false
             const slotCls = (isHighlighted: boolean) => `w-[120px] h-6 flex items-center justify-center ${isHighlighted ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded' : ''}`
-            const topNode = h('div', { class: slotCls(topEarly), style: { lineHeight: '1' } }, topT ? formatTime(topT) : '')
-            const botNode = h('div', { class: slotCls(botEarly), style: { lineHeight: '1' } }, botT ? formatTime(botT) : '')
+            const topInner = [] as any[]
+            if (topT) topInner.push(h('div', formatTime(topT)))
+            const botInner = [] as any[]
+            if (botT) botInner.push(h('div', formatTime(botT)))
+            const topNode = h('div', { class: slotCls(topEarly), style: { lineHeight: '1' } }, topInner)
+            const botNode = h('div', { class: slotCls(botEarly), style: { lineHeight: '1' } }, botInner)
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
@@ -272,6 +276,22 @@ const columns = computed(() => {
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
+        }) as unknown as TableColumn<typeof attendances.value[0]>,
+        columnHelper.display({
+          id: `ket-${day}`,
+          header: () => h('div', { class: 'text-center w-[220px]' }, 'Ket'),
+          cell: (info) => {
+            const cell = (info.row.original as any)?.byDate?.[day]
+            const entries = attendanceTime.normalizeCell(cell)
+            const topE = entries[0] || {}
+            const botE = entries[1] || {}
+            const topVal = topE?.earlyReason ? String(topE.earlyReason) : ''
+            const botVal = botE?.earlyReason ? String(botE.earlyReason) : ''
+            const topNode = h('div', { class: 'w-[220px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, topVal)
+            const botNode = h('div', { class: 'w-[220px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botVal)
+            return h('div', { class: 'text-center w-[220px] flex flex-col items-center justify-center' }, [topNode, botNode])
+          },
+          size: 220,
         }) as unknown as TableColumn<typeof attendances.value[0]>,
       ],
     }) as unknown as TableColumn<typeof attendances.value[0]>,
