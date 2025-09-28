@@ -3,7 +3,7 @@ name: Deploy to demo via Tailscale
 on:
   push:
     branches:
-      - main
+      - master
 
 permissions:
   contents: read
