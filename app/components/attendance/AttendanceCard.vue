@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import * as attendanceTime from '~/composables/useAttendanceTime'
+
 interface ShiftDef { code: string, label: string, start: string, end: string }
 interface DayData {
   clockIn?: string
@@ -13,149 +15,67 @@ interface DayData {
   shiftType?: 'harian' | 'bantuan'
   shift?: ShiftDef
   lateMs?: number
+  // grouped shift entries (for days with multiple shifts)
+  grouped?: Record<string, any>
 }
 
 const props = defineProps<{ data?: DayData, titleDay?: string, username?: string }>()
 
-let SHIFTS_CACHE: Map<string, ShiftDef> | null = null
-const shiftsMap = ref<Map<string, ShiftDef> | null>(SHIFTS_CACHE)
-
-async function ensureShifts() {
-  if (SHIFTS_CACHE)
-    return
-  try {
-    const res = await $fetch<ShiftDef[]>('/api/shifts')
-    const m = new Map<string, ShiftDef>()
-    for (const s of res)
-      m.set(s.code, s)
-    SHIFTS_CACHE = m
-    shiftsMap.value = m
-  }
-  catch {
-    // ignore fetch errors; lateness will remain 0 without shift
-  }
-}
-
 function formatTime(iso?: string) {
-  if (!iso)
-    return '-'
+  if (!iso) return '-'
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 function shiftTypeLabel(t?: 'harian' | 'bantuan') {
-  if (!t)
-    return '-'
+  if (!t) return '-'
   return t === 'harian' ? 'Shift Harian' : 'Shift Bantuan'
 }
 
-const daySuffix = computed(() => {
-  const t = props.titleDay
-  if (!t)
-    return null
-  const n = Number(t.slice(-2))
-  if (!Number.isFinite(n))
-    return null
-  return String(n)
-})
-
 function mapUrl(lat?: number, lng?: number) {
-  if (lat == null || lng == null)
-    return '#'
+  if (lat == null || lng == null) return '#'
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
 }
 
 function shiftBadgeColor(code?: string): 'neutral' | 'error' | 'success' | 'primary' | 'secondary' | 'info' | 'warning' {
   switch (code) {
-    case 'pagi':
-      return 'info' // sky-ish
-    case 'siang':
-      return 'primary' // teal-ish
-    case 'sore':
-      return 'warning' // amber
-    case 'malam':
-      return 'neutral' // stone/gray
-    default:
-      return 'secondary'
+    case 'pagi': return 'info'
+    case 'siang': return 'primary'
+    case 'sore': return 'warning'
+    case 'malam': return 'neutral'
+    default: return 'secondary'
   }
 }
-
-function getShiftFromData(): ShiftDef | undefined {
-  if (props.data?.shift)
-    return props.data.shift
-  const code = props.data?.shiftCode
-  if (code && shiftsMap.value)
-    return shiftsMap.value.get(code)
-  return undefined
-}
+// normalizeCell, shift helpers and humanizeMinutes are provided by the composable
 
 onMounted(() => {
-  if (!props.data?.shift && props.data?.shiftCode)
-    ensureShifts()
+  // Ensure shifts are loaded if this cell or any grouped entries reference shift codes
+  if (props.data?.shiftCode || (props.data?.grouped && Object.values(props.data.grouped || {}).some((v: any) => v?.shiftCode))) {
+    void attendanceTime.ensureShifts()
+  }
 })
 
 watch(() => props.data?.shiftCode, (code) => {
-  if (code && !props.data?.shift)
-    ensureShifts()
+  if (code && !props.data?.shift) void attendanceTime.ensureShifts()
 })
 
-function computeShiftStart(clockInIso?: string) {
-  if (!clockInIso)
-    return null
-  const def = getShiftFromData()
-  if (!def)
-    return null
-  const d = new Date(clockInIso)
-  const [shStr, smStr] = def.start.split(':')
-  const [ehStr, emStr] = def.end.split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  if (Number.isNaN(sh) || Number.isNaN(sm) || Number.isNaN(eh) || Number.isNaN(em))
-    return null
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  const ciMin = d.getHours() * 60 + d.getMinutes()
-  const crossesMidnight = startMin > endMin
-  let year = d.getFullYear()
-  let month = d.getMonth()
-  let day = d.getDate()
-  if (crossesMidnight && ciMin < endMin) {
-    const prev = new Date(d)
-    prev.setDate(prev.getDate() - 1)
-    year = prev.getFullYear()
-    month = prev.getMonth()
-    day = prev.getDate()
-  }
-  return new Date(year, month, day, sh, sm, 0, 0)
-}
+const entries = computed(() => attendanceTime.normalizeCell(props.data))
 
-const lateMs = computed(() => {
-  if (typeof props.data?.lateMs === 'number')
-    return props.data.lateMs
-  const ci = props.data?.clockIn
-  if (!ci)
-    return 0
-  const start = computeShiftStart(ci)
-  if (!start)
-    return 0
-  const ciDate = new Date(ci)
-  return Math.max(0, ciDate.getTime() - start.getTime())
-})
+const hasAnyClockIn = computed(() => (entries.value || []).some((e: any) => !!e?.clockIn))
 
-function humanizeMinutes(ms: number) {
-  if (!ms)
-    return '0m'
-  const total = Math.ceil(ms / 60000)
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return h ? `${h}h ${m}m` : `${m}m`
+function entriesForGroup(groupVal: any, st?: string) {
+  const all = entries.value || []
+  return all.filter((e: any) => {
+    if (st && e?.shiftType === st) return true
+    if (groupVal?.shiftCode && e?.shiftCode === groupVal.shiftCode) return true
+    if (e?.shift && groupVal?.shift && e.shift.code === groupVal.shift.code) return true
+    return false
+  })
 }
 </script>
 
 <template>
-  <UCard class="h-[280px] w-[320px]">
-    <template #header>
+  <div class=" w-[320px]">
+    <!-- <template #header>
       <div class="flex items-center justify-between gap-2">
         <div class="font-medium flex items-center gap-2 min-w-0 flex-1">
           <UIcon
@@ -168,87 +88,149 @@ function humanizeMinutes(ms: number) {
 
           <span v-if="props.username" class="truncate">{{ props.username }}</span>
         </div>
-        <template v-if="props.data?.clockIn">
-          <UBadge :color="lateMs > 0 ? 'error' : 'success'" variant="solid">
-            {{ lateMs > 0 ? `Late · ${humanizeMinutes(lateMs)}` : 'On time' }}
-          </UBadge>
-        </template>
       </div>
-    </template>
+    </template> -->
 
-    <div v-if="!props.data || !props.data.clockIn" class="flex items-center justify-center py-6 text-gray-500 dark:text-gray-400 gap-2">
+    <div v-if="!props.data || !hasAnyClockIn" class="flex h-full items-center justify-center py-6 text-gray-500 dark:text-gray-400 gap-2">
       <UIcon name="i-heroicons-no-symbol" class="w-5 h-5" />
       <span>No record</span>
     </div>
-    <div v-else class="grid sm:grid-cols-2 gap-4 text-sm">
-      <div class="space-y-1">
-        <p class="font-medium">
-          Clock In
-        </p>
-        <p class="text-gray-600 dark:text-gray-400">
-          {{ formatTime(props.data?.clockIn) }}
-        </p>
-      </div>
-      <div class="space-y-1">
-        <p class="font-medium">
-          Clock Out
-        </p>
-        <p class="text-gray-600 dark:text-gray-400">
-          {{ formatTime(props.data?.clockOut) }}
-        </p>
-      </div>
-      <div class="space-y-1 sm:col-span-2">
-        <p class="font-medium">
-          Shift
-        </p>
-        <div class="flex items-center gap-2 text-xs">
-          <UBadge
-            variant="subtle"
-            :color="shiftBadgeColor(props.data?.shift?.code || props.data?.shiftCode)"
-          >
-            {{ props.data?.shift?.label || props.data?.shiftCode || '-' }}
-          </UBadge>
-          <UBadge :color="props.data?.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="outline">
-            {{ shiftTypeLabel(props.data?.shiftType) }}
-          </UBadge>
+
+    <div v-else class="space-y-3 text-sm">
+      <template v-if="props.data?.grouped">
+        <div v-for="(val, st) in props.data.grouped" :key="st" class="border border-neutral-300 rounded-md p-2 bg-white/50 dark:bg-gray-800/30">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <UBadge variant="subtle" :color="shiftBadgeColor(val.shiftCode)">
+                {{ (st === 'harian' ? 'Shift Harian' : (st === 'bantuan' ? 'Shift Bantuan' : st)) }}
+              </UBadge>
+              <span class="text-xs text-gray-500">{{ val.shiftCode || '-' }}</span>
+            </div>
+            <div class="text-xs text-gray-500">
+              {{ val.clockIn ? new Date(val.clockIn).toLocaleDateString() : '' }}
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <p class="font-medium">
+                Clock In
+              </p>
+              <p class="font-medium">
+                {{ formatTime(val.clockIn) }}
+              </p>
+              <div v-if="val.clockInLat != null && val.clockInLng != null" class="text-xs text-gray-500 mt-1">
+                <a :href="mapUrl(val.clockInLat, val.clockInLng)" target="_blank" rel="noopener noreferrer">See on map</a>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500">
+                Clock Out
+              </p>
+              <p class="font-medium">
+                {{ formatTime(val.clockOut) }}
+              </p>
+              <div v-if="val.clockOutLat != null && val.clockOutLng != null" class="text-xs text-gray-500 mt-1">
+                <a :href="mapUrl(val.clockOutLat, val.clockOutLng)" target="_blank" rel="noopener noreferrer">See on map</a>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 pt-3 border-t border-neutral-200 text-sm">
+            <div class="flex flex-col gap-2">
+              <div v-for="(e, idx) in entriesForGroup(val, st)" :key="idx" class="flex items-center justify-between">
+                <UBadge
+                  :color="(typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e)) > 0 ? 'error' : 'success'"
+                  variant="solid"
+                  size="xs"
+                >
+                  {{ (typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e)) > 0 ? `Late · ${attendanceTime.humanizeMinutes(typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e))}` : 'On time' }}
+                </UBadge>
+                <UBadge
+                  v-if="(typeof e?.earlyMs === 'number' ? e.earlyMs : attendanceTime.computeEarlyMsForEntry(e)) > 0"
+                  class="ml-2"
+                  color="warning"
+                  variant="subtle"
+                  size="xs"
+                >
+                  Early · {{ attendanceTime.humanizeMinutes(typeof e?.earlyMs === 'number' ? e.earlyMs : attendanceTime.computeEarlyMsForEntry(e)) }}
+                </UBadge>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="space-y-1">
-        <p class="font-medium">
-          Clock In Location
-        </p>
-        <div v-if="props.data?.clockInLat != null && props.data?.clockInLng != null">
-          <UButton
-            as="a"
-            size="xs"
-            variant="ghost"
-            icon="i-heroicons-map-pin"
-            :href="mapUrl(props.data?.clockInLat, props.data?.clockInLng)"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            See on map
-          </UButton>
+      </template>
+      <template v-else>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div class="space-y-1">
+            <p class="font-medium">
+              Clock In
+            </p>
+            <p class="text-gray-600 dark:text-gray-400">
+              {{ formatTime(props.data?.clockIn) }}
+            </p>
+          </div>
+          <div class="space-y-1">
+            <p class="font-medium">
+              Clock Out
+            </p>
+            <p class="text-gray-600 dark:text-gray-400">
+              {{ formatTime(props.data?.clockOut) }}
+            </p>
+          </div>
+          <div class="space-y-1 sm:col-span-2">
+            <p class="font-medium">
+              Shift
+            </p>
+            <div class="flex items-center gap-2 text-xs">
+              <UBadge variant="subtle" :color="shiftBadgeColor(props.data?.shift?.code || props.data?.shiftCode)">
+                {{ props.data?.shift?.label || props.data?.shiftCode || '-' }}
+              </UBadge>
+              <UBadge :color="props.data?.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="outline">
+                {{ shiftTypeLabel(props.data?.shiftType) }}
+              </UBadge>
+            </div>
+          </div>
+          <div class="space-y-1">
+            <p class="font-medium">
+              Clock In Location
+            </p>
+            <div v-if="props.data?.clockInLat != null && props.data?.clockInLng != null">
+              <div class="flex items-center gap-2">
+                <UButton
+                  as="a"
+                  size="xs"
+                  variant="ghost"
+                  icon="i-heroicons-map-pin"
+                  :href="mapUrl(props.data?.clockInLat, props.data?.clockInLng)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  See on map
+                </UButton>
+              </div>
+            </div>
+          </div>
+          <div class="space-y-1">
+            <p class="font-medium">
+              Clock Out Location
+            </p>
+            <div v-if="props.data?.clockOutLat != null && props.data?.clockOutLng != null">
+              <div class="flex items-center gap-2">
+                <UButton
+                  as="a"
+                  size="xs"
+                  variant="ghost"
+                  icon="i-heroicons-map-pin"
+                  :href="mapUrl(props.data?.clockOutLat, props.data?.clockOutLng)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  See on map
+                </UButton>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="space-y-1">
-        <p class="font-medium">
-          Clock Out Location
-        </p>
-        <div v-if="props.data?.clockOutLat != null && props.data?.clockOutLng != null">
-          <UButton
-            as="a"
-            size="xs"
-            variant="ghost"
-            icon="i-heroicons-map-pin"
-            :href="mapUrl(props.data?.clockOutLat, props.data?.clockOutLng)"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            See on map
-          </UButton>
-        </div>
-      </div>
+      </template>
     </div>
-  </UCard>
+  </div>
 </template>

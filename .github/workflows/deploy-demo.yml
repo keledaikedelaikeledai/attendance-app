@@ -3,7 +3,7 @@ name: Deploy to demo via Tailscale
 on:
   push:
     branches:
-      - demo
+      - main
 
 permissions:
   contents: read
@@ -124,28 +124,51 @@ jobs:
 
       - name: Ensure remote deploy directory exists
         run: |
-          # Create a simple home-staging directory on the remote so scp has a parent to write to.
+          # Create a simple staging directory on the remote so scp has a parent to write to.
           SSH_PORT="${TARGET_SSH_PORT:-8022}"
-          echo "Ensuring remote home-staging directory exists (ssh port: $SSH_PORT)"
-          REMOTE_HOME_STAGE='"$HOME"/app/attendance/${DEPLOY_ENV}'
+          echo "Ensuring remote staging directory exists (ssh port: $SSH_PORT)"
 
-          # Use a straightforward ssh mkdir -p on the remote user's $HOME to avoid touching Termux root
-          if ! timeout 60s ssh -vvv -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p \"\$HOME/app/attendance/${DEPLOY_ENV}\"" 2>/tmp/ssh_mkdir.err; then
-            echo "--- SSH mkdir stderr (/tmp/ssh_mkdir.err) ---"
-            sed -n '1,200p' /tmp/ssh_mkdir.err || true
-            echo "--- end stderr ---"
-            echo "ERROR: Failed to create remote home-staging directory. See output above." >&2
-            echo "Running SSH diagnostic (whoami, HOME, id, uname) to help debug the remote environment"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} 'whoami; echo HOME="$HOME"; id; uname -a' 2>/tmp/ssh_diag.err || true
-            sed -n '1,200p' /tmp/ssh_diag.err || true
-            exit 1
+          # If TARGET_DEPLOY_PATH is provided (absolute remote path), use it as the staging dir.
+          # Otherwise fall back to the per-user home-based path: $HOME/app/attendance/${DEPLOY_ENV}
+          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
+            REMOTE_STAGE_DIR="${TARGET_DEPLOY_PATH%/}"
+            echo "Using TARGET_DEPLOY_PATH as remote staging dir: ${REMOTE_STAGE_DIR}"
+            if ! timeout 60s ssh -vvv -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p '${REMOTE_STAGE_DIR}'" 2>/tmp/ssh_mkdir.err; then
+              echo "--- SSH mkdir stderr (/tmp/ssh_mkdir.err) ---"
+              sed -n '1,200p' /tmp/ssh_mkdir.err || true
+              echo "--- end stderr ---"
+              echo "ERROR: Failed to create remote staging directory. See output above." >&2
+              exit 1
+            fi
+          else
+            echo "TARGET_DEPLOY_PATH not set; using per-user home staging: \$HOME/app/attendance/${DEPLOY_ENV}"
+            if ! timeout 60s ssh -vvv -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p \"\$HOME/app/attendance/${DEPLOY_ENV}\"" 2>/tmp/ssh_mkdir.err; then
+              echo "--- SSH mkdir stderr (/tmp/ssh_mkdir.err) ---"
+              sed -n '1,200p' /tmp/ssh_mkdir.err || true
+              echo "--- end stderr ---"
+              echo "ERROR: Failed to create remote home-staging directory. See output above." >&2
+              echo "Running SSH diagnostic (whoami, HOME, id, uname) to help debug the remote environment"
+              ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} 'whoami; echo HOME="$HOME"; id; uname -a' 2>/tmp/ssh_diag.err || true
+              sed -n '1,200p' /tmp/ssh_diag.err || true
+              exit 1
+            fi
+            REMOTE_STAGE_DIR='\$HOME/app/attendance/${DEPLOY_ENV}'
           fi
 
-          echo "Remote home-staging directory ensured: \$HOME/app/attendance/${DEPLOY_ENV}"
+          echo "Remote staging directory ensured: ${REMOTE_STAGE_DIR}"
+          # Persist the chosen staging dir for later steps
+          echo "REMOTE_STAGE_DIR=${REMOTE_STAGE_DIR}" >> $GITHUB_ENV
 
-          # Optionally attempt to create the distro-side directory inside proot (best-effort)
-          echo "Attempting to create distro-side target inside proot (if available)"
-          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- mkdir -p '/root/app/attendance/${DEPLOY_ENV}'" 2>/tmp/ssh_proot.err || {
+          # Optionally attempt to create the distro-side directory inside proot (best-effort).
+          PROOT_TARGET_DIR="/root/app/attendance/${DEPLOY_ENV}"
+          if [ -n "${TARGET_DEPLOY_PATH:-}" ]; then
+            case "${TARGET_DEPLOY_PATH}" in
+              /root/*) PROOT_TARGET_DIR="${TARGET_DEPLOY_PATH%/}" ;;
+              *) PROOT_TARGET_DIR="/root/app/attendance/${DEPLOY_ENV}" ;;
+            esac
+          fi
+          echo "Attempting to create distro-side target inside proot (if available): ${PROOT_TARGET_DIR}"
+          ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- mkdir -p '${PROOT_TARGET_DIR}'" 2>/tmp/ssh_proot.err || {
             echo "proot mkdir attempt failed (non-fatal). proot stderr:"; sed -n '1,200p' /tmp/ssh_proot.err || true; true
           }
         env:
@@ -183,7 +206,12 @@ jobs:
           }
           echo "Remote HOME: $REMOTE_HOME"
 
-          REMOTE_STAGE_DIR="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}"
+          # If REMOTE_STAGE_DIR was set by an earlier step (via $GITHUB_ENV), use it; otherwise compute from REMOTE_HOME
+          if [ -z "${REMOTE_STAGE_DIR:-}" ]; then
+            REMOTE_STAGE_DIR="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}"
+          else
+            echo "Using REMOTE_STAGE_DIR from environment: ${REMOTE_STAGE_DIR}"
+          fi
           echo "Ensuring remote staging dir exists: $REMOTE_STAGE_DIR"
           if ! ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "mkdir -p \"${REMOTE_STAGE_DIR}\"" 2>/tmp/ssh_mkdir_for_scp.err; then
             echo "Failed to create remote staging dir; stderr:"; sed -n '1,200p' /tmp/ssh_mkdir_for_scp.err || true
@@ -215,17 +243,25 @@ jobs:
           }
           echo "Remote HOME for verify: $REMOTE_HOME"
 
-          CHECK_PATH="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+          # Use REMOTE_STAGE_DIR if provided by earlier step, otherwise fall back to per-user home path
+          if [ -z "${REMOTE_STAGE_DIR:-}" ]; then
+            CHECK_PATH="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+            STAGE_DIR_FOR_CHECK="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}"
+          else
+            CHECK_PATH="${REMOTE_STAGE_DIR%/}/deploy.tar.gz"
+            STAGE_DIR_FOR_CHECK="${REMOTE_STAGE_DIR}"
+          fi
+
           echo "Verifying archive exists at: $CHECK_PATH"
 
           if ! ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f \"${CHECK_PATH}\" ]" 2>/tmp/ssh_verify.err; then
             echo "ERROR: deploy.tar.gz not found on target at ${CHECK_PATH}" >&2
             echo "Remote staging dir listing (for debugging):"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "ls -la \"${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}\" || true" 2>/tmp/ssh_verify_ls.err || true
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "ls -la \"${STAGE_DIR_FOR_CHECK}\" || true" 2>/tmp/ssh_verify_ls.err || true
             echo "--- ls stderr (if any) ---"
             sed -n '1,200p' /tmp/ssh_verify_ls.err || true
             echo "--- end ls stderr ---"
-            cat /tmp/ssh_verify.err || true
+            sed -n '1,200p' /tmp/ssh_verify.err || true
             exit 1
           fi
           echo "OK: deploy.tar.gz found at ${CHECK_PATH}"

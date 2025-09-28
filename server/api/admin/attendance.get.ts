@@ -70,6 +70,8 @@ export default defineEventHandler(async (event) => {
       lng: attendanceLog.lng,
       accuracy: attendanceLog.accuracy,
       shiftCode: attendanceLog.shiftCode,
+      shiftType: attendanceLog.shiftType,
+      earlyReason: (attendanceLog as any).earlyReason,
     })
     .from(attendanceLog)
     .where(and(inArray(attendanceLog.userId, userIds), gte(attendanceLog.date, startDate), lte(attendanceLog.date, endDate)))
@@ -82,38 +84,33 @@ export default defineEventHandler(async (event) => {
     allDays.push(ds)
   }
 
-  // Index logs by user/date
+  // Index logs by user/date and by shiftType so we can support multiple shifts per day
   const byUserDate: Record<string, Record<string, {
-    clockIn?: string
-    clockInLat?: number | null
-    clockInLng?: number | null
-    clockInAccuracy?: number | null
-    clockOut?: string
-    clockOutLat?: number | null
-    clockOutLng?: number | null
-    clockOutAccuracy?: number | null
-    ciShiftCode?: string | null
+    entries: Array<{
+      type: 'clock-in' | 'clock-out'
+      timestamp: string
+      lat?: number | null
+      lng?: number | null
+      accuracy?: number | null
+      shiftCode?: string | null
+      shiftType?: string | null
+    }>
   }>> = {}
   for (const l of logs) {
     const keyU = l.userId
     const keyD = l.date
     byUserDate[keyU] ||= {}
-    byUserDate[keyU][keyD] ||= {}
-    if (l.type === 'clock-in') {
-      if (!byUserDate[keyU][keyD].clockIn) {
-        byUserDate[keyU][keyD].clockIn = new Date(l.timestamp).toISOString()
-        byUserDate[keyU][keyD].clockInLat = l.lat ?? null
-        byUserDate[keyU][keyD].clockInLng = l.lng ?? null
-        byUserDate[keyU][keyD].clockInAccuracy = l.accuracy ?? null
-        byUserDate[keyU][keyD].ciShiftCode = (l as any).shiftCode ?? null
-      }
-    }
-    else if (l.type === 'clock-out') {
-      byUserDate[keyU][keyD].clockOut = new Date(l.timestamp).toISOString()
-      byUserDate[keyU][keyD].clockOutLat = l.lat ?? null
-      byUserDate[keyU][keyD].clockOutLng = l.lng ?? null
-      byUserDate[keyU][keyD].clockOutAccuracy = l.accuracy ?? null
-    }
+    byUserDate[keyU][keyD] ||= { entries: [] }
+    byUserDate[keyU][keyD].entries.push({
+      type: l.type as any,
+      timestamp: new Date(l.timestamp).toISOString(),
+      lat: l.lat ?? null,
+      lng: l.lng ?? null,
+      accuracy: l.accuracy ?? null,
+      shiftCode: (l as any).shiftCode ?? null,
+      shiftType: (l as any).shiftType ?? null,
+      earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
+    } as any)
   }
 
   // Map selected shift code and type from days table
@@ -133,53 +130,145 @@ export default defineEventHandler(async (event) => {
     name: u.name,
     username: u.username,
     byDate: Object.fromEntries(allDays.map((ds) => {
-      const shCode = shiftByUserDate[u.id]?.[ds]?.code || byUserDate[u.id]?.[ds]?.ciShiftCode || undefined
-      const shType = shiftByUserDate[u.id]?.[ds]?.type
-      const shiftDef = shCode ? shiftMap[shCode] : undefined
-      const v = byUserDate[u.id]?.[ds] || {}
+      // We want to support multiple shift entries per day (harian + bantuan).
+      const explicitShift = shiftByUserDate[u.id]?.[ds]
+      const entries = (byUserDate[u.id]?.[ds]?.entries ?? []) as any[]
+      const _shiftDef = (explicitShift?.code && shiftMap[explicitShift.code]) || undefined
       // Compute lateMs server-side to keep UI simple and consistent
-      let lateMs = 0
-      if (v.clockIn && shiftDef) {
-        const ci = new Date(v.clockIn)
-        const [shStr, smStr] = (shiftDef.start || '').split(':')
-        const [ehStr, emStr] = (shiftDef.end || '').split(':')
-        const sh = Number(shStr)
-        const sm = Number(smStr)
-        const eh = Number(ehStr)
-        const em = Number(emStr)
-        if (!Number.isNaN(sh) && !Number.isNaN(sm) && !Number.isNaN(eh) && !Number.isNaN(em)) {
-          const startMin = sh * 60 + sm
-          const endMin = eh * 60 + em
-          const ciMin = ci.getHours() * 60 + ci.getMinutes()
-          const crossesMidnight = startMin > endMin
-          let y = ci.getFullYear()
-          let m = ci.getMonth()
-          let d = ci.getDate()
-          if (crossesMidnight && ciMin < endMin) {
-            const prev = new Date(ci)
-            prev.setDate(prev.getDate() - 1)
-            y = prev.getFullYear()
-            m = prev.getMonth()
-            d = prev.getDate()
+      // For admin grid, compute aggregated values: count of distinct shiftTypes with a clock-in, earliest clock-in per shift, latest clock-out per shift
+      const groupedByShiftType: Record<string, any> = {}
+      for (const e of entries) {
+        const st = e.shiftType || 'unknown'
+        groupedByShiftType[st] ||= {} as any
+        // keep earliest clock-in for "start of shift" calculations (existing behavior)
+        if (e.type === 'clock-in') {
+          if (!groupedByShiftType[st].clockIn || new Date(e.timestamp) < new Date(groupedByShiftType[st].clockIn)) {
+            groupedByShiftType[st].clockIn = e.timestamp
+            groupedByShiftType[st].clockInLat = e.lat
+            groupedByShiftType[st].clockInLng = e.lng
+            groupedByShiftType[st].clockInAccuracy = e.accuracy
+            groupedByShiftType[st].shiftCode = e.shiftCode
           }
-          const startDate = new Date(y, m, d, sh, sm, 0, 0)
-          const diff = ci.getTime() - startDate.getTime()
-          lateMs = Math.max(0, diff)
+          // also track the latest clock-in so callers can see the most recent activity
+          if (!groupedByShiftType[st].clockInLast || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockInLast)) {
+            groupedByShiftType[st].clockInLast = e.timestamp
+            groupedByShiftType[st].clockInLastLat = e.lat
+            groupedByShiftType[st].clockInLastLng = e.lng
+            groupedByShiftType[st].clockInLastAccuracy = e.accuracy
+            // keep the most recent shiftCode too (may be null)
+            groupedByShiftType[st].shiftCodeLast = e.shiftCode
+          }
+        }
+        else if (e.type === 'clock-out') {
+          if (!groupedByShiftType[st].clockOut || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockOut)) {
+            groupedByShiftType[st].clockOut = e.timestamp
+            groupedByShiftType[st].clockOutLat = e.lat
+            groupedByShiftType[st].clockOutLng = e.lng
+            groupedByShiftType[st].clockOutAccuracy = e.accuracy
+            // attach any early clock-out reason so admin UI/export can show it
+            groupedByShiftType[st].earlyReason = (e as any).earlyReason ?? (e as any).early_reason ?? null
+          }
         }
       }
+
+      // compute lateMs per shift using shiftMap where possible and sum
+      let totalLateMs = 0
+      let totalEarlyMs = 0
+      let countWorkingShifts = 0
+      let harian = 0
+      let bantuan = 0
+      for (const [st, val] of Object.entries(groupedByShiftType)) {
+        if (val.clockIn) {
+          countWorkingShifts++
+          if (st === 'harian') harian++
+          else if (st === 'bantuan') bantuan++
+          const sd = val.shiftCode ? shiftMap[val.shiftCode] : undefined
+          if (sd) {
+            const ci = new Date(val.clockIn)
+            const partsStart = (sd.start || '').split(':')
+            const partsEnd = (sd.end || '').split(':')
+            const sh = Number(partsStart[0])
+            const sm = Number(partsStart[1])
+            const eh = Number(partsEnd[0])
+            const em = Number(partsEnd[1])
+            if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
+              const startMin = sh * 60 + sm
+              const endMin = eh * 60 + em
+              // anchor schedule to the attendance day `ds` (YYYY-MM-DD) to avoid timezone/date shifts
+              const [yy, mm2, dd2] = ds.split('-').map(Number)
+              let y = yy
+              let m = mm2 - 1
+              let d = dd2
+              // If shift crosses midnight and the clock-in minute is before endMin, it likely belongs to the next-day portion
+              const ciMin = ci.getHours() * 60 + ci.getMinutes()
+              if (startMin > endMin && ciMin < endMin) {
+                // treat startDate as previous day
+                const prev = new Date(y, m, d)
+                prev.setDate(prev.getDate() - 1)
+                y = prev.getFullYear()
+                m = prev.getMonth()
+                d = prev.getDate()
+              }
+              const startDate = new Date(y, m, d, sh, sm, 0, 0)
+              totalLateMs += Math.max(0, ci.getTime() - startDate.getTime())
+            }
+          }
+        }
+        if (val.clockOut && val.shiftCode) {
+          const sd = shiftMap[val.shiftCode]
+          if (sd) {
+            const co = new Date(val.clockOut)
+            const partsStart = (sd.start || '').split(':')
+            const partsEnd = (sd.end || '').split(':')
+            const sh = Number(partsStart[0])
+            const sm = Number(partsStart[1])
+            const eh = Number(partsEnd[0])
+            const em = Number(partsEnd[1])
+            if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
+              const startMin = sh * 60 + sm
+              const endMin = eh * 60 + em
+              // anchor schedule to the attendance day `ds` (YYYY-MM-DD)
+              const [yy, mm2, dd2] = ds.split('-').map(Number)
+              let y = yy
+              let m = mm2 - 1
+              let d = dd2
+              const crosses = startMin > endMin
+              // If shift crosses midnight and clockOut time is before endMin, it belongs to the next-day portion
+              if (crosses && (co.getHours() * 60 + co.getMinutes()) < endMin) {
+                const prev = new Date(y, m, d)
+                prev.setDate(prev.getDate() - 1)
+                y = prev.getFullYear()
+                m = prev.getMonth()
+                d = prev.getDate()
+              }
+              const startDate = new Date(y, m, d, sh, sm, 0, 0)
+              const endDate = new Date(startDate)
+              if (startMin > endMin) endDate.setDate(endDate.getDate() + 1)
+              endDate.setHours(eh, em, 0, 0)
+              totalEarlyMs += Math.max(0, endDate.getTime() - co.getTime())
+            }
+          }
+        }
+      }
+
       return [ds, {
-        clockIn: v.clockIn,
-        clockInLat: v.clockInLat ?? undefined,
-        clockInLng: v.clockInLng ?? undefined,
-        clockInAccuracy: v.clockInAccuracy ?? undefined,
-        clockOut: v.clockOut,
-        clockOutLat: v.clockOutLat ?? undefined,
-        clockOutLng: v.clockOutLng ?? undefined,
-        clockOutAccuracy: v.clockOutAccuracy ?? undefined,
-        shiftCode: shCode,
-        shiftType: shType,
-        shift: shiftDef,
-        lateMs,
+        grouped: groupedByShiftType,
+        clockIn: undefined,
+        clockOut: undefined,
+        clockInLat: undefined,
+        clockInLng: undefined,
+        clockInAccuracy: undefined,
+        clockOutLat: undefined,
+        clockOutLng: undefined,
+        clockOutAccuracy: undefined,
+        shiftCode: undefined,
+        shiftType: undefined,
+        shift: undefined,
+        lateMs: totalLateMs,
+        earlyMs: totalEarlyMs,
+        workingShifts: countWorkingShifts,
+        harian,
+        bantuan,
       } as const]
     })),
   }))

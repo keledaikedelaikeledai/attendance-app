@@ -10,7 +10,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, date } = body as { shiftCode: string, date?: string }
+  const { shiftCode, date, shiftType } = body as { shiftCode: string, date?: string, shiftType?: 'harian' | 'bantuan' }
   if (!shiftCode)
     throw createError({ statusCode: 400, statusMessage: 'shiftCode required' })
 
@@ -21,12 +21,12 @@ export default defineEventHandler(async (event) => {
 
   const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate))).limit(1)
   if (!existing) {
-    await db.insert(attendanceDay).values({ id: crypto.randomUUID(), userId, date: theDate, selectedShiftCode: shiftCode, createdAt: now, updatedAt: now })
+    await db.insert(attendanceDay).values({ id: crypto.randomUUID(), userId, date: theDate, selectedShiftCode: shiftCode, shiftType: shiftType ?? 'harian', createdAt: now, updatedAt: now })
   }
   else {
-    await db.update(attendanceDay).set({ selectedShiftCode: shiftCode, updatedAt: now }).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate)))
+    await db.update(attendanceDay).set({ selectedShiftCode: shiftCode, ...(shiftType ? { shiftType } : {}), updatedAt: now }).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate)))
   }
 
   const [day2] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate))).limit(1)
-  return { date: theDate, selectedShiftCode: day2?.selectedShiftCode ?? null }
+  return { date: theDate, selectedShiftCode: day2?.selectedShiftCode ?? null, shiftType: (day2 as any)?.shiftType ?? null }
 })

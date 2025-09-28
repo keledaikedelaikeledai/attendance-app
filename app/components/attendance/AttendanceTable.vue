@@ -3,6 +3,7 @@ import type { TableColumn } from '@nuxt/ui'
 import type { AttendanceData } from '~/pages/admin/attendance.vue'
 import { createColumnHelper } from '@tanstack/vue-table'
 import { h, onMounted } from 'vue'
+import * as attendanceTime from '~/composables/useAttendanceTime'
 
 const props = defineProps<{
   data: AttendanceData
@@ -11,43 +12,7 @@ const props = defineProps<{
 
 const attendances = computed(() => props.data?.rows || [])
 
-function computeShiftStart(ciIso?: string, def?: { start: string, end: string }) {
-  if (!ciIso || !def)
-    return null
-  const d = new Date(ciIso)
-  const [shStr, smStr] = (def.start || '').split(':')
-  const [ehStr, emStr] = (def.end || '').split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  if ([sh, sm, eh, em].some(n => Number.isNaN(n)))
-    return null
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  const ciMin = d.getHours() * 60 + d.getMinutes()
-  const crosses = startMin > endMin
-  let y = d.getFullYear()
-  let m = d.getMonth()
-  let day = d.getDate()
-  if (crosses && ciMin < endMin) {
-    const prev = new Date(d)
-    prev.setDate(prev.getDate() - 1)
-    y = prev.getFullYear()
-    m = prev.getMonth()
-    day = prev.getDate()
-  }
-  return new Date(y, m, day, sh, sm, 0, 0)
-}
-
-function humanizeMinutes(ms: number) {
-  if (!ms)
-    return '0m'
-  const total = Math.ceil(ms / 60000)
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return h ? `${h}h ${m}m` : `${m}m`
-}
+// helpers imported from composable
 
 function shiftTypeLabel(t?: 'harian' | 'bantuan') {
   if (!t)
@@ -55,41 +20,17 @@ function shiftTypeLabel(t?: 'harian' | 'bantuan') {
   return t === 'bantuan' ? 'Shift Bantuan' : 'Shift Harian'
 }
 
-function dayLateMs(cell: any) {
-  if (!cell?.clockIn)
-    return 0
-  if (typeof cell?.lateMs === 'number')
-    return cell.lateMs
-  const start = computeShiftStart(cell.clockIn, cell.shift)
-  if (!start)
-    return 0
-  const diff = new Date(cell.clockIn).getTime() - start.getTime()
-  return Math.max(0, diff)
-}
+// Shifts cache so multiple table instances don't duplicate network calls
+// shifts ensured via composable ensureShifts
 
-function dayEarlyMs(cell: any) {
-  if (!cell?.clockOut || !cell?.shift)
-    return 0
-  const start = computeShiftStart(cell.clockIn || cell.clockOut, cell.shift)
-  if (!start)
-    return 0
-  const [ehStr, emStr] = (cell.shift.end || '').split(':')
-  const eh = Number(ehStr)
-  const em = Number(emStr)
-  if (Number.isNaN(eh) || Number.isNaN(em))
-    return 0
-  const [shStr, smStr] = (cell.shift.start || '').split(':')
-  const sh = Number(shStr)
-  const sm = Number(smStr)
-  const crosses = (sh * 60 + sm) > (eh * 60 + em)
-  const end = new Date(start)
-  if (crosses)
-    end.setDate(end.getDate() + 1)
-  end.setHours(eh, em, 0, 0)
-  const co = new Date(cell.clockOut)
-  const diff = end.getTime() - co.getTime()
-  return Math.max(0, diff)
-}
+// (removed legacy day-level helpers; per-entry helpers `entryLateMs` and
+// `entryEarlyMs` are used for stacked rendering below)
+
+// entryLateMs/entryEarlyMs imported from composable
+
+// Normalize a cell into an array of shift entries. Supports legacy single-shift cell
+// and the newer cell.grouped shape where grouped is an object keyed by shiftType.
+// normalizeCell imported from composable
 
 const columnHelper = createColumnHelper<typeof attendances.value[0]>()
 
@@ -98,46 +39,76 @@ const columns = computed(() => {
     return []
 
   function summarizeRow(row: any) {
-    const cells: any[] = Object.values(row?.byDate || {})
-    const workingDays = cells.filter(c => c?.clockIn).length
-    const harian = cells.filter(c => c?.clockIn && c?.shiftType === 'harian').length
-    const bantuan = cells.filter(c => c?.clockIn && c?.shiftType === 'bantuan').length
-    const lateMs = cells.reduce((acc, c) => {
-      if (!c?.clockIn)
-        return acc
-      if (typeof c?.lateMs === 'number')
-        return acc + c.lateMs
-      const start = computeShiftStart(c.clockIn, c.shift)
-      if (!start)
-        return acc
-      const diff = new Date(c.clockIn).getTime() - start.getTime()
-      return acc + Math.max(0, diff)
+    const byDate = row?.byDate || {}
+    // flatten entries for counting shift types
+    const entries: any[] = Object.values(byDate).flatMap((c: any) => attendanceTime.normalizeCell(c))
+    // Count working days as the total number of shifts worked.
+    // If the server provides `workingShifts` for a date, use that; otherwise count entries with a clockIn.
+    const workingDays = Object.values(byDate).reduce((sum: number, c: any) => {
+      if (!c) return sum
+      if (typeof c?.workingShifts === 'number') return sum + Math.max(0, Math.floor(c.workingShifts))
+      const es = attendanceTime.normalizeCell(c)
+      const countIns = es.filter((e: any) => e?.clockIn).length
+      return sum + countIns
     }, 0)
-    const earlyMs = cells.reduce((acc, c) => {
-      if (!c?.clockOut || !c?.shift)
+    const harian = entries.filter(c => c?.clockIn && c?.shiftType === 'harian').length
+    const bantuan = entries.filter(c => c?.clockIn && c?.shiftType === 'bantuan').length
+
+    // Compute lateMs and earlyMs by iterating per-date cell so we can honor
+    // any server-provided aggregated values that live on the parent cell
+    // (including grouped cells).
+    const lateMs = Object.values(byDate).reduce((acc: number, cell: any) => {
+      if (!cell)
         return acc
-      const start = computeShiftStart(c.clockIn || c.clockOut, c.shift)
-      if (!start)
-        return acc
-      const [shStr, smStr] = (c.shift.start || '').split(':')
-      const [ehStr, emStr] = (c.shift.end || '').split(':')
-      const sh = Number(shStr)
-      const sm = Number(smStr)
-      const eh = Number(ehStr)
-      const em = Number(emStr)
-      if ([sh, sm, eh, em].some(n => Number.isNaN(n)))
-        return acc
-      const startMin = sh * 60 + sm
-      const endMin = eh * 60 + em
-      const crosses = startMin > endMin
-      const end = new Date(start)
-      if (crosses)
-        end.setDate(end.getDate() + 1)
-      end.setHours(eh, em, 0, 0)
-      const co = new Date(c.clockOut)
-      const diff = end.getTime() - co.getTime()
-      return acc + Math.max(0, diff)
+      if (typeof cell?.lateMs === 'number')
+        return acc + cell.lateMs
+      // otherwise sum per-entry values for this cell
+      const es = attendanceTime.normalizeCell(cell)
+      const v = es.reduce((a: number, c: any) => {
+        if (!c?.clockIn)
+          return a
+        if (typeof c?.lateMs === 'number')
+          return a + c.lateMs
+        const start = attendanceTime.computeShiftStartForEntry(c.clockIn, c)
+        if (!start)
+          return a
+        const diff = new Date(c.clockIn).getTime() - start.getTime()
+        return a + Math.max(0, diff)
+      }, 0)
+      return acc + v
     }, 0)
+
+    const earlyMs = Object.values(byDate).reduce((acc: number, cell: any) => {
+      if (!cell) return acc
+      // Prefer server-provided aggregate when present
+      if (typeof cell?.earlyMs === 'number') return acc + cell.earlyMs
+      // Otherwise sum per-entry values for this cell
+      const es = attendanceTime.normalizeCell(cell)
+      const v = es.reduce((a: number, c: any) => {
+        if (!c?.clockOut || !c?.shift) return a
+        if (typeof c?.earlyMs === 'number') return a + c.earlyMs
+        const start = attendanceTime.computeShiftStartForEntry(c.clockIn || c.clockOut, c)
+        if (!start) return a
+        const [shStr, smStr] = (c.shift.start || '').split(':')
+        const [ehStr, emStr] = (c.shift.end || '').split(':')
+        const sh = Number(shStr)
+        const sm = Number(smStr)
+        const eh = Number(ehStr)
+        const em = Number(emStr)
+        if ([sh, sm, eh, em].some(n => Number.isNaN(n))) return a
+        const startMin = sh * 60 + sm
+        const endMin = eh * 60 + em
+        const crosses = startMin > endMin
+        const end = new Date(start)
+        if (crosses) end.setDate(end.getDate() + 1)
+        end.setHours(eh, em, 0, 0)
+        const co = new Date(c.clockOut)
+        const diff = end.getTime() - co.getTime()
+        return a + Math.max(0, diff)
+      }, 0)
+      return acc + v
+    }, 0)
+
     return { workingDays, harian, bantuan, lateMs, earlyMs }
   }
 
@@ -179,7 +150,7 @@ const columns = computed(() => {
       header: () => h('div', { class: 'text-center w-[120px]' }, 'Keterlambatan'),
       cell: (info) => {
         const s = summarizeRow(info.row.original)
-        return h('div', { class: 'text-center w-[120px]' }, humanizeMinutes(s.lateMs))
+        return h('div', { class: 'text-center w-[120px]' }, attendanceTime.humanizeMinutes(s.lateMs))
       },
       size: 120,
     }) as unknown as TableColumn<typeof attendances.value[0]>,
@@ -188,7 +159,7 @@ const columns = computed(() => {
       header: () => h('div', { class: 'text-center w-[120px]' }, 'Cepat Pulang'),
       cell: (info) => {
         const s = summarizeRow(info.row.original)
-        return h('div', { class: 'text-center w-[120px]' }, humanizeMinutes(s.earlyMs))
+        return h('div', { class: 'text-center w-[120px]' }, attendanceTime.humanizeMinutes(s.earlyMs))
       },
       size: 120,
     }) as unknown as TableColumn<typeof attendances.value[0]>,
@@ -199,25 +170,60 @@ const columns = computed(() => {
       id: `day-${day}`,
       header: () => h('div', { class: 'text-center' }, day.slice(-2)),
       columns: [
-        columnHelper.accessor((row: any) => row?.byDate?.[day]?.clockIn as string | undefined, {
+        columnHelper.accessor((row: any) => {
+          const cell = row?.byDate?.[day]
+          const entries = attendanceTime.normalizeCell(cell)
+          // return sorted clockIn times (may be multiple)
+          const times = entries.map(e => e?.clockIn).filter(Boolean).sort()
+          return times.length ? times as string[] : undefined
+        }, {
           id: `in-${day}`,
           header: () => h('div', { class: 'text-center w-[120px]' }, 'M'),
           cell: (info) => {
             const cell = (info.row.original as any)?.byDate?.[day]
-            const isLate = dayLateMs(cell) > 0
-            const cls = `text-center w-[120px] ${isLate ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded' : ''}`
-            return h('div', { class: cls }, formatTime(cell?.clockIn))
+            const vals = info.getValue() as string[] | undefined
+            const entries = attendanceTime.normalizeCell(cell)
+            // Render as split top/bottom slots (support up to 2 shifts)
+            const topT = vals && vals[0] ? vals[0] : undefined
+            const botT = vals && vals[1] ? vals[1] : undefined
+            const eTop = topT ? (entries[0] || entries.find((x: any) => x.clockIn === topT) || {}) : {}
+            const eBot = botT ? (entries[1] || entries.find((x: any) => x.clockIn === botT) || {}) : {}
+            const topLate = topT ? attendanceTime.entryLateMs(eTop, cell, entries) > 0 : false
+            const botLate = botT ? attendanceTime.entryLateMs(eBot, cell, entries) > 0 : false
+            const slotCls = (isHighlighted: boolean) => `w-[120px] h-6 flex items-center justify-center ${isHighlighted ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded' : ''}`
+            const topNode = h('div', { class: slotCls(topLate), style: { lineHeight: '1' } }, topT ? formatTime(topT) : '')
+            const botNode = h('div', { class: slotCls(botLate), style: { lineHeight: '1' } }, botT ? formatTime(botT) : '')
+            return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
         }),
-        columnHelper.accessor((row: any) => row?.byDate?.[day]?.clockOut as string | undefined, {
+        columnHelper.accessor((row: any) => {
+          const cell = row?.byDate?.[day]
+          const entries = attendanceTime.normalizeCell(cell)
+          // return clockOut times sorted descending so display order matches ins
+          const times = entries.map(e => e?.clockOut).filter(Boolean).sort().reverse()
+          return times.length ? times as string[] : undefined
+        }, {
           id: `out-${day}`,
           header: () => h('div', { class: 'text-center w-[120px]' }, 'P'),
           cell: (info) => {
             const cell = (info.row.original as any)?.byDate?.[day]
-            const isEarly = dayEarlyMs(cell) > 0
-            const cls = `text-center w-[120px] ${isEarly ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded' : ''}`
-            return h('div', { class: cls }, formatTime(cell?.clockOut))
+            const vals = info.getValue() as string[] | undefined
+            const entries = attendanceTime.normalizeCell(cell)
+            const topT = vals && vals[0] ? vals[0] : undefined
+            const botT = vals && vals[1] ? vals[1] : undefined
+            const eTop = topT ? (entries[0] || entries.find((x: any) => x.clockOut === topT) || {}) : {}
+            const eBot = botT ? (entries[1] || entries.find((x: any) => x.clockOut === botT) || {}) : {}
+            const topEarly = topT ? attendanceTime.entryEarlyMs(eTop, cell, entries) > 0 : false
+            const botEarly = botT ? attendanceTime.entryEarlyMs(eBot, cell, entries) > 0 : false
+            const slotCls = (isHighlighted: boolean) => `w-[120px] h-6 flex items-center justify-center ${isHighlighted ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded' : ''}`
+            const topInner = [] as any[]
+            if (topT) topInner.push(h('div', formatTime(topT)))
+            const botInner = [] as any[]
+            if (botT) botInner.push(h('div', formatTime(botT)))
+            const topNode = h('div', { class: slotCls(topEarly), style: { lineHeight: '1' } }, topInner)
+            const botNode = h('div', { class: slotCls(botEarly), style: { lineHeight: '1' } }, botInner)
+            return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
         }),
@@ -226,7 +232,14 @@ const columns = computed(() => {
           header: () => h('div', { class: 'text-center w-[120px]' }, 'T'),
           cell: (info) => {
             const cell = (info.row.original as any)?.byDate?.[day]
-            return h('div', { class: 'text-center w-[120px]' }, humanizeMinutes(dayLateMs(cell)))
+            const entries = attendanceTime.normalizeCell(cell)
+            const topE = entries[0] || {}
+            const botE = entries[1] || {}
+            const topMs = attendanceTime.entryLateMs(topE, cell, entries)
+            const botMs = attendanceTime.entryLateMs(botE, cell, entries)
+            const topNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, topMs > 0 ? attendanceTime.humanizeMinutes(topMs) : '')
+            const botNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botMs > 0 ? attendanceTime.humanizeMinutes(botMs) : '')
+            return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
         }) as unknown as TableColumn<typeof attendances.value[0]>,
@@ -235,7 +248,14 @@ const columns = computed(() => {
           header: () => h('div', { class: 'text-center w-[120px]' }, 'CP'),
           cell: (info) => {
             const cell = (info.row.original as any)?.byDate?.[day]
-            return h('div', { class: 'text-center w-[120px]' }, humanizeMinutes(dayEarlyMs(cell)))
+            const entries = attendanceTime.normalizeCell(cell)
+            const topE = entries[0] || {}
+            const botE = entries[1] || {}
+            const topMs = attendanceTime.entryEarlyMs(topE, cell, entries)
+            const botMs = attendanceTime.entryEarlyMs(botE, cell, entries)
+            const topNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, topMs > 0 ? attendanceTime.humanizeMinutes(topMs) : '')
+            const botNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botMs > 0 ? attendanceTime.humanizeMinutes(botMs) : '')
+            return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
         }) as unknown as TableColumn<typeof attendances.value[0]>,
@@ -244,9 +264,34 @@ const columns = computed(() => {
           header: () => h('div', { class: 'text-center w-[120px]' }, 'Shift'),
           cell: (info) => {
             const cell = (info.row.original as any)?.byDate?.[day]
-            return h('div', { class: 'text-center w-[120px]' }, shiftTypeLabel(cell?.shiftType))
+            const entries = attendanceTime.normalizeCell(cell)
+            const topE = entries[0] || {}
+            const botE = entries[1] || {}
+            const topDef = topE?.shiftCode ? attendanceTime.shiftsMap.value?.get(topE.shiftCode) : undefined
+            const botDef = botE?.shiftCode ? attendanceTime.shiftsMap.value?.get(botE.shiftCode) : undefined
+            const topLabel = topE?.shiftType ? shiftTypeLabel(topE.shiftType as 'harian' | 'bantuan' | undefined) : (topDef ? (topDef.label || topDef.code) : (topE?.shiftCode || ''))
+            const botLabel = botE?.shiftType ? shiftTypeLabel(botE.shiftType as 'harian' | 'bantuan' | undefined) : (botDef ? (botDef.label || botDef.code) : (botE?.shiftCode || ''))
+            const topNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, topLabel || '')
+            const botNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botLabel || '')
+            return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
+        }) as unknown as TableColumn<typeof attendances.value[0]>,
+        columnHelper.display({
+          id: `ket-${day}`,
+          header: () => h('div', { class: 'text-center w-[220px]' }, 'Ket'),
+          cell: (info) => {
+            const cell = (info.row.original as any)?.byDate?.[day]
+            const entries = attendanceTime.normalizeCell(cell)
+            const topE = entries[0] || {}
+            const botE = entries[1] || {}
+            const topVal = topE?.earlyReason ? String(topE.earlyReason) : ''
+            const botVal = botE?.earlyReason ? String(botE.earlyReason) : ''
+            const topNode = h('div', { class: 'w-[220px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, topVal)
+            const botNode = h('div', { class: 'w-[220px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botVal)
+            return h('div', { class: 'text-center w-[220px] flex flex-col items-center justify-center' }, [topNode, botNode])
+          },
+          size: 220,
         }) as unknown as TableColumn<typeof attendances.value[0]>,
       ],
     }) as unknown as TableColumn<typeof attendances.value[0]>,
@@ -261,7 +306,9 @@ function formatTime(iso?: string) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-onMounted(() => {})
+onMounted(() => {
+  attendanceTime.ensureShifts()
+})
 </script>
 
 <template>
