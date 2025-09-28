@@ -159,7 +159,7 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // prepare logs payload (include shiftType)
+    // prepare full mapped logs for this date
     const mappedLogs = (dayLogs as any[]).map(l => ({
       id: l.id,
       type: l.type,
@@ -172,36 +172,59 @@ export default defineEventHandler(async (event) => {
       earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
     }))
 
-    // compute lateMs as sum of per-shift lateness for this date
-    let lateMs = 0
-    for (const st of typesWorked) {
-      const ci = (ciByType.get(st) || []).sort((a: any, b: any) => a.timestamp - b.timestamp)[0]
-      const def = (ci && ci.shiftCode) ? shiftMap.get(ci.shiftCode) : undefined
-      if (def && ci) {
-        const { startDate: sStart } = computeShiftSpan(new Date(ci.timestamp as any), def.start, def.end)
-        const cin = new Date(ci.timestamp as any)
-        lateMs += Math.max(0, cin.getTime() - sStart.getTime())
-      }
+    // Group logs into shift-level items. Prefer grouping by shiftType (harian/bantuan),
+    // and choose a representative shiftCode when available (clock-in.shiftCode or clock-out.shiftCode).
+    const types = new Set<string>()
+    for (const l of mappedLogs) {
+      types.add(l.shiftType || 'unknown')
     }
 
-    const firstCi = mappedLogs.find((x: any) => x.type === 'clock-in')
-    const lastCo = mappedLogs.slice().reverse().find((x: any) => x.type === 'clock-out')
-    daySummaries.push({
-      date,
-      selectedShiftCode: dayInfo.selectedShiftCode ?? null,
-      shiftType: (dayInfo as any)?.shiftType ?? null,
-      // keep legacy single clockIn/clockOut fields for compatibility (earliest/ latest)
-      clockIn: firstCi ? firstCi.timestamp : null,
-      clockOut: lastCo ? lastCo.timestamp : null,
-      clockInLat: firstCi?.lat ?? null,
-      clockInLng: firstCi?.lng ?? null,
-      clockInAccuracy: firstCi?.accuracy ?? null,
-      clockOutLat: lastCo?.lat ?? null,
-      clockOutLng: lastCo?.lng ?? null,
-      clockOutAccuracy: lastCo?.accuracy ?? null,
-      lateMs,
-      logs: mappedLogs,
-    })
+    for (const st of Array.from(types)) {
+      // logs belonging to this shift group
+      const groupLogs = mappedLogs.filter(l => (l.shiftType || 'unknown') === st)
+      if (!groupLogs.length) continue
+
+      const ins = groupLogs.filter(g => g.type === 'clock-in').sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      const outs = groupLogs.filter(g => g.type === 'clock-out').sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      const clockIn = ins[0] ?? null
+      const clockOut = outs.length ? outs[outs.length - 1] : null
+
+      // prefer shiftCode from clockIn, then clockOut, else null
+      const chosenShiftCode = clockIn?.shiftCode ?? clockOut?.shiftCode ?? null
+
+      // compute per-shift lateMs and earlyMs if we have a shift definition
+      let lateMsForShift = 0
+      let earlyMsForShift = 0
+      if (chosenShiftCode) {
+        const def = shiftMap.get(chosenShiftCode)
+        if (def && clockIn) {
+          const { startDate: sStart, endDate: sEnd } = computeShiftSpan(new Date(clockIn.timestamp as any), def.start, def.end)
+          const cin = new Date(clockIn.timestamp as any)
+          if (cin > sStart) lateMsForShift = Math.max(0, cin.getTime() - sStart.getTime())
+          if (clockOut) {
+            const cout = new Date(clockOut.timestamp as any)
+            if (cout < sEnd) earlyMsForShift = Math.max(0, sEnd.getTime() - cout.getTime())
+          }
+        }
+      }
+
+      daySummaries.push({
+        date,
+        selectedShiftCode: chosenShiftCode,
+        shiftType: st === 'unknown' ? null : st,
+        clockIn: clockIn ? clockIn.timestamp : null,
+        clockOut: clockOut ? clockOut.timestamp : null,
+        clockInLat: clockIn?.lat ?? null,
+        clockInLng: clockIn?.lng ?? null,
+        clockInAccuracy: clockIn?.accuracy ?? null,
+        clockOutLat: clockOut?.lat ?? null,
+        clockOutLng: clockOut?.lng ?? null,
+        clockOutAccuracy: clockOut?.accuracy ?? null,
+        lateMs: lateMsForShift,
+        earlyMs: earlyMsForShift,
+        logs: groupLogs,
+      })
+    }
   }
 
   return {
