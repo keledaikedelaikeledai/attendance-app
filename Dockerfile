@@ -5,8 +5,13 @@
 FROM oven/bun:latest AS builder
 WORKDIR /app
 
+# Ensure apt is non-interactive during automated builds and install build deps
+ENV DEBIAN_FRONTEND=noninteractive
+ENV NODE_ENV=development
+ENV LANG=C.UTF-8
+
 # Install minimal build deps needed for native modules
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -yq --no-install-recommends \
   python3 \
   make \
   g++ \
@@ -14,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libsqlite3-dev \
   unzip \
   ca-certificates \
+  fonts-dejavu-core \
+  fontconfig \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy manifest files first for cached layer installs
