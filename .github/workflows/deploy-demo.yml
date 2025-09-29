@@ -45,13 +45,15 @@ jobs:
           set -euo pipefail
           echo "Building runtime artifacts for linux/arm64 inside container"
           docker run --rm --platform linux/arm64 \
-            -u "$(id -u):$(id -g)" \
+            --env HOST_UID="$(id -u)" \
+            --env HOST_GID="$(id -g)" \
             -e HOME=/work \
             -v "${PWD}":/work \
             -w /work \
             node:20-bullseye-slim bash -lc '\
               set -euo pipefail; \
               echo "Preparing container: apt-get update && install curl/ca-certificates"; \
+              export DEBIAN_FRONTEND=noninteractive; \
               apt-get update -y && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*; \
               echo "Installing bun into HOME=$HOME"; \
               curl -fsSL https://bun.sh/install | bash; \
@@ -60,7 +62,10 @@ jobs:
               echo "Running bun install (production + optional)"; \
               bun install --production --optional || true; \
               echo "Running bun build"; \
-              bun run build -- --preset bun || true;'
+              bun run build -- --preset bun || true; \
+              # Ensure files created in /work are owned by the host runner user
+              echo "Adjusting ownership of /work to ${HOST_UID:-1000}:${HOST_GID:-1000}"; \
+              chown -R "${HOST_UID:-1000}:${HOST_GID:-1000}" /work || true;'
 
       - name: Prepare deploy archive
         run: |
