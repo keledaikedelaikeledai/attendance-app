@@ -51,6 +51,8 @@ jobs:
             -w /work \
             node:20-bullseye-slim bash -lc '\
               set -euo pipefail; \
+              echo "Preparing container: apt-get update && install curl/ca-certificates"; \
+              apt-get update -y && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*; \
               echo "Installing bun into HOME=$HOME"; \
               curl -fsSL https://bun.sh/install | bash; \
               export PATH="$HOME/.bun/bin:$PATH"; \
