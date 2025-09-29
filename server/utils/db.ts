@@ -25,7 +25,8 @@ if (shouldUseSqlite3) {
   drizzle = drizzleModule.drizzle
 }
 else {
-  const clientModule = require('@libsql/client/http') as { createClient: CreateClientFn }
+  // Use the web/http-compatible client (pure JS) to avoid native libsql bindings on ARM
+  const clientModule = require('@libsql/client/web') as { createClient: CreateClientFn }
   const drizzleModule = require('drizzle-orm/libsql/web') as { drizzle: DrizzleFn }
   createClient = clientModule.createClient
   drizzle = drizzleModule.drizzle
