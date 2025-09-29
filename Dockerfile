@@ -62,8 +62,7 @@ COPY --from=builder --chown=1000:1000 /app/server/database/migrations ./server/d
 COPY --from=builder --chown=1000:1000 /app/server/database/schemas ./server/database/schemas
 
 # Copy optional entrypoint (keeps behavior consistent if present)
-COPY --chown=1000:1000 ./scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh || true
+# (removed using docker-entrypoint.sh; migrations are not run from the image)
 
 # Expose the PORT (Dokku/Dokploy will set $PORT at runtime)
 EXPOSE ${PORT}
