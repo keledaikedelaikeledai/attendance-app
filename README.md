@@ -145,6 +145,7 @@ Required variables (see `.env.example`):
 
 - `NUXT_DB_URL` – Turso URL (libsql://…) or local `file:sqlite.db`
 - `NUXT_DB_AUTH_TOKEN` – Turso auth token (omit/empty for local file)
+- `NUXT_DB_DRIVER` (optional) – force `http` or `sqlite3`; defaults to `http` unless the URL starts with `file:` or `:memory:`
 
 Optional (supported for certain deploy targets):
 

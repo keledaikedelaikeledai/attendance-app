@@ -25,3 +25,4 @@ logs
 
 .wrangler
 sqlite.db
+ecosystem.config.cjs
