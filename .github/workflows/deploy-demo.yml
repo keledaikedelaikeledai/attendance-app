@@ -49,6 +49,11 @@ jobs:
             cp -a public deploy_tmp/public
           fi
 
+          # Remove any bundled node_modules from the snapshot to avoid shipping
+          # platform-specific native modules (they will be installed on the target).
+          rm -rf deploy_tmp/node_modules || true
+          rm -rf deploy_tmp/.output/server/node_modules || true
+
           # Create compressed archive from the stable temp dir
           tar -czf deploy.tar.gz -C deploy_tmp .
           rm -rf deploy_tmp
@@ -268,15 +273,31 @@ jobs:
           echo "PROOT: operating inside $(pwd)"
           echo "PROOT: listing directory contents (first 50 entries)"
           ls -la | head -n 50 || true
+
+          # Remove any node_modules that may have been bundled on the build runner
+          # (these will be for the runner's platform and can break native/optional deps
+          # on the target). Reinstall inside the proot environment so platform-specific
+          # optional deps (e.g. @libsql/linux-arm64-gnu) are fetched for the target.
+          echo "PROOT: cleaning bundled node_modules (if present)"
+          rm -rf .output/server/node_modules || true
+          rm -rf node_modules || true
+
           if command -v bun >/dev/null 2>&1; then
-            echo "PROOT: running bun install"
+            echo "PROOT: running bun install to install deps for target platform"
+            # Attempt a fresh install inside the distro. Allow failures to continue
+            # gracefully in case bun isn't fully configured; downstream steps will
+            # attempt to run the server as best-effort.
             bun install || true
+
+            # Rebuild server output if a build script exists. This is best-effort.
             if [ -f package.json ] && grep -q '"build"' package.json 2>/dev/null; then
+              echo "PROOT: running build inside distro"
               bun run build -- --preset bun || true
             fi
           else
             echo "PROOT: bun missing in distro" >&2
           fi
+
           if command -v pm2 >/dev/null 2>&1; then
             pm2 stop attendance-app || true
             pm2 delete attendance-app || true
