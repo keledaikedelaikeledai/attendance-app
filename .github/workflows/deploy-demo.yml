@@ -31,6 +31,35 @@ jobs:
       - name: Build (Nuxt + Nitro)
         run: bun run build -- --preset bun
 
+      - name: Setup QEMU for cross-platform container support
+        uses: docker/setup-qemu-action@v2
+
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build runtime artifacts for target arch (linux/arm64) inside container
+        run: |
+          # Run an arm64 container and perform a Bun install + build inside it so
+          # node_modules and .output are produced for the target architecture.
+          # Files created will be owned by the runner user via --user.
+          set -euo pipefail
+          echo "Building runtime artifacts for linux/arm64 inside container"
+          docker run --rm --platform linux/arm64 \
+            -u "$(id -u):$(id -g)" \
+            -e HOME=/work \
+            -v "${PWD}":/work \
+            -w /work \
+            node:20-bullseye-slim bash -lc '\
+              set -euo pipefail; \
+              echo "Installing bun into HOME=$HOME"; \
+              curl -fsSL https://bun.sh/install | bash; \
+              export PATH="$HOME/.bun/bin:$PATH"; \
+              bun --version || true; \
+              echo "Running bun install (production + optional)"; \
+              bun install --production --optional || true; \
+              echo "Running bun build"; \
+              bun run build -- --preset bun || true;'
+
       - name: Prepare deploy archive
         run: |
           # Create a stable snapshot of tracked files (git archive) into a temp dir,
@@ -49,10 +78,16 @@ jobs:
             cp -a public deploy_tmp/public
           fi
 
-          # Remove any bundled node_modules from the snapshot to avoid shipping
-          # platform-specific native modules (they will be installed on the target).
-          rm -rf deploy_tmp/node_modules || true
-          rm -rf deploy_tmp/.output/server/node_modules || true
+          # Include node_modules and any server nested node_modules if present.
+          # We built platform-specific node_modules in a cross-arch container earlier
+          # so include them in the archive (target won't need to run bun install).
+          if [ -d node_modules ]; then
+            cp -a node_modules deploy_tmp/node_modules
+          fi
+          if [ -d .output/server/node_modules ]; then
+            mkdir -p deploy_tmp/.output/server
+            cp -a .output/server/node_modules deploy_tmp/.output/server/node_modules
+          fi
 
           # Create compressed archive from the stable temp dir
           tar -czf deploy.tar.gz -C deploy_tmp .
