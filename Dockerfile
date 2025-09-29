@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOST=0.0.0.0
 
 # Ensure a home directory exists and is owned by UID 1000 (we'll run as numeric UID)
 RUN mkdir -p /home/app && chown -R 1000:1000 /home/app || true
@@ -67,7 +68,7 @@ COPY --from=builder --chown=1000:1000 /app/server/database/schemas ./server/data
 # Expose the PORT (Dokku/Dokploy will set $PORT at runtime)
 EXPOSE ${PORT}
 
-# Switch to non-root numeric UID (no passwd entry required in minimal images)
+# Switch to non-root numeric UID (no passwd entry required in minimal im`ages)
 USER 1000
 
 # Healthcheck (optional): ensures server file exists
@@ -75,4 +76,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD [ -f ./.output/server/index.mjs ] || exit 1
 
 # Command: run the Nitro server with Bun. PaaS platforms typically set $PORT.
-CMD ["/bin/sh", "-lc", "bun ./.output/server/index.mjs --port ${PORT:-3000}"]
+CMD ["/bin/sh", "-lc", "bun ./.output/server/index.mjs --port ${PORT:-3000} --host ${HOST:-0.0.0.0}"]
