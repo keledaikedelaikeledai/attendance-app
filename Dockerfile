@@ -51,7 +51,21 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # Create a non-root user for better security in PaaS environments
-RUN useradd -m -u 1000 app || true
+# Try to create the user with useradd; if the base image doesn't provide it
+# (some minimal images omit useradd), fall back to appending entries to
+# /etc/passwd and /etc/group and creating the home directory.
+RUN if id -u app >/dev/null 2>&1; then \
+      echo "user app already exists"; \
+    else \
+      if command -v useradd >/dev/null 2>&1; then \
+        useradd -m -u 1000 app; \
+      else \
+        echo 'app:x:1000:1000:app:/home/app:/bin/sh' >> /etc/passwd; \
+        echo 'app:x:1000:' >> /etc/group || true; \
+        mkdir -p /home/app; \
+        chown 1000:1000 /home/app || true; \
+      fi; \
+    fi
 
 # Copy only the built output and necessary runtime files from the builder
 COPY --from=builder --chown=app:app /app/.output ./.output
