@@ -20,13 +20,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Prepare multi-arch emulation (qemu/binfmt) so we can run linux/arm64
+      # containers on x86 GitHub-hosted runners. Without this, attempting to
+      # execute an arm64 image will fail with 'exec format error'.
+      - name: Enable QEMU for multi-arch emulation
+        run: |
+          echo "Registering QEMU handlers (multiarch/qemu-user-static)"
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
       # Build inside an linux/arm64 Bun container so native/optional deps are
       # installed for the target platform. This uses Docker's emulation on
       # GitHub-hosted (x64) runners and writes build artifacts back to the
       # checked-out workspace so later steps can find `.output`/`public`.
       - name: Build (linux/arm64) with Bun in Docker
         run: |
-          # Ensure Docker can run multi-arch images (GitHub runners usually support this)
           echo "Building inside linux/arm64 oven/bun Docker image"
           docker run --rm \
             -v "${{ github.workspace }}":/work \
