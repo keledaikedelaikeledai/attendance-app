@@ -1,6 +1,5 @@
+import type { ShiftDef } from '~/types/shifts'
 import { ref } from 'vue'
-
-export interface ShiftDef { code: string, label?: string, start: string, end: string }
 
 // Internal cache to avoid repeated network calls
 let SHIFTS_CACHE: Map<string, ShiftDef> | null = null

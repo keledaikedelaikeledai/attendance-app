@@ -6,15 +6,15 @@ FROM oven/bun:latest AS builder
 WORKDIR /app
 
 # Install minimal build deps needed for native modules
-# RUN apt-get update && apt-get install -y --no-install-recommends \
-#   python3 \
-#   make \
-#   g++ \
-#   pkg-config \
-#   libsqlite3-dev \
-#   unzip \
-#   ca-certificates \
-#   && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  python3 \
+  make \
+  g++ \
+  pkg-config \
+  libsqlite3-dev \
+  unzip \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy manifest files first for cached layer installs
 
@@ -33,12 +33,12 @@ FROM oven/bun:latest AS runner
 WORKDIR /app
 
 # Install runtime native libs (keep minimal)
-# RUN apt-get update && apt-get install -y --no-install-recommends \
-#   libstdc++6 \
-#   sqlite3 \
-#   libvips-dev \
-#   ca-certificates \
-#   && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  libstdc++6 \
+  sqlite3 \
+  libvips-dev \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV PORT=3000

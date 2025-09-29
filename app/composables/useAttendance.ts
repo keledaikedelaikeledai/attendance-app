@@ -1,3 +1,5 @@
+import type { ShiftCode, ShiftDef } from '~/types/shifts'
+
 export interface AttendanceLog {
   id: string
   type: 'clock-in' | 'clock-out'
@@ -10,9 +12,6 @@ export interface AttendanceLog {
   shiftType?: 'harian' | 'bantuan'
   earlyReason?: string | null
 }
-
-export type ShiftCode = string
-export interface ShiftDef { code: ShiftCode, label: string, start: string, end: string }
 
 // Shifts are loaded from DB via API
 const shifts = ref<ShiftDef[]>([])
