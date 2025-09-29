@@ -96,8 +96,11 @@ jobs:
             cp -a .output/server/node_modules deploy_tmp/.output/server/node_modules
           fi
 
-          # Create compressed archive from the stable temp dir
-          tar -czf deploy.tar.gz -C deploy_tmp .
+          # Create compressed zip archive from the stable temp dir (avoids hard-link issues)
+          (cd deploy_tmp && zip -r ../deploy.zip .) || {
+            echo "zip failed; falling back to tar.gz";
+            tar -czf deploy.tar.gz -C deploy_tmp .;
+          }
           rm -rf deploy_tmp
 
       - name: Install & start Tailscale
@@ -238,7 +241,8 @@ jobs:
           fi
 
           echo "Copying deploy.tar.gz to remote staging: ${REMOTE_STAGE_DIR}/deploy.tar.gz (ssh port: $SSH_PORT)"
-          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.tar.gz ${TARGET_SSH_USER}@${TARGET_HOST}:"${REMOTE_STAGE_DIR}/deploy.tar.gz" 2>/tmp/scp.err || {
+          echo "Copying deploy.zip to remote staging: ${REMOTE_STAGE_DIR}/deploy.zip (ssh port: $SSH_PORT)"
+          scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 deploy.zip ${TARGET_SSH_USER}@${TARGET_HOST}:"${REMOTE_STAGE_DIR}/deploy.zip" 2>/tmp/scp.err || {
             echo "--- scp stderr ---"
             sed -n '1,200p' /tmp/scp.err || true
             echo "--- end scp stderr ---"
@@ -262,7 +266,7 @@ jobs:
           }
           echo "Remote HOME for verify: $REMOTE_HOME"
 
-          CHECK_PATH="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}/deploy.tar.gz"
+          CHECK_PATH="${REMOTE_HOME}/app/attendance/${DEPLOY_ENV}/deploy.zip"
           echo "Verifying archive exists at: $CHECK_PATH"
 
           if ! ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=20 ${TARGET_SSH_USER}@${TARGET_HOST} "[ -f \"${CHECK_PATH}\" ]" 2>/tmp/ssh_verify.err; then
@@ -365,14 +369,20 @@ jobs:
             exit 1
           }
 
-          if [ -f deploy.tar.gz ]; then
-            echo "Streaming deploy.tar.gz into proot (/root/app/attendance/${DEPLOY_ENV})"
-            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=120 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- tar -xzf - -C '/root/app/attendance/${DEPLOY_ENV}'" < deploy.tar.gz 2>/tmp/ssh_stream_tar.err || {
-              echo "Failed to stream deploy.tar.gz into proot; stderr:"; sed -n '1,200p' /tmp/ssh_stream_tar.err || true
+          if [ -f deploy.zip ]; then
+            echo "Copying deploy.zip into proot (/root/app/attendance/${DEPLOY_ENV}) using scp then unzip inside distro"
+            scp -P "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=120 deploy.zip ${TARGET_SSH_USER}@${TARGET_HOST}:"${REMOTE_STAGE_DIR}/deploy.zip" 2>/tmp/ssh_stream_zip.err || {
+              echo "Failed to scp deploy.zip to target; stderr:"; sed -n '1,200p' /tmp/ssh_stream_zip.err || true
+              exit 1
+            }
+
+            # Ensure unzip exists inside proot and extract
+            ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=120 ${TARGET_SSH_USER}@${TARGET_HOST} "proot-distro login ubuntu -- bash -lc 'apt-get update -y && apt-get install -y --no-install-recommends unzip || true; unzip -o \"${REMOTE_STAGE_DIR}/deploy.zip\" -d \'/root/app/attendance/${DEPLOY_ENV}\''" 2>/tmp/ssh_stream_zip_run.err || {
+              echo "Failed to extract deploy.zip inside proot; stderr:"; sed -n '1,200p' /tmp/ssh_stream_zip_run.err || true
               exit 1
             }
           else
-            echo "Local deploy.tar.gz not found; nothing to stream into proot" >&2
+            echo "Local deploy.zip not found; nothing to stream into proot" >&2
           fi
 
           echo "Executing proot deploy script inside proot via stdin"
