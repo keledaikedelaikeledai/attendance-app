@@ -35,12 +35,14 @@ jobs:
       - name: Build (linux/arm64) with Bun in Docker
         run: |
           echo "Building inside linux/arm64 oven/bun Docker image"
+          # Install Python and native build tools inside the container so
+          # node-gyp can compile native modules (better-sqlite3, etc.).
           docker run --rm \
             -v "${{ github.workspace }}":/work \
             -w /work \
             --platform linux/arm64 \
             oven/bun:latest \
-            sh -lc "bun install && bun run build -- --preset bun"
+            sh -lc "apt-get update -y && apt-get install -y python3 python3-dev python-is-python3 build-essential pkg-config libsqlite3-dev && bun install && bun run build -- --preset bun"
 
       - name: Prepare deploy archive
         run: |
