@@ -46,6 +46,16 @@ function summarizeDay(d: DaySummary) {
   return { ...res, total: res.harian + res.bantuan + res.unknown }
 }
 
+function dayTotalLateMs(d: DaySummary) {
+  const shifts = d.shifts || []
+  return shifts.reduce((acc, s) => acc + (s.lateMs || 0), 0)
+}
+
+function dayTotalEarlyMs(d: DaySummary) {
+  const shifts = d.shifts || []
+  return shifts.reduce((acc, s) => acc + (s.earlyMs || 0), 0)
+}
+
 function formatTime(iso?: string) {
   if (!iso) return '-'
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -79,15 +89,158 @@ async function fetchReport() {
       credentials: 'include',
       query: { month: selectedMonth.value },
     })
-    summary.value = res as ReportSummary
-    // server returns per-shift items in days array; group them by date into day objects with shifts[]
-    const rawDays = (res as any).days ?? []
-    const byDate = new Map<string, any[]>()
-    for (const item of rawDays) {
-      if (!byDate.has(item.date)) byDate.set(item.date, [])
-      byDate.get(item.date)!.push(item)
+    // If server returned aggregated days, use them
+    if ((res as any).days && (res as any).days.length) {
+      summary.value = res as ReportSummary
+      const rawDays = (res as any).days ?? []
+      const byDate = new Map<string, any[]>()
+      for (const item of rawDays) {
+        if (!byDate.has(item.date)) byDate.set(item.date, [])
+        byDate.get(item.date)!.push(item)
+      }
+      days.value = Array.from(byDate.entries()).map(([date, shifts]) => ({ date, shifts })).sort((a: any, b: any) => a.date.localeCompare(b.date))
     }
-    days.value = Array.from(byDate.entries()).map(([date, shifts]) => ({ date, shifts })).sort((a: any, b: any) => a.date.localeCompare(b.date))
+    // If server returned raw logs & shifts (raw mode), aggregate client-side
+    else if ((res as any).logs && (res as any).shifts) {
+      const logs = (res as any).logs as any[]
+      const shiftsArr = (res as any).shifts as any[]
+
+      // helper: compute UTC instant ms for local YYYY-MM-DD + HH:MM in given IANA tz
+      function localDateTimeToUtcMs(dateYmd: string, hh: number, mm: number, tz: string) {
+        const localStr = `${dateYmd}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
+        const wall = new Date(localStr)
+        const tzString = new Date(wall.toLocaleString('en-US', { timeZone: tz }))
+        const offsetMs = wall.getTime() - tzString.getTime()
+        return wall.getTime() + offsetMs
+      }
+
+      function computeShiftSpanFromDate(attDateYmd: string, start: string, end: string, tz = 'Asia/Jakarta') {
+        const [sh, sm] = start.split(':').map(s => Number(s ?? '0')) as [number, number]
+        const [eh, em] = end.split(':').map(s => Number(s ?? '0')) as [number, number]
+        const startMs = localDateTimeToUtcMs(attDateYmd, sh, sm, tz)
+        let endMs: number
+        if (sh * 60 + sm > eh * 60 + em) {
+          // crosses midnight -> next day
+          const [py, pm, pd] = attDateYmd.split('-').map(s => Number(s ?? '0')) as [number, number, number]
+          const d = new Date(py, pm - 1, pd)
+          d.setDate(d.getDate() + 1)
+          const endYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          endMs = localDateTimeToUtcMs(endYmd, eh, em, tz)
+        }
+        else {
+          endMs = localDateTimeToUtcMs(attDateYmd, eh, em, tz)
+        }
+        return { startMs, endMs }
+      }
+
+      // Map shift code -> def for quick lookup
+      const shiftMap = new Map(shiftsArr.map(s => [s.code, s]))
+
+      // group logs by date
+      const byDate = new Map<string, any[]>()
+      for (const l of logs) {
+        if (!byDate.has(l.date)) byDate.set(l.date, [])
+        byDate.get(l.date)!.push(l)
+      }
+
+      const dayItems: any[] = []
+      let totalHarian = 0
+      let totalBantuan = 0
+
+      for (const [date, dayLogs] of byDate.entries()) {
+        // build mapped logs with numeric ms
+        const mapped = dayLogs.map(l => ({
+          ...l,
+          timestampMs: l.timestampMs ?? (l.timestampIso ? Date.parse(l.timestampIso) : null),
+        }))
+
+        // group by shiftType
+        const groups = new Map<string, any[]>()
+        for (const l of mapped) {
+          const t = l.shiftType || 'unknown'
+          if (!groups.has(t)) groups.set(t, [])
+          groups.get(t)!.push(l)
+        }
+
+        for (const [st, groupLogs] of groups.entries()) {
+          // earliest clock-in and latest clock-out
+          const ins = groupLogs.filter(g => g.type === 'clock-in').sort((a, b) => (a.timestampMs ?? Infinity) - (b.timestampMs ?? Infinity))
+          const outs = groupLogs.filter(g => g.type === 'clock-out').sort((a, b) => (a.timestampMs ?? -Infinity) - (b.timestampMs ?? -Infinity))
+          const clockIn = ins[0] ?? null
+          const clockOut = outs.length ? outs[outs.length - 1] : null
+
+          const chosenShiftCode = clockIn?.shiftCode ?? clockOut?.shiftCode ?? null
+
+          let lateMs = 0
+          let earlyMs = 0
+          if (chosenShiftCode) {
+            const def = shiftMap.get(chosenShiftCode)
+            if (def && clockIn) {
+              const { startMs, endMs } = computeShiftSpanFromDate(date, def.start, def.end)
+              const cinMs = clockIn.timestampMs
+              if (cinMs && cinMs > startMs) lateMs = Math.max(0, cinMs - startMs)
+              if (clockOut) {
+                const coutMs = clockOut.timestampMs
+                if (coutMs && coutMs < endMs) earlyMs = Math.max(0, endMs - coutMs)
+              }
+            }
+          }
+
+          if (st === 'harian') totalHarian++
+          if (st === 'bantuan') totalBantuan++
+
+          dayItems.push({
+            date,
+            selectedShiftCode: chosenShiftCode,
+            shiftType: st === 'unknown' ? null : st,
+            clockIn: clockIn?.timestampIso ?? null,
+            clockOut: clockOut?.timestampIso ?? null,
+            clockInLat: clockIn?.lat ?? null,
+            clockInLng: clockIn?.lng ?? null,
+            clockInAccuracy: clockIn?.accuracy ?? null,
+            clockOutLat: clockOut?.lat ?? null,
+            clockOutLng: clockOut?.lng ?? null,
+            clockOutAccuracy: clockOut?.accuracy ?? null,
+            lateMs,
+            earlyMs,
+            logs: groupLogs,
+          })
+        }
+      }
+
+      // compute summary
+      const recomputedLate = dayItems.reduce((acc, s) => acc + Math.ceil(((s.lateMs || 0) / 60000)), 0)
+      const recomputedEarly = dayItems.reduce((acc, s) => acc + Math.ceil(((s.earlyMs || 0) / 60000)), 0)
+
+      summary.value = {
+        month: `${selectedMonth.value}`,
+        totalWorkingDays: totalHarian + totalBantuan,
+        totalHarianShift: totalHarian,
+        totalBantuanShift: totalBantuan,
+        totalLateMinutes: recomputedLate,
+        totalEarlyLeaveMinutes: recomputedEarly,
+      }
+
+      // group dayItems by date into day objects with shifts[]
+      const byDate2 = new Map<string, any[]>()
+      for (const s of dayItems) {
+        if (!byDate2.has(s.date)) byDate2.set(s.date, [])
+        byDate2.get(s.date)!.push(s)
+      }
+      days.value = Array.from(byDate2.entries()).map(([date, shifts]) => ({ date, shifts })).sort((a: any, b: any) => a.date.localeCompare(b.date))
+    }
+    else {
+      // Fallback: ensure the UI has a valid summary (zeros) and empty days to avoid blank page
+      summary.value = {
+        month: `${selectedMonth.value}`,
+        totalWorkingDays: 0,
+        totalHarianShift: 0,
+        totalBantuanShift: 0,
+        totalLateMinutes: 0,
+        totalEarlyLeaveMinutes: 0,
+      }
+      days.value = []
+    }
   }
   catch (e: any) {
     errorMsg.value = e?.data?.message || e?.message || 'Failed to load report'
@@ -221,7 +374,7 @@ watch(selectedMonth, fetchReport)
               </div>
 
               <div class="px-4 py-3 text-xs text-gray-500">
-                Late: {{ fmtMinutes(Math.ceil((d.lateMs || 0) / 60000)) }} • Early: {{ fmtMinutes(Math.ceil(((d as any).earlyMs || 0) / 60000)) }}
+                Late: {{ fmtMinutes(Math.ceil(dayTotalLateMs(d) / 60000)) }} • Early: {{ fmtMinutes(Math.ceil(dayTotalEarlyMs(d) / 60000)) }}
               </div>
 
               <div class="divide-y divide-neutral-200">

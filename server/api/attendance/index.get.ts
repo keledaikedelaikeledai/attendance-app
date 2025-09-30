@@ -2,6 +2,7 @@ import { and, desc, eq, gte, lte } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
 import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
+import { normalizeTimestampRaw } from '../../utils/time'
 
 type Log = typeof attendanceLog.$inferSelect
 
@@ -33,11 +34,23 @@ export default defineEventHandler(async (event) => {
     const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000 - 1
     const startUtc = new Date(startUtcMs)
     const endUtc = new Date(endUtcMs)
-    logs = await db
-      .select()
-      .from(attendanceLog)
-      .where(and(eq(attendanceLog.userId, userId), gte(attendanceLog.timestamp, startUtc), lte(attendanceLog.timestamp, endUtc)))
-      .orderBy(desc(attendanceLog.timestamp))
+    // Timestamp values in DB may be stored in seconds or ms. Normalize in-memory by fetching by date range
+    // (fall back to date equality when timestamp numeric comparisons are unreliable for cross-db stores).
+    try {
+      logs = await db
+        .select()
+        .from(attendanceLog)
+        .where(and(eq(attendanceLog.userId, userId), gte(attendanceLog.timestamp, startUtc), lte(attendanceLog.timestamp, endUtc)))
+        .orderBy(desc(attendanceLog.timestamp))
+    }
+    catch {
+      // Some DB drivers reject comparing numeric column to Date objects; fall back to date equality
+      logs = await db
+        .select()
+        .from(attendanceLog)
+        .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, today)))
+        .orderBy(desc(attendanceLog.timestamp))
+    }
   }
   else {
     logs = await db
@@ -49,15 +62,15 @@ export default defineEventHandler(async (event) => {
 
   // derive state
   const clockIn = (logs as Log[]).find((l: Log) => l.type === 'clock-in')
-  const clockOut = (logs as Log[]).find((l: Log) => l.type === 'clock-out' && (!clockIn || l.timestamp > (clockIn.timestamp as Date)))
+  const clockOut = (logs as Log[]).find((l: Log) => l.type === 'clock-out' && (!clockIn || normalizeTimestampRaw(l.timestamp) > normalizeTimestampRaw(clockIn.timestamp)))
 
   return {
     date: today,
     selectedShiftCode: day?.selectedShiftCode ?? null,
     shiftType: (day as any)?.shiftType ?? null,
     clockedIn: Boolean(clockIn && !clockOut),
-    clockInTime: clockIn ? new Date(clockIn.timestamp as Date).toISOString() : undefined,
-    clockOutTime: clockOut ? new Date(clockOut.timestamp as Date).toISOString() : undefined,
+    clockInTime: clockIn ? new Date(normalizeTimestampRaw(clockIn.timestamp)).toISOString() : undefined,
+    clockOutTime: clockOut ? new Date(normalizeTimestampRaw(clockOut.timestamp)).toISOString() : undefined,
     logs,
   }
 })

@@ -2,6 +2,7 @@ import process from 'node:process'
 import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { attendanceDay, attendanceLog, shift, user } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
+import { normalizeTimestampRaw } from '../../utils/time'
 
 // GET /api/admin/attendance?month=2025-09
 // Returns: { month, days: [YYYY-MM-DD], rows: [{ userId, email, name, username, byDate: { [date]: { clockIn?: string, clockOut?: string, shiftCode?: string } } }] }
@@ -103,7 +104,7 @@ export default defineEventHandler(async (event) => {
     byUserDate[keyU][keyD] ||= { entries: [] }
     byUserDate[keyU][keyD].entries.push({
       type: l.type as any,
-      timestamp: new Date(l.timestamp).toISOString(),
+      timestamp: new Date(normalizeTimestampRaw(l.timestamp)).toISOString(),
       lat: l.lat ?? null,
       lng: l.lng ?? null,
       accuracy: l.accuracy ?? null,
