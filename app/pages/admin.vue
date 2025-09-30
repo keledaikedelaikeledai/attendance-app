@@ -8,6 +8,7 @@ const menus = computed<NavigationMenuItem[]>(() => [
   { label: 'Dashboard', icon: 'i-heroicons-home', to: '/admin', exact: true },
   { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
   { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
+  { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
 ])
 
 definePageMeta({
