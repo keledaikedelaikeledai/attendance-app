@@ -5,17 +5,22 @@ const { handleSubmit, errors, isSubmitting } = useForm()
 
 const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: '' })
 const { value: password } = useField('password', toTypedSchema(z.string().min(6, 'Password must be at least 6 characters')), { initialValue: '' })
+const remember = useState('auth.remember', () => false)
 
 const onSubmit = handleSubmit(async (values) => {
   try {
     const { data } = await authClient.signIn.username({
       username: values.username,
       password: values.password,
+      // use built-in rememberMe flag from Better Auth
+      rememberMe: remember.value ?? false,
     })
     console.info('Login success', data)
     await navigateTo('/', { external: true })
   }
-  catch {}
+  catch (err) {
+    console.error('login error', err)
+  }
 })
 
 definePageMeta({
@@ -63,6 +68,7 @@ definePageMeta({
               />
             </UFormField>
           </div>
+          <UCheckbox v-model="remember" label="Remember me" />
           <div class="pt-2">
             <UButton
               size="xl"

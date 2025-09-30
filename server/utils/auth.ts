@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { admin, customSession, username } from 'better-auth/plugins'
+import { admin, username } from 'better-auth/plugins'
 import * as schema from '../database/schemas'
 import { useDb } from './db'
 

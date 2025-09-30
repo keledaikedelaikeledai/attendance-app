@@ -255,7 +255,6 @@ export default defineEventHandler(async (event) => {
   // Build per-day summaries to return to the frontend (for AttendanceCard rendering)
   const daySummaries: any[] = []
 
-  
   for (const [date, dayLogs] of logsByDate.entries()) {
   // note: attendanceDay row may or may not exist for this date; we still process logsByDate entries
     // group clock-in logs by shiftType for this date
