@@ -40,17 +40,22 @@ RUN bun run build -- --preset bun
 FROM ${BUN_BASE_IMAGE} AS runner
 WORKDIR /app
 
-# Install runtime native libs (keep minimal)
+# Install runtime native libs (keep minimal) and timezone data
 RUN apt-get update && apt-get install -y --no-install-recommends \
   libstdc++6 \
   sqlite3 \
   libvips-dev \
   ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  tzdata \
+  && rm -rf /var/lib/apt/lists/* \
+  && ln -sf /usr/share/zoneinfo/Asia/Jakarta /etc/localtime \
+  && echo "Asia/Jakarta" > /etc/timezone \
+  && dpkg-reconfigure -f noninteractive tzdata || true
 
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
+ENV TZ=Asia/Jakarta
 
 # Ensure a home directory exists and is owned by UID 1000 (we'll run as numeric UID)
 RUN mkdir -p /home/app && chown -R 1000:1000 /home/app || true

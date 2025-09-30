@@ -124,6 +124,33 @@ export default defineEventHandler(async (event) => {
   const shifts = await db.select().from(shift)
   const shiftMap = Object.fromEntries(shifts.map(s => [s.code, { code: s.code, label: s.label, start: s.start, end: s.end }])) as Record<string, { code: string, label: string, start: string, end: string }>
 
+  // Business timezone configuration (IANA tz). We will compute anchor instants in this tz.
+  const BUSINESS_TZ = process.env.BUSINESS_TZ || 'Asia/Jakarta'
+
+  // Helper: compute the UTC instant (Date) for a local YYYY-MM-DD + HH:MM in the given tz
+  // We avoid heavy dependencies by using Date.toLocaleString with timeZone to derive the offset.
+  function localDateTimeToUtcIso(dateYmd: string, hh: number, mm: number, tz: string) {
+    // Create a string in the form 'YYYY-MM-DDTHH:MM:00' (no timezone)
+    const localStr = `${dateYmd}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
+    // Use Intl to format that local wall time as if in tz -> get the corresponding UTC epoch by parsing
+    // Build a Date by interpreting the wall-time as if it were in the target tz by asking for the same wall time
+    // represented in the target tz and then converting to a UTC-based ISO via Date.
+    // Approach: create a Date from the wall time in the target tz by using Date.parse on the result of
+    // toLocaleString with timeZone producing an equivalent representation anchored to the timezone.
+    // parts is locale string in that tz; we can construct a Date from the wall time components by using
+    // the Intl API to get the offset: create Date object of the same wall time but in the tz by computing
+    // the difference between UTC and that tz at that moment.
+    // Simpler: use Date.UTC on the components and then correct by computing the offset between the same
+    // wall time interpreted in the tz and in UTC.
+    const wall = new Date(localStr)
+    // Determine offset by formatting the same moment in both UTC and target tz and measuring difference
+    const tzString = new Date(wall.toLocaleString('en-US', { timeZone: tz }))
+    const offsetMs = wall.getTime() - tzString.getTime()
+    // The true UTC instant for the wall time in tz is wall.getTime() + offsetMs
+    const instant = new Date(wall.getTime() + offsetMs)
+    return instant.toISOString()
+  }
+
   const rows = users.map(u => ({
     userId: u.id,
     email: u.email,
@@ -209,8 +236,12 @@ export default defineEventHandler(async (event) => {
                 m = prev.getMonth()
                 d = prev.getDate()
               }
-              const startDate = new Date(y, m, d, sh, sm, 0, 0)
-              totalLateMs += Math.max(0, ci.getTime() - startDate.getTime())
+              // compute anchor instant in business timezone and compare using UTC ms
+              const anchorDate = new Date(y, m, d)
+              const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
+              const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
+              groupedByShiftType[st].shiftStartIso = startIso
+              totalLateMs += Math.max(0, ci.getTime() - Date.parse(startIso))
             }
           }
         }
@@ -241,11 +272,21 @@ export default defineEventHandler(async (event) => {
                 m = prev.getMonth()
                 d = prev.getDate()
               }
-              const startDate = new Date(y, m, d, sh, sm, 0, 0)
-              const endDate = new Date(startDate)
-              if (startMin > endMin) endDate.setDate(endDate.getDate() + 1)
-              endDate.setHours(eh, em, 0, 0)
-              totalEarlyMs += Math.max(0, endDate.getTime() - co.getTime())
+              const anchorDate = new Date(y, m, d)
+              const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
+              // compute start and end instants in business timezone
+              const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
+              // if shift crosses midnight, end is next day
+              let endAnchorYmd = anchorYmd
+              if (startMin > endMin) {
+                const next = new Date(anchorDate)
+                next.setDate(next.getDate() + 1)
+                endAnchorYmd = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
+              }
+              const endIso = localDateTimeToUtcIso(endAnchorYmd, eh, em, BUSINESS_TZ)
+              groupedByShiftType[st].shiftStartIso = startIso
+              groupedByShiftType[st].shiftEndIso = endIso
+              totalEarlyMs += Math.max(0, Date.parse(endIso) - co.getTime())
             }
           }
         }
