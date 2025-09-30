@@ -2,7 +2,8 @@
 
 # Multi-stage Bun-based Dockerfile optimized for PaaS (Dokku/Dokploy)
 # Build stage: installs dependencies and builds the Nuxt/Nitro output
-FROM oven/bun:latest AS builder
+ARG BUN_BASE_IMAGE=oven/bun:latest
+FROM ${BUN_BASE_IMAGE} AS builder
 WORKDIR /app
 
 # Ensure apt is non-interactive during automated builds and install build deps
@@ -36,7 +37,7 @@ COPY . .
 RUN bun run build -- --preset bun
 
 # Runtime image (minimal)
-FROM oven/bun:latest AS runner
+FROM ${BUN_BASE_IMAGE} AS runner
 WORKDIR /app
 
 # Install runtime native libs (keep minimal)
@@ -57,6 +58,7 @@ RUN mkdir -p /home/app && chown -R 1000:1000 /home/app || true
 # Copy only the built output and necessary runtime files from the builder
 COPY --from=builder --chown=1000:1000 /app/.output ./.output
 COPY --from=builder --chown=1000:1000 /app/public ./public
+COPY --from=builder --chown=1000:1000 /app/public ./.output/public
 COPY --from=builder --chown=1000:1000 /app/package.json ./package.json
 COPY --from=builder --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=builder --chown=1000:1000 /app/server/database/migrations ./server/database/migrations
