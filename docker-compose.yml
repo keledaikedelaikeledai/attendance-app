@@ -1,33 +1,51 @@
-version: '3.8'
 services:
-  app:
-    build: .
-    image: attendance-app:latest
+  attendance-app:
+    image: ghcr.io/keledaikedelaikeledai/attendance-app:latest
+    container_name: atd-demo
     restart: unless-stopped
+    networks:
+      - internal
     ports:
-      - '3000:3000'
+      - "7070:3000" # Optional: expose locally for debugging
     environment:
-      # Set any runtime envs your app needs here, e.g.:
+      # Add your app-specific env vars here
       NODE_ENV: production
-      # Use a local sqlite file inside the container (persisted in ./data on the host)
-      NUXT_DB_URL: "file:sqlite.db"
-    volumes:
-      # Persist DB in a host folder and bind the sqlite file into the container
-      - ./data:/data:rw
-      - ./data/sqlite.db:/app/sqlite.db:rw
+    env_file:
+      - .env.production # Load environment variables from a file
+    depends_on:
+      - postgres
 
   cloudflared:
-    image: cloudflare/cloudflared:2025.9.1
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared_tunnel
     restart: unless-stopped
-    depends_on:
-      - app
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN}
+    command: tunnel run # Or tunnel --config /etc/cloudflared/config.yml if using a named tunnel
     environment:
-      # Provide your tunnel token in environment or via docker secrets
-      - TUNNEL_TOKEN=${CLOUDFLARED_TUNNEL_TOKEN}
-    volumes:
-      - ./cloudflared:/etc/cloudflared:ro
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - internal
+    env_file:
+      - .env
 
-# Notes:
-# - Set CLOUDFLARED_TUNNEL_TOKEN in your environment or in an env-file before running
-# - cloudflared will create the tunnel and route traffic to the local app port (3000)
+  postgres:
+    image: postgres:latest
+    container_name: postgres_db
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      POSTGRES_DB: atdstag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge

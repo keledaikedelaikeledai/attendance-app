@@ -15,7 +15,6 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@nuxt/fonts',
     '@vee-validate/nuxt',
-    // '@nuxthub/core',
     '@vueuse/nuxt',
   ],
 
@@ -28,25 +27,4 @@ export default defineNuxtConfig({
       openAPI: true,
     },
   },
-
-  // Ensure imports of @libsql/client and drizzle's libsql adapter resolve to the
-  // pure-JS web entrypoints during build. This prevents bundlers from pulling in
-  // native libsql binaries (eg. @libsql/linux-arm64-gnu) when building for
-  // non-native/ARM targets.
-  // vite: {
-  //   resolve: {
-  //     alias: {
-  //       '@libsql/client': '@libsql/client/web',
-  //       'drizzle-orm/libsql': 'drizzle-orm/libsql/web',
-  //     },
-  //   },
-  // },
-
-  // hub: {
-  //   bindings: {
-  //     observability: {
-  //       logs: true,
-  //     },
-  //   },
-  // },
 })

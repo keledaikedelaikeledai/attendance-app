@@ -1,36 +1,36 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { boolean, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
 
-export const user = sqliteTable('user', {
+export const user = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
-  emailVerified: integer('email_verified', { mode: 'boolean' })
+  emailVerified: boolean('email_verified')
     .default(false)
     .notNull(),
   image: text('image'),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  createdAt: timestamp('created_at', { mode: 'date' })
     .defaultNow()
     .notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' })
+  updatedAt: timestamp('updated_at', { mode: 'date' })
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
   username: text('username').unique(),
   displayUsername: text('display_username'),
   role: text('role'),
-  banned: integer('banned', { mode: 'boolean' }).default(false),
+  banned: boolean('banned').default(false),
   banReason: text('ban_reason'),
-  banExpires: integer('ban_expires', { mode: 'timestamp' }),
+  banExpires: timestamp('ban_expires', { mode: 'date' }),
 })
 
-export const session = sqliteTable('session', {
+export const session = pgTable('session', {
   id: text('id').primaryKey(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'date' }).notNull(),
   token: text('token').notNull().unique(),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  createdAt: timestamp('created_at', { mode: 'date' })
     .defaultNow()
     .notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' })
+  updatedAt: timestamp('updated_at', { mode: 'date' })
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
   ipAddress: text('ip_address'),
@@ -41,7 +41,7 @@ export const session = sqliteTable('session', {
   impersonatedBy: text('impersonated_by'),
 })
 
-export const account = sqliteTable('account', {
+export const account = pgTable('account', {
   id: text('id').primaryKey(),
   accountId: text('account_id').notNull(),
   providerId: text('provider_id').notNull(),
@@ -51,31 +51,31 @@ export const account = sqliteTable('account', {
   accessToken: text('access_token'),
   refreshToken: text('refresh_token'),
   idToken: text('id_token'),
-  accessTokenExpiresAt: integer('access_token_expires_at', {
-    mode: 'timestamp',
+  accessTokenExpiresAt: timestamp('access_token_expires_at', {
+    mode: 'date',
   }),
-  refreshTokenExpiresAt: integer('refresh_token_expires_at', {
-    mode: 'timestamp',
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at', {
+    mode: 'date',
   }),
   scope: text('scope'),
   password: text('password'),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  createdAt: timestamp('created_at', { mode: 'date' })
     .defaultNow()
     .notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' })
+  updatedAt: timestamp('updated_at', { mode: 'date' })
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
 })
 
-export const verification = sqliteTable('verification', {
+export const verification = pgTable('verification', {
   id: text('id').primaryKey(),
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' })
+  expiresAt: timestamp('expires_at', { mode: 'date' }).notNull(),
+  createdAt: timestamp('created_at', { mode: 'date' })
     .defaultNow()
     .notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' })
+  updatedAt: timestamp('updated_at', { mode: 'date' })
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),

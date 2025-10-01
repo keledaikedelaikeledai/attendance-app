@@ -1,21 +1,19 @@
-import { createClient } from '@libsql/client'
-import { drizzle } from 'drizzle-orm/libsql'
+import process from 'node:process'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { Pool } from 'pg'
 
-let _client: ReturnType<typeof createClient> | null = null
+let _pool: Pool | null = null
 let _db: ReturnType<typeof drizzle> | null = null
 
 export function useDb() {
-  if (!_client) {
-    _client = createClient({
-    // eslint-disable-next-line node/prefer-global/process
-      url: process.env.NUXT_DB_URL as string,
-      // eslint-disable-next-line node/prefer-global/process
-      authToken: process.env.NUXT_DB_AUTH_TOKEN,
+  if (!_pool) {
+    _pool = new Pool({
+      connectionString: process.env.DATABASE_URL as string,
     })
   }
 
   if (!_db) {
-    _db = drizzle({ client: _client })
+    _db = drizzle({ client: _pool })
   }
 
   return _db

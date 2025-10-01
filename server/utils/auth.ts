@@ -9,7 +9,7 @@ let _auth: any
 export function createBetterAuth() {
   return betterAuth({
     database: drizzleAdapter(useDb(), {
-      provider: 'sqlite',
+      provider: 'pg',
       schema,
     }),
     emailAndPassword: {
