@@ -14,4 +14,3 @@ sqlite.db
 coverage
 tmp
 build
-public/attendance-template*.xlsx
