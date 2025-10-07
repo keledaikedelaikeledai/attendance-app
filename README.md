@@ -4,7 +4,7 @@ Nuxt 4 attendance tracker using:
 
 - Better Auth (email/password + username plugin)
 - Drizzle ORM
-- SQLite via Turso (libSQL)
+- PostgreSQL
 - Nuxt UI for components and styling
 
 Includes a simple clock in/out UI with geolocation, a server-backed attendance log, and an auth API powered by Better Auth + Drizzle.
@@ -17,7 +17,7 @@ See also: docs/flowcharts.md for architecture and user flows.
 - @nuxt/ui (Nuxt UI)
 - better-auth (with drizzle adapter and username plugin)
 - drizzle-orm + drizzle-kit
-- @libsql/client (Turso/libSQL)
+- PostgreSQL (pg driver)
 
 ## Quick start
 
@@ -37,32 +37,32 @@ npm install
 Create a .env file (see `.env.example`):
 
 ```ini
-# Turso (remote SQLite)
-NUXT_DB_URL="libsql://<your-db>-<org>.turso.io"
-NUXT_DB_AUTH_TOKEN="<your-turso-auth-token>"
+# PostgreSQL connection string
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
 
-# Or local file (no auth token required)
-# NUXT_DB_URL="file:sqlite.db"
-# NUXT_DB_AUTH_TOKEN=""
+# For Docker Compose deployment:
+# DATABASE_URL="postgresql://postgres:postgres@postgres:5432/postgres"
 ```
 
 Notes:
 
-- Drizzle is configured in `drizzle.config.ts` with dialect `turso`.
-- The server uses `@libsql/client` in `server/utils/db.ts` and reads `NUXT_DB_URL` and `NUXT_DB_AUTH_TOKEN`.
+- Drizzle is configured in `drizzle.config.ts` with dialect `postgresql`.
+- The server uses `pg` (node-postgres) in `server/utils/db.ts` and reads `DATABASE_URL`.
 
 3) Run migrations
 
 ```bash
 # Generate SQL from schema (optional)
-npx drizzle-kit generate
+bun run db:generate
 # Apply schema changes
-npx drizzle-kit push
+bun run db:push
 # Optional studio
-npx drizzle-kit studio
+bun run db:studio
 ```
 
-Schema lives in `server/database/schema.ts` and includes Better Auth tables: `user`, `session`, `account`, `verification`.
+Schemas live in `server/database/schemas/` and include Better Auth tables: `user`, `session`, `account`, `verification`, plus attendance tables.
+
+For Docker deployment, migrations are automatically applied on container startup.
 
 4) Run the app
 
@@ -81,7 +81,7 @@ bun run preview
 ## Auth
 
 - Server: `server/utils/auth.ts`
-- `betterAuth` with Drizzle adapter (provider: `sqlite`) wired to the local schema. Email+password enabled with the `username` plugin.
+- `betterAuth` with Drizzle adapter (provider: `pg`) wired to the local schema. Email+password enabled with the `username` plugin.
 - API route: `server/api/auth/[...all].ts`
 - Proxies all auth endpoints to Better Auth.
 - Client: `app/utils/auth.ts`
@@ -96,11 +96,16 @@ Client examples (see `app/pages/register.vue`):
 
 Sign-in with `authClient.signIn.email({ email, password })` and sign-out with `authClient.signOut()`.
 
+To regenerate auth schema after changes:
+```bash
+bun run auth:schema
+```
+
 ## Database
 
-- Config: `drizzle.config.ts` (dialect: turso)
-- Connection: `server/utils/db.ts` using `@libsql/client`
-- Schema: `server/database/schema.ts`
+- Config: `drizzle.config.ts` (dialect: postgresql)
+- Connection: `server/utils/db.ts` using `pg` (node-postgres)
+- Schemas: `server/database/schemas/`
 
 Tables:
 
@@ -108,6 +113,9 @@ Tables:
 - `session` – session tokens with expiry
 - `account` – provider accounts and tokens
 - `verification` – verification tokens
+- `shift` – shift definitions (pagi, siang, sore, malam)
+- `attendance_day` – daily attendance records
+- `attendance_log` – clock in/out logs
 
 ## UI/UX
 
@@ -143,14 +151,11 @@ Composable:
 
 Required variables (see `.env.example`):
 
-- `NUXT_DB_URL` – Turso URL (libsql://…) or local `file:sqlite.db`
-- `NUXT_DB_AUTH_TOKEN` – Turso auth token (omit/empty for local file)
-- `NUXT_DB_DRIVER` (optional) – force `http` or `sqlite3`; defaults to `http` unless the URL starts with `file:` or `:memory:`
+- `DATABASE_URL` – PostgreSQL connection string (e.g., `postgresql://user:password@host:port/database`)
+- `BETTER_AUTH_SECRET` – Secret key for Better Auth
+- `BETTER_AUTH_URL` – Public URL of your application
 
-Optional (supported for certain deploy targets):
-
-- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`
-- `NUXT_HUB_DATABASE_URL` / `NUXT_HUB_DATABASE_AUTH_TOKEN`
+For Docker Compose deployment, use `postgres` as the hostname instead of `localhost`.
 
 ## Scripts
 
@@ -158,7 +163,31 @@ Optional (supported for certain deploy targets):
 - `build` – build for production
 - `preview` – preview production build
 - `lint` – run ESLint
+- `db:generate` – generate migrations from schema
+- `db:push` – push schema changes to database
+- `db:migrate` – run migrations
+- `db:studio` – open Drizzle Studio
+
+## Docker Deployment
+
+The app can be deployed using Docker Compose with PostgreSQL:
+
+```bash
+# Start services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+```
+
+The docker-compose.yml includes:
+- PostgreSQL database
+- Attendance app
+- Cloudflared tunnel (optional)
 
 ---
 
-Made with Nuxt, Nuxt UI, Better Auth, Drizzle, and SQLite (Turso/libSQL).
+Made with Nuxt, Nuxt UI, Better Auth, Drizzle, and PostgreSQL.
