@@ -16,6 +16,7 @@ export default defineNuxtConfig({
     '@nuxt/fonts',
     '@vee-validate/nuxt',
     '@vueuse/nuxt',
+    '@nuxtjs/leaflet',
   ],
 
   ui: {

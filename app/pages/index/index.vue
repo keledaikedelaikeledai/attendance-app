@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { ShiftDef } from '@/composables/useAttendance'
+import type { ShiftDef } from '~/types/shifts'
 import { onMounted, ref } from 'vue'
-import { getShiftLabel, useAttendance } from '@/composables/useAttendance'
+import { getShiftLabel, useAttendance } from '~/composables/useAttendance'
 
 const toast = useToast()
 
@@ -39,6 +39,14 @@ const showConfirmOut = ref(false)
 const confirmOutMessage = ref('Are you sure you want to clock out?')
 const earlyReason = ref<string>('')
 const isEarlyOut = ref(false)
+const mapTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const mapAttribution = '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
+const hasLocation = computed(() => typeof coords.value.lat === 'number' && typeof coords.value.lng === 'number')
+const mapCenter = computed<[number, number]>(() => [
+  coords.value.lat ?? 0,
+  coords.value.lng ?? 0,
+])
+const mapZoom = computed(() => (hasLocation.value ? 17 : 14))
 
 function formatTime(iso?: string) {
   if (!iso)
@@ -194,16 +202,6 @@ onMounted(async () => {
     selectedShiftCode.value = (shifts as any).value[0].code
   }
 })
-
-function _onLogout() {
-  authClient.signOut({
-    fetchOptions: {
-      onSuccess() {
-        navigateTo('/login', { external: true })
-      },
-    },
-  })
-}
 </script>
 
 <template>
@@ -328,6 +326,32 @@ function _onLogout() {
               Refresh Location
             </UButton>
           </div>
+          <ClientOnly>
+            <div class="mt-4">
+              <div v-if="geoSupported">
+                <div v-if="hasLocation" class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+                  <LMap
+                    style="height: 220px"
+                    :zoom="mapZoom"
+                    :center="mapCenter"
+                    :use-global-leaflet="false"
+                  >
+                    <LTileLayer
+                      :url="mapTileUrl"
+                      :attribution="mapAttribution"
+                    />
+                    <LMarker :lat-lng="mapCenter" />
+                  </LMap>
+                </div>
+                <div v-else class="text-xs text-gray-500 dark:text-gray-400">
+                  Allow location access and refresh to display your position on the map.
+                </div>
+              </div>
+              <div v-else class="text-xs text-gray-500 dark:text-gray-400">
+                Map unavailable because geolocation isn't supported.
+              </div>
+            </div>
+          </ClientOnly>
         </div>
       </div>
     </UCard>
