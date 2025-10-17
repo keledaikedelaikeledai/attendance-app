@@ -23,19 +23,18 @@ const open = defineModel({ default: false })
 const onSubmit = handleSubmit(async (values) => {
   try {
     if (props.user?.id) {
-      // Edit mode: call updateUser, omit empty password
+      // Edit mode: update user fields only
       const payload: any = {
         userId: props.user.id,
-        data: { username: values.username, email: values.email, name: values.name, role: values.role },
+        data: { username: values.username, email: values.email, name: values.name },
       }
-      if (values.password && values.password.length > 0) payload.password = values.password
 
       const { error } = await authClient.admin.updateUser(payload)
       if (error) throw error
       toast.add({ title: 'User updated', color: 'success' })
     }
     else {
-      // Create mode
+      // Create mode: require password from form
       await authClient.admin.createUser({
         email: values.email,
         name: values.name,

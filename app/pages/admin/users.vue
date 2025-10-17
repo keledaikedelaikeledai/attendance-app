@@ -34,6 +34,9 @@ const data = computed<AdminUser[]>(() => _data.value?.users || [])
 // modal state for add/edit user
 const onAddModal = ref(false)
 const editUser = ref<AdminUser | null>(null)
+// change password modal state
+const changePwdModal = ref(false)
+const changePwdUser = ref<AdminUser | null>(null)
 
 // clear edit target when drawer closes
 watch(onAddModal, (open) => {
@@ -66,6 +69,17 @@ function getDropdownActions(user: AdminUser) {
       onAddModal.value = true
       // set the edit target
       editUser.value = user
+    },
+  })
+
+  // Change password action
+  actions.push({
+    label: 'Change password',
+    value: 'change-password',
+    icon: 'i-heroicons-key',
+    async onSelect() {
+      changePwdUser.value = user
+      changePwdModal.value = true
     },
   })
 
@@ -255,5 +269,6 @@ function getDropdownActions(user: AdminUser) {
       </template>
     </UTable>
     <UserModalAdd v-model="onAddModal" :user="editUser ?? undefined" @refresh="refresh" />
+    <UserModalChangePassword v-model="changePwdModal" :user="changePwdUser ?? undefined" @refresh="refresh" />
   </PageWrapper>
 </template>
