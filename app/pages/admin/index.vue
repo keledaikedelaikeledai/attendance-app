@@ -12,6 +12,7 @@ const isLoading = computed(() => Boolean(attendancePending.value))
 
 const ApexChart = shallowRef<any>(null)
 const primaryColor = ref('#2563eb')
+const secondaryColor = ref('#60a5fa')
 
 function refreshAll() {
   void refreshAttendance()
@@ -26,11 +27,12 @@ onMounted(async () => {
     try {
       const style = getComputedStyle(document.documentElement)
       const foundRaw = (
-        style.getPropertyValue('--u-color-primary') ||
-        style.getPropertyValue('--u-color-primary-500') ||
-        style.getPropertyValue('--color-primary-500') ||
-        style.getPropertyValue('--u-primary') ||
-        ''
+        [
+          '--u-color-primary',
+          '--u-color-primary-500',
+          '--color-primary-500',
+          '--u-primary',
+        ].map(k => style.getPropertyValue(k)).find(v => v && v.trim()) || ''
       ).trim()
 
       if (foundRaw) {
@@ -51,6 +53,27 @@ onMounted(async () => {
         }
         catch {
           primaryColor.value = foundRaw
+        }
+        // try to resolve a secondary tint for the 'bantuan' series from the theme
+        try {
+          const found2 = (
+            ['--u-color-primary-300', '--u-color-primary-200', '--color-primary-300']
+              .map(k => style.getPropertyValue(k))
+              .find(v => v && v.trim()) || ''
+          ).trim()
+          if (found2) {
+            const tmp2 = document.createElement('div')
+            tmp2.style.color = found2
+            tmp2.style.display = 'none'
+            document.body.appendChild(tmp2)
+            const resolved2 = getComputedStyle(tmp2).color
+            document.body.removeChild(tmp2)
+            if (resolved2 && resolved2 !== 'rgba(0, 0, 0, 0)') secondaryColor.value = resolved2
+            else secondaryColor.value = found2
+          }
+        }
+        catch {
+          // ignore
         }
       }
     }
@@ -179,16 +202,43 @@ const recentRecapColumns: TableColumn<any>[] = [
 
 // Chart color follows the resolved theme primary color. We populate `primaryColor` on mount.
 const chartOptions = computed(() => ({
-  chart: { id: 'presence-chart', toolbar: { show: false } },
-  colors: [primaryColor.value],
-  fill: { colors: [primaryColor.value] },
+  chart: { id: 'presence-chart', toolbar: { show: false }, stacked: true },
+  colors: [primaryColor.value, secondaryColor.value],
+  fill: { colors: [primaryColor.value, secondaryColor.value] },
   xaxis: { categories: data.value.days?.map((d: string) => d.split('-').pop()) || [] },
   yaxis: { title: { text: 'Users present' } },
   dataLabels: { enabled: false },
   stroke: { curve: 'smooth' as const },
 }))
 
-const chartSeries = computed(() => ([{ name: 'Present', data: presentCountsPerDay.value }]))
+// Produce two series: 'Harian' and 'Bantuan'. We assume attendance data rows aggregate shifts per day
+// by `workingShifts`, `harian`, and `bantuan` fields when present. Otherwise we fallback to counting entries.
+const chartSeries = computed(() => {
+  const days = data.value.days || []
+  const rows = data.value.rows || []
+  // Count present per day for each type
+  const harianCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
+    const cell = row.byDate?.[d]
+    if (!cell) return acc
+    if (typeof cell.harian === 'number') return acc + Number(cell.harian)
+    // fallback: count entries marked harian (entry.shiftType === 'harian')
+    const entries = attendanceTime.normalizeCell(cell)
+    return acc + entries.filter((e: any) => e?.shiftType === 'harian' && e?.clockIn).length
+  }, 0))
+
+  const bantuanCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
+    const cell = row.byDate?.[d]
+    if (!cell) return acc
+    if (typeof cell.bantuan === 'number') return acc + Number(cell.bantuan)
+    const entries = attendanceTime.normalizeCell(cell)
+    return acc + entries.filter((e: any) => e?.shiftType === 'bantuan' && e?.clockIn).length
+  }, 0))
+
+  return [
+    { name: 'Harian', data: harianCounts },
+    { name: 'Bantuan', data: bantuanCounts },
+  ]
+})
 
 function formatPercent(v: number) {
   return `${v}%`
