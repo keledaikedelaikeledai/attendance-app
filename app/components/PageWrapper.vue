@@ -1,11 +1,21 @@
 <script setup lang="ts">
-const { menus } = defineProps<{
-  menus?: any
-}>()
+import type { NavigationMenuItem } from '@nuxt/ui'
+
+// const { menus } = defineProps<{
+//   menus?: any
+// }>()
 
 const route = useRoute()
 
 const isCollapsed = useState('admin-is-collapsed')
+
+const menus = computed<NavigationMenuItem[]>(() => [
+  { label: 'Menus', type: 'label', hidden: true },
+  { label: 'Dashboard', icon: 'i-heroicons-home', to: '/admin', exact: true },
+  { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
+  { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
+  { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
+])
 </script>
 
 <template>
@@ -28,7 +38,7 @@ const isCollapsed = useState('admin-is-collapsed')
             <UNavigationMenu
               orientation="vertical"
               :items="menus"
-              class="data-[orientation=vertical]:w-full"
+              class="data-[orientation=vertical]:w-full flex-1 overflow-y-auto"
             />
           </div>
         </template>

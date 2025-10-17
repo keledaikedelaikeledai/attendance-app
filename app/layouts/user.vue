@@ -23,12 +23,7 @@ const items = ref([
   <UContainer class="py-8 space-y-8 pb-28 md:pb-8">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-semibold">
-          Today's Attendance
-        </h1>
-        <p class="text-sm text-gray-500 dark:text-gray-400">
-          Manage your clock-in and clock-out with location.
-        </p>
+        <img src="/applogo-alternate.png" alt="App Logo" class="w-[150px] h-auto">
       </div>
       <div class="hidden md:block">
         <UNavigationMenu :items="items" highlight />
