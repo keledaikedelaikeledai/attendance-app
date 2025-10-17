@@ -61,9 +61,8 @@ ENV TZ=Asia/Jakarta
 RUN mkdir -p /home/app && chown -R 1000:1000 /home/app || true
 
 # Copy only the built output and necessary runtime files from the builder
+# .output already includes public assets in .output/public
 COPY --from=builder --chown=1000:1000 /app/.output ./.output
-COPY --from=builder --chown=1000:1000 /app/public ./public
-COPY --from=builder --chown=1000:1000 /app/public ./.output/public
 COPY --from=builder --chown=1000:1000 /app/package.json ./package.json
 COPY --from=builder --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=builder --chown=1000:1000 /app/server/database/migrations ./server/database/migrations

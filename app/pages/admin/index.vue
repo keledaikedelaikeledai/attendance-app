@@ -25,14 +25,32 @@ onMounted(async () => {
     ApexChart.value = markRaw(mod.default || mod)
     try {
       const style = getComputedStyle(document.documentElement)
-      const found = (style.getPropertyValue('--u-color-primary') || style.getPropertyValue('--u-color-primary-500') || style.getPropertyValue('--u-color-primary-600') || style.getPropertyValue('--u-primary') || '').trim()
-      if (found) {
-        // ApexCharts works best with hex/rgb values. If the variable is in OKLCH form, fall back to provided hex.
-        if (found.startsWith('oklch')) {
-          primaryColor.value = '#efb100'
+      const foundRaw = (
+        style.getPropertyValue('--u-color-primary') ||
+        style.getPropertyValue('--u-color-primary-500') ||
+        style.getPropertyValue('--color-primary-500') ||
+        style.getPropertyValue('--u-primary') ||
+        ''
+      ).trim()
+
+      if (foundRaw) {
+        // Create a hidden element to let the browser resolve the color (OKLCH -> rgb if supported)
+        try {
+          const tmp = document.createElement('div')
+          tmp.style.color = foundRaw
+          tmp.style.display = 'none'
+          document.body.appendChild(tmp)
+          const resolved = getComputedStyle(tmp).color
+          document.body.removeChild(tmp)
+          if (resolved && resolved !== 'rgba(0, 0, 0, 0)') {
+            primaryColor.value = resolved
+          }
+          else {
+            primaryColor.value = foundRaw
+          }
         }
-        else {
-          primaryColor.value = found
+        catch {
+          primaryColor.value = foundRaw
         }
       }
     }
@@ -159,11 +177,11 @@ const recentRecapColumns: TableColumn<any>[] = [
   { header: 'Early Leave Hours', accessorKey: 'earlyHours', size: 160 },
 ]
 
-const EXPLICIT_PRIMARY = '#efb100'
+// Chart color follows the resolved theme primary color. We populate `primaryColor` on mount.
 const chartOptions = computed(() => ({
   chart: { id: 'presence-chart', toolbar: { show: false } },
-  colors: [EXPLICIT_PRIMARY],
-  fill: { colors: [EXPLICIT_PRIMARY] },
+  colors: [primaryColor.value],
+  fill: { colors: [primaryColor.value] },
   xaxis: { categories: data.value.days?.map((d: string) => d.split('-').pop()) || [] },
   yaxis: { title: { text: 'Users present' } },
   dataLabels: { enabled: false },
@@ -321,6 +339,6 @@ definePageMeta({
 <style scoped>
 .text-muted { color: var(--u-color-muted, #6b7280); }
   .admin-presence-chart :deep(.apexcharts-bar-area .apexcharts-series.apexcharts-series-0 .apexcharts-bar-path) {
-    fill: #efb100 !important;
+    fill: var(--u-color-primary-500, #efb100) !important;
   }
 </style>
