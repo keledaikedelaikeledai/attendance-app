@@ -1,0 +1,7 @@
+{
+  "common": {
+    "hello": "Halo",
+    "profile": "Profil",
+    "signOut": "Keluar"
+  }
+}

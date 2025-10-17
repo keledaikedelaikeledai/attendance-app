@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
+import { useI18n } from 'vue-i18n'
 
 // const { menus } = defineProps<{
 //   menus?: any
@@ -16,6 +17,51 @@ const menus = computed<NavigationMenuItem[]>(() => [
   { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
   { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
 ])
+
+// locales available (kept in sync with nuxt.config i18n locales)
+const availableLocales = [
+  { code: 'en', name: 'English' },
+  { code: 'id', name: 'Indonesian' },
+]
+
+const i18n = useI18n()
+
+const localeItems = computed<DropdownMenuItem[]>(() => {
+  // determine current locale supporting both Ref and string shapes without TS directive
+  let currentLocale: string | undefined
+  const composerLocale = (i18n as any).locale
+  if (composerLocale && typeof composerLocale === 'object' && 'value' in composerLocale) {
+    currentLocale = composerLocale.value
+  }
+  else if (typeof composerLocale === 'string') {
+    currentLocale = composerLocale
+  }
+
+  return availableLocales.map(l => ({
+    label: l.name,
+    value: l.code,
+    // leading language icon
+    icon: 'i-heroicons-language',
+    // use the checkbox item type from Nuxt UI so the check appears on the right
+    type: 'checkbox',
+    checked: l.code === currentLocale,
+    // handler invoked when the checkbox is toggled
+    onUpdateChecked(checked: boolean) {
+      if (!checked) return
+      const composerLocale = (i18n as any).locale
+      if (composerLocale && typeof composerLocale === 'object' && 'value' in composerLocale) {
+        composerLocale.value = l.code
+      }
+      else {
+        (i18n as any).locale = l.code
+      }
+    },
+    // prevent default navigation behavior (checkbox items usually prevent links)
+    onSelect(e: Event) {
+      e.preventDefault()
+    },
+  }))
+})
 </script>
 
 <template>
@@ -61,10 +107,19 @@ const menus = computed<NavigationMenuItem[]>(() => [
     </template>
     <template #right>
       <slot name="navRight" />
-      <!-- Color mode toggle (use built-in Nuxt UI component) -->
-      <!-- <ClientOnly> -->
+      <ClientOnly>
+        <UDropdownMenu :items="localeItems" :content="{ align: 'end' }" :ui="{ content: 'w-48' }">
+          <UButton
+            icon="i-heroicons-language"
+            class="w-8 h-8"
+            color="neutral"
+            variant="ghost"
+            aria-label="Language"
+          />
+        </UDropdownMenu>
+      </ClientOnly>
+
       <UColorModeButton />
-      <!-- </ClientOnly> -->
     </template>
   </HeaderColumn>
   <div class="p-2 border-2 border-neutral-200 border-dashed rounded-lg dark:border-neutral-700 flex-1 overflow-auto">

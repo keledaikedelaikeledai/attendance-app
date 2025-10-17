@@ -17,6 +17,7 @@ export default defineNuxtConfig({
     '@vee-validate/nuxt',
     '@vueuse/nuxt',
     '@nuxtjs/leaflet',
+    '@nuxtjs/i18n',
   ],
 
   ui: {
@@ -24,6 +25,24 @@ export default defineNuxtConfig({
     // set to true to use the default color-mode behavior (you can later customize this)
     colorMode: true,
   },
+
+  // Internationalization (i18n) - lazy loaded locales
+  i18n: ({
+    // default locale shown when no prefix is present
+    defaultLocale: 'en',
+    // locales and the corresponding files (langDir)
+    locales: [
+      { code: 'en', file: 'en.json', name: 'English' },
+      { code: 'id', file: 'id.json', name: 'Indonesian' },
+    ],
+    // enable lazy loading from the default `i18n/locales/` directory
+    lazy: true,
+    // keep the default strategy; ensure defaultLocale is set
+    strategy: 'prefix_except_default',
+    // vueI18n configuration should be provided via a config file path (vueI18n: 'path')
+    // or left unset when using lazy-loaded locale files. We omit it here to avoid
+    // the module attempting to resolve an object as a file path.
+  } as any),
 
   nitro: {
     experimental: {
