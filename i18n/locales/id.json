@@ -1,4 +1,23 @@
 {
+  "admin": {
+    "index": {
+      "month": "Bulan",
+      "refresh": "Muat Ulang",
+      "totalUsers": "Total Pengguna",
+      "daysInMonth": "Jumlah Hari",
+      "presencePercent": "Persentase Hadir",
+      "avgLatePerUser": "Rata-rata Telat / Pengguna",
+      "dailyPresence": "Kehadiran Harian",
+      "chartLoading": "Grafik dimuat...",
+      "userRecap": "Rekap Pengguna",
+      "name": "Nama",
+      "totalDays": "Total Hari",
+      "harian": "Harian",
+      "bantuan": "Bantuan",
+      "lateHours": "Jam Telat",
+      "earlyHours": "Jam Pulang Awal"
+    }
+  },
   "common": {
     "hello": "Halo",
     "profile": "Profil",

@@ -2,10 +2,6 @@
 import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
 import { useI18n } from 'vue-i18n'
 
-// const { menus } = defineProps<{
-//   menus?: any
-// }>()
-
 const route = useRoute()
 
 const isCollapsed = useState('admin-is-collapsed')
@@ -24,12 +20,12 @@ const availableLocales = [
   { code: 'id', name: 'Indonesian' },
 ]
 
-const i18n = useI18n()
+const { locale, setLocale } = useI18n()
 
 const localeItems = computed<DropdownMenuItem[]>(() => {
-  // determine current locale supporting both Ref and string shapes without TS directive
+  // determine current locale from the nuxt-i18n `locale` ref
   let currentLocale: string | undefined
-  const composerLocale = (i18n as any).locale
+  const composerLocale = locale as any
   if (composerLocale && typeof composerLocale === 'object' && 'value' in composerLocale) {
     currentLocale = composerLocale.value
   }
@@ -48,12 +44,19 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
     // handler invoked when the checkbox is toggled
     onUpdateChecked(checked: boolean) {
       if (!checked) return
-      const composerLocale = (i18n as any).locale
-      if (composerLocale && typeof composerLocale === 'object' && 'value' in composerLocale) {
-        composerLocale.value = l.code
+      // use nuxt-i18n setLocale to trigger lazy loading, hooks and cookie update
+      try {
+        void (setLocale as any)(l.code)
       }
-      else {
-        (i18n as any).locale = l.code
+      catch {
+        // fallback: attempt to set the locale ref directly
+        const composerLocaleFallback = locale as any
+        if (composerLocaleFallback && typeof composerLocaleFallback === 'object' && 'value' in composerLocaleFallback) {
+          composerLocaleFallback.value = l.code
+        }
+        else {
+          (locale as any) = l.code
+        }
       }
     },
     // prevent default navigation behavior (checkbox items usually prevent links)

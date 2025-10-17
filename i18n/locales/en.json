@@ -1,4 +1,23 @@
 {
+  "admin": {
+    "index": {
+      "month": "Month",
+      "refresh": "Refresh",
+      "totalUsers": "Total Users",
+      "daysInMonth": "Days in Month",
+      "presencePercent": "Presence %",
+      "avgLatePerUser": "Avg Late / User",
+      "dailyPresence": "Daily Presence",
+      "chartLoading": "Chart loading...",
+      "userRecap": "User Recap",
+      "name": "Name",
+      "totalDays": "Total Days",
+      "harian": "Harian",
+      "bantuan": "Bantuan",
+      "lateHours": "Late Hours",
+      "earlyHours": "Early Leave Hours"
+    }
+  },
   "common": {
     "hello": "Hello",
     "profile": "Profile",

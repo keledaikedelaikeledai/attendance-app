@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import * as attendanceTime from '~/composables/useAttendanceTime'
+import { useI18n } from 'vue-i18n'
 // `computed`, `ref`, `onMounted`, etc. are auto-imported by Nuxt; do not import from 'vue' explicitly
+
+// useI18n imported once below
+import * as attendanceTime from '~/composables/useAttendanceTime'
+
+const { t } = useI18n()
 
 const month = ref(new Date().toISOString().slice(0, 7)) // YYYY-MM
 
@@ -191,14 +196,14 @@ const recentRecap = computed(() => {
   })
 })
 
-const recentRecapColumns: TableColumn<any>[] = [
-  { header: 'Name', accessorKey: 'name', size: 220 },
-  { header: 'Total Days', accessorKey: 'totalWorkingDays', size: 120 },
-  { header: 'Harian', accessorKey: 'harian', size: 100 },
-  { header: 'Bantuan', accessorKey: 'bantuan', size: 100 },
-  { header: 'Late Hours', accessorKey: 'lateHours', size: 140 },
-  { header: 'Early Leave Hours', accessorKey: 'earlyHours', size: 160 },
-]
+const recentRecapColumns = computed<TableColumn<any>[]>(() => [
+  { header: t('admin.index.name'), accessorKey: 'name', size: 220 },
+  { header: t('admin.index.totalDays'), accessorKey: 'totalWorkingDays', size: 120 },
+  { header: t('admin.index.harian'), accessorKey: 'harian', size: 100 },
+  { header: t('admin.index.bantuan'), accessorKey: 'bantuan', size: 100 },
+  { header: t('admin.index.lateHours'), accessorKey: 'lateHours', size: 140 },
+  { header: t('admin.index.earlyHours'), accessorKey: 'earlyHours', size: 160 },
+])
 
 // Chart color follows the resolved theme primary color. We populate `primaryColor` on mount.
 const chartOptions = computed(() => ({
@@ -280,7 +285,7 @@ definePageMeta({
     </template> -->
     <template #navRight>
       <div class="flex items-center gap-3">
-        <label class="text-sm text-muted">Month</label>
+        <label class="text-sm text-muted">{{ t('admin.index.month') }}</label>
         <USelect
           v-model="month"
           class="w-52"
@@ -292,7 +297,7 @@ definePageMeta({
           :loading="isLoading"
           @click="refreshAll"
         >
-          Refresh
+          {{ t('admin.index.refresh') }}
         </UButton>
       </div>
     </template>
@@ -301,7 +306,7 @@ definePageMeta({
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <UCard>
           <div class="text-sm text-muted">
-            Total Users
+            {{ t('admin.index.totalUsers') }}
           </div>
           <div class="text-xl font-semibold">
             {{ totalUsers }}
@@ -309,7 +314,7 @@ definePageMeta({
         </UCard>
         <UCard>
           <div class="text-sm text-muted">
-            Days in Month
+            {{ t('admin.index.daysInMonth') }}
           </div>
           <div class="text-xl font-semibold">
             {{ totalDays }}
@@ -317,7 +322,7 @@ definePageMeta({
         </UCard>
         <UCard>
           <div class="text-sm text-muted">
-            Presence %
+            {{ t('admin.index.presencePercent') }}
           </div>
           <div class="text-xl font-semibold">
             {{ formatPercent(percentPresent) }}
@@ -325,7 +330,7 @@ definePageMeta({
         </UCard>
         <UCard>
           <div class="text-sm text-muted">
-            Avg Late / User
+            {{ t('admin.index.avgLatePerUser') }}
           </div>
           <div class="text-xl font-semibold">
             {{ averageLatePerUser }}
@@ -335,7 +340,7 @@ definePageMeta({
 
       <UCard>
         <div class="mb-4">
-          <strong>Daily Presence</strong>
+          <strong>{{ t('admin.index.dailyPresence') }}</strong>
         </div>
         <div>
           <client-only>
@@ -349,7 +354,7 @@ definePageMeta({
               />
             </div>
             <div v-else class="text-sm text-muted">
-              Chart loading...
+              {{ t('admin.index.chartLoading') }}
             </div>
           </client-only>
         </div>
@@ -358,7 +363,7 @@ definePageMeta({
       <div class="space-y-4">
         <UCard>
           <div class="mb-3">
-            <strong>User Recap</strong>
+            <strong>{{ t('admin.index.userRecap') }}</strong>
           </div>
           <UTable :data="recentRecap" :columns="recentRecapColumns">
             <template #name-cell="{ row }">

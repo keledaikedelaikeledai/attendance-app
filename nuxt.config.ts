@@ -27,7 +27,7 @@ export default defineNuxtConfig({
   },
 
   // Internationalization (i18n) - lazy loaded locales
-  i18n: ({
+  i18n: {
     // default locale shown when no prefix is present
     defaultLocale: 'en',
     // locales and the corresponding files (langDir)
@@ -36,13 +36,28 @@ export default defineNuxtConfig({
       { code: 'id', file: 'id.json', name: 'Indonesian' },
     ],
     // enable lazy loading from the default `i18n/locales/` directory
-    lazy: true,
+    // lazy: true,
+    // detect browser language and persist user selection in a cookie
+    detectBrowserLanguage: {
+      // use a cookie to remember user preference
+      useCookie: true,
+      // cookie name used by the module
+      cookieKey: 'i18n_redirected',
+      // fallback when detection fails
+      fallbackLocale: 'en',
+      // when to redirect: 'root' will redirect only the root path
+      redirectOn: 'root',
+      // do not always redirect (only when appropriate)
+      alwaysRedirect: false,
+      // allow cross-origin cookie usage if needed (keep false by default)
+      cookieCrossOrigin: false,
+    },
     // keep the default strategy; ensure defaultLocale is set
-    strategy: 'prefix_except_default',
+    strategy: 'no_prefix',
     // vueI18n configuration should be provided via a config file path (vueI18n: 'path')
     // or left unset when using lazy-loaded locale files. We omit it here to avoid
     // the module attempting to resolve an object as a file path.
-  } as any),
+  },
 
   nitro: {
     experimental: {
