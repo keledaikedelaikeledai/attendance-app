@@ -43,6 +43,16 @@ function onSignOut() {
           >
             <template #content>
               <UButton
+                icon="i-lucide-user-circle"
+                size="sm"
+                color="neutral"
+                variant="link"
+                class="w-full p-[10px]"
+                to="/admin/profile"
+              >
+                Profile
+              </UButton>
+              <UButton
                 icon="i-lucide-log-out"
                 size="sm"
                 color="neutral"
