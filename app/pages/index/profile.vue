@@ -1,5 +1,4 @@
 <script setup lang="ts">
-/* eslint-disable import/order */
 import { toTypedSchema } from '@vee-validate/zod'
 import { onMounted, ref } from 'vue'
 import { z } from 'zod'
@@ -105,6 +104,14 @@ const onSubmit = handleSubmit(async (values) => {
             </div>
             <div class="font-medium">
               {{ (user?.user?.role) ?? 'user' }}
+            </div>
+          </div>
+          <div class="w-full">
+            <div class="text-sm text-gray-500">
+              Theme
+            </div>
+            <div class="font-medium mt-1">
+              <UColorModeSelect class="w-full" />
             </div>
           </div>
         </div>

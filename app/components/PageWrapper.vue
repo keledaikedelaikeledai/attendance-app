@@ -61,9 +61,9 @@ const menus = computed<NavigationMenuItem[]>(() => [
     </template>
     <template #right>
       <slot name="navRight" />
-      <!-- <LocaleToggler /> -->
+      <!-- Color mode toggle (use built-in Nuxt UI component) -->
       <!-- <ClientOnly> -->
-      <!--   <ColorModeToggler /> -->
+      <UColorModeButton />
       <!-- </ClientOnly> -->
     </template>
   </HeaderColumn>

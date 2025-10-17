@@ -377,7 +377,7 @@ watch(selectedMonth, fetchReport)
                 Late: {{ fmtMinutes(Math.ceil(dayTotalLateMs(d) / 60000)) }} • Early: {{ fmtMinutes(Math.ceil(dayTotalEarlyMs(d) / 60000)) }}
               </div>
 
-              <div class="divide-y divide-neutral-200">
+              <div class="divide-y divide-neutral-200 dark:divide-neutral-800">
                 <template v-for="shift in d.shifts" :key="JSON.stringify([shift.selectedShiftCode, shift.shiftType, shift.clockIn, shift.clockOut])">
                   <div class="p-3">
                     <div class="flex flex-col sm:flex-row items-start gap-4 py-2">

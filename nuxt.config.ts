@@ -20,7 +20,9 @@ export default defineNuxtConfig({
   ],
 
   ui: {
-    colorMode: false,
+    // enable color mode so the UI package can manage light/dark themes
+    // set to true to use the default color-mode behavior (you can later customize this)
+    colorMode: true,
   },
 
   nitro: {
