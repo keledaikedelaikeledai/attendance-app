@@ -31,6 +31,21 @@ const { data: _data, status, refresh } = await useFetch<Res>('/api/auth/admin/li
 
 const data = computed<AdminUser[]>(() => _data.value?.users || [])
 
+// modal state for add/edit user
+const onAddModal = ref(false)
+const editUser = ref<AdminUser | null>(null)
+
+// clear edit target when drawer closes
+watch(onAddModal, (open) => {
+  if (!open)
+    editUser.value = null
+})
+
+function openAdd() {
+  editUser.value = null
+  onAddModal.value = true
+}
+
 const columns: TableColumn<AdminUser>[] = [
   { header: 'Name', accessorKey: 'name', size: 200 },
   { header: 'Username', accessorKey: 'username', size: 150 },
@@ -42,7 +57,17 @@ const columns: TableColumn<AdminUser>[] = [
 
 function getDropdownActions(user: AdminUser) {
   const actions = []
-  actions.push({ label: 'Edit', value: 'edit', icon: 'i-heroicons-pencil' })
+  actions.push({
+    label: 'Edit',
+    value: 'edit',
+    icon: 'i-heroicons-pencil',
+    async onSelect() {
+      // open edit drawer with preloaded data
+      onAddModal.value = true
+      // set the edit target
+      editUser.value = user
+    },
+  })
 
   if (user.role !== 'admin') {
     actions.push({
@@ -165,8 +190,6 @@ function getDropdownActions(user: AdminUser) {
   })
   return actions as DropdownMenuItem[]
 }
-
-const onAddModal = ref(false)
 </script>
 
 <template>
@@ -175,7 +198,7 @@ const onAddModal = ref(false)
       <UButton
         color="primary"
         icon="i-heroicons-plus"
-        @click="onAddModal = true"
+        @click="openAdd"
       >
         Add user
       </UButton>
@@ -231,6 +254,6 @@ const onAddModal = ref(false)
         </UDropdownMenu>
       </template>
     </UTable>
-    <UserModalAdd v-model="onAddModal" @refresh="refresh" />
+    <UserModalAdd v-model="onAddModal" :user="editUser ?? undefined" @refresh="refresh" />
   </PageWrapper>
 </template>
