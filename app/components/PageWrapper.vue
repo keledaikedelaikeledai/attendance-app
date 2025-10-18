@@ -37,7 +37,7 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
     label: l.name,
     value: l.code,
     // leading language icon
-    icon: 'i-heroicons-language',
+    icon: `i-circle-flags-${l.code}`,
     // use the checkbox item type from Nuxt UI so the check appears on the right
     type: 'checkbox',
     checked: l.code === currentLocale,

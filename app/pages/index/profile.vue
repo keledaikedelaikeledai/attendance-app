@@ -20,7 +20,7 @@ const profileLocaleOptions = computed(() => {
   return (locs || []).map((l: any) => {
     const code = typeof l === 'string' ? l : l.code
     const name = typeof l === 'string' ? l : l.name || l.code
-    return { label: name, value: code, icon: 'i-twemoji-flag-indonesia' }
+    return { label: name, value: code, icon: `i-circle-flags-${l.code}` }
   })
 })
 
@@ -155,6 +155,7 @@ const onSubmit = handleSubmit(async (values) => {
                 <USelect
                   v-model="profileSelectedLocale"
                   :items="profileLocaleOptions"
+                  :icon="`i-circle-flags-${profileSelectedLocale}`"
                   option-attribute="label"
                   value-attribute="value"
                   class="w-full"

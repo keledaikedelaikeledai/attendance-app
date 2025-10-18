@@ -137,6 +137,142 @@
     }
   },
 
+  "adminUsers": {
+    "addUser": "Add user",
+    "columns": {
+      "name": "Name",
+      "username": "Username",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "action": "Action"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "User"
+    },
+    "status": {
+      "banned": "Banned",
+      "active": "Active"
+    },
+    "actions": {
+      "edit": "Edit",
+      "changePassword": "Change password",
+      "makeAdmin": "Make Admin",
+      "makeUser": "Make User",
+      "ban": "Ban",
+      "unban": "Unban",
+      "delete": "Delete"
+    },
+    "confirmations": {
+      "makeAdmin": {
+        "title": "Make Admin",
+        "description": "Make {name} an admin? They will receive admin permissions."
+      },
+      "makeUser": {
+        "title": "Make User",
+        "description": "Revoke admin privileges from {name} and make them a regular user?"
+      },
+      "ban": {
+        "title": "Ban User",
+        "description": "Are you sure you want to ban {name}? They will not be able to log in."
+      },
+      "unban": {
+        "title": "Unban User",
+        "description": "Are you sure you want to unban {name}? They will be able to log in again."
+      },
+      "delete": {
+        "title": "Delete User",
+        "description": "Are you sure you want to permanently delete {name}? This action cannot be undone."
+      }
+    },
+    "toasts": {
+      "roleUpdated": {
+        "title": "Role updated",
+        "description": "{name} is now {role}."
+      },
+      "error": {
+        "title": "Error",
+        "description": "{message}"
+      },
+      "userBanned": {
+        "title": "User banned",
+        "description": "{name} has been banned and cannot log in."
+      },
+      "userUnbanned": {
+        "title": "User unbanned",
+        "description": "{name} has been unbanned and can log in again."
+      },
+      "userDeleted": {
+        "title": "User deleted",
+        "description": "{name} has been removed."
+      }
+    }
+  },
+
+  "adminShifts": {
+    "pageTitle": "Shifts",
+    "add": "Add shift",
+    "columns": {
+      "code": "Code",
+      "label": "Label",
+      "start": "Start",
+      "end": "End",
+      "active": "Active",
+      "order": "Order",
+      "action": "Action"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "actionsLabel": "Actions",
+    "modal": {
+      "add": "Add Shift",
+      "edit": "Edit Shift",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "form": {
+      "code": "Code",
+      "codePlaceholder": "e.g. pagi",
+      "label": "Label",
+      "labelPlaceholder": "Pagi (07:00-15:00)",
+      "start": "Start",
+      "end": "End",
+      "active": "Active",
+      "sortOrder": "Sort Order"
+    },
+    "confirmations": {
+      "delete": {
+        "title": "Delete shift",
+        "description": "Delete shift {code}? This cannot be undone."
+      }
+    },
+    "toasts": {
+      "created": {
+        "title": "Shift created",
+        "description": "Shift {code} has been created."
+      },
+      "updated": {
+        "title": "Shift updated",
+        "description": "Shift {code} has been updated."
+      },
+      "deleted": {
+        "title": "Shift deleted",
+        "description": "Shift {code} has been deleted."
+      },
+      "error": {
+        "title": "Error",
+        "description": "{message}"
+      }
+    }
+  },
+
   "auth": {
     "login": {
       "title": "Sign in to manage your time",

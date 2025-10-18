@@ -278,11 +278,6 @@ definePageMeta({
 
 <template>
   <PageWrapper>
-    <!-- <template #navLeft>
-      <h1 class="text-2xl font-semibold">
-        Admin Dashboard
-      </h1>
-    </template> -->
     <template #navRight>
       <div class="flex items-center gap-3">
         <label class="text-sm text-muted">{{ t('admin.index.month') }}</label>
@@ -294,6 +289,7 @@ definePageMeta({
           value-attribute="value"
         />
         <UButton
+          icon="i-heroicons-arrow-path"
           :loading="isLoading"
           @click="refreshAll"
         >

@@ -74,7 +74,7 @@ COPY --from=builder --chown=1000:1000 /app/server/database/schemas ./server/data
 # Expose the PORT (Dokku/Dokploy will set $PORT at runtime)
 EXPOSE ${PORT}
 
-# Switch to non-root numeric UID (no passwd entry required in minimal im`ages)
+# Switch to non-root numeric UID (no passwd entry required in minimal images)
 USER 1000
 
 # Healthcheck (optional): ensures server file exists

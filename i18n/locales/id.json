@@ -137,6 +137,142 @@
     }
   },
 
+  "adminUsers": {
+    "addUser": "Tambah pengguna",
+    "columns": {
+      "name": "Nama",
+      "username": "Username",
+      "email": "Email",
+      "role": "Peran",
+      "status": "Status",
+      "action": "Aksi"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "Pengguna"
+    },
+    "status": {
+      "banned": "Diblokir",
+      "active": "Aktif"
+    },
+    "actions": {
+      "edit": "Sunting",
+      "changePassword": "Ubah kata sandi",
+      "makeAdmin": "Jadikan Admin",
+      "makeUser": "Jadikan Pengguna",
+      "ban": "Blokir",
+      "unban": "Batalkan blokir",
+      "delete": "Hapus"
+    },
+    "confirmations": {
+      "makeAdmin": {
+        "title": "Jadikan Admin",
+        "description": "Jadikan {name} sebagai admin? Mereka akan menerima izin admin."
+      },
+      "makeUser": {
+        "title": "Jadikan Pengguna",
+        "description": "Cabut hak admin dari {name} dan jadikan mereka pengguna biasa?"
+      },
+      "ban": {
+        "title": "Blokir Pengguna",
+        "description": "Anda yakin ingin memblokir {name}? Mereka tidak akan dapat masuk."
+      },
+      "unban": {
+        "title": "Batalkan Blokir",
+        "description": "Anda yakin ingin membuka blokir {name}? Mereka akan dapat masuk lagi."
+      },
+      "delete": {
+        "title": "Hapus Pengguna",
+        "description": "Anda yakin ingin menghapus permanen {name}? Tindakan ini tidak dapat dibatalkan."
+      }
+    },
+    "toasts": {
+      "roleUpdated": {
+        "title": "Peran diperbarui",
+        "description": "{name} sekarang {role}."
+      },
+      "error": {
+        "title": "Kesalahan",
+        "description": "{message}"
+      },
+      "userBanned": {
+        "title": "Pengguna diblokir",
+        "description": "{name} telah diblokir dan tidak dapat masuk."
+      },
+      "userUnbanned": {
+        "title": "Pengguna dibuka blokir",
+        "description": "{name} telah dibuka blokir dan dapat masuk lagi."
+      },
+      "userDeleted": {
+        "title": "Pengguna dihapus",
+        "description": "{name} telah dihapus."
+      }
+    }
+  },
+
+  "adminShifts": {
+    "pageTitle": "Shift",
+    "add": "Tambah shift",
+    "columns": {
+      "code": "Kode",
+      "label": "Label",
+      "start": "Mulai",
+      "end": "Selesai",
+      "active": "Aktif",
+      "order": "Urutan",
+      "action": "Aksi"
+    },
+    "status": {
+      "active": "Aktif",
+      "inactive": "Nonaktif"
+    },
+    "actions": {
+      "edit": "Sunting",
+      "delete": "Hapus"
+    },
+    "actionsLabel": "Aksi",
+    "modal": {
+      "add": "Tambah Shift",
+      "edit": "Sunting Shift",
+      "cancel": "Batal",
+      "save": "Simpan"
+    },
+    "form": {
+      "code": "Kode",
+      "codePlaceholder": "mis. pagi",
+      "label": "Label",
+      "labelPlaceholder": "Pagi (07:00-15:00)",
+      "start": "Mulai",
+      "end": "Selesai",
+      "active": "Aktif",
+      "sortOrder": "Urutan"
+    },
+    "confirmations": {
+      "delete": {
+        "title": "Hapus shift",
+        "description": "Hapus shift {code}? Tindakan ini tidak dapat dibatalkan."
+      }
+    },
+    "toasts": {
+      "created": {
+        "title": "Shift dibuat",
+        "description": "Shift {code} telah dibuat."
+      },
+      "updated": {
+        "title": "Shift diperbarui",
+        "description": "Shift {code} telah diperbarui."
+      },
+      "deleted": {
+        "title": "Shift dihapus",
+        "description": "Shift {code} telah dihapus."
+      },
+      "error": {
+        "title": "Kesalahan",
+        "description": "{message}"
+      }
+    }
+  },
+
   "auth": {
     "login": {
       "title": "Masuk untuk mengelola waktu Anda",

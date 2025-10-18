@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+import { useI18n } from 'vue-i18n'
 
-definePageMeta({
-  title: 'Users',
-  pageTitle: 'Users - Attendance System',
-})
+const { t } = useI18n()
+
+// Use a reactive head title so i18n `t()` is resolved at runtime inside setup
+const pageTitle = computed(() => `${t('adminUsers.columns.name')} - Attendance System`)
+useHead({ title: pageTitle })
 
 interface AdminUser {
   name: string
@@ -50,18 +52,18 @@ function openAdd() {
 }
 
 const columns: TableColumn<AdminUser>[] = [
-  { header: 'Name', accessorKey: 'name', size: 200 },
-  { header: 'Username', accessorKey: 'username', size: 150 },
-  { header: 'Email', accessorKey: 'email', size: 250 },
-  { header: 'Role', accessorKey: 'role', size: 150 },
-  { header: 'Status', id: 'status', size: 100 },
-  { id: 'action', size: 10, maxSize: 10, meta: { class: { td: 'w-5' } } },
+  { header: t('adminUsers.columns.name'), accessorKey: 'name', size: 200 },
+  { header: t('adminUsers.columns.username'), accessorKey: 'username', size: 150 },
+  { header: t('adminUsers.columns.email'), accessorKey: 'email', size: 250 },
+  { header: t('adminUsers.columns.role'), accessorKey: 'role', size: 150 },
+  { header: t('adminUsers.columns.status'), id: 'status', size: 100 },
+  { id: 'action', header: t('adminUsers.columns.action'), size: 10, maxSize: 10, meta: { class: { td: 'w-5' } } },
 ]
 
 function getDropdownActions(user: AdminUser) {
   const actions = []
   actions.push({
-    label: 'Edit',
+    label: t('adminUsers.actions.edit'),
     value: 'edit',
     icon: 'i-heroicons-pencil',
     async onSelect() {
@@ -74,7 +76,7 @@ function getDropdownActions(user: AdminUser) {
 
   // Change password action
   actions.push({
-    label: 'Change password',
+    label: t('adminUsers.actions.changePassword'),
     value: 'change-password',
     icon: 'i-heroicons-key',
     async onSelect() {
@@ -85,14 +87,14 @@ function getDropdownActions(user: AdminUser) {
 
   if (user.role !== 'admin') {
     actions.push({
-      label: 'Make Admin',
+      label: t('adminUsers.actions.makeAdmin'),
       value: 'make-admin',
       icon: 'i-heroicons-shield-check',
       async onSelect() {
         const isConfirmed = await confirmation.confirm({
           icon: 'i-heroicons-shield-check',
-          title: 'Make Admin',
-          description: `Make ${user.name} an admin? They will receive admin permissions.`,
+          title: t('adminUsers.confirmations.makeAdmin.title'),
+          description: t('adminUsers.confirmations.makeAdmin.description', { name: user.name }),
           btnConfirmProps: { color: 'primary' },
         })
 
@@ -102,11 +104,11 @@ function getDropdownActions(user: AdminUser) {
         try {
           const { error } = await authClient.admin.setRole({ userId: user.id, role: 'admin' })
           if (error) throw error
-          toast.add({ title: 'Role updated', description: `${user.name} is now an admin.`, color: 'success' })
+          toast.add({ title: t('adminUsers.toasts.roleUpdated.title'), description: t('adminUsers.toasts.roleUpdated.description', { name: user.name, role: t('adminUsers.role.admin') }), color: 'success' })
           await refresh()
         }
         catch (err: any) {
-          toast.add({ title: 'Error', description: err?.message || 'Failed to update role', color: 'error' })
+          toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to update role' }), color: 'error' })
         }
       },
     })
@@ -114,14 +116,14 @@ function getDropdownActions(user: AdminUser) {
 
   if (user.role !== 'user') {
     actions.push({
-      label: 'Make User',
+      label: t('adminUsers.actions.makeUser'),
       value: 'make-user',
       icon: 'i-heroicons-user',
       async onSelect() {
         const isConfirmed = await confirmation.confirm({
           icon: 'i-heroicons-user',
-          title: 'Make User',
-          description: `Revoke admin privileges from ${user.name} and make them a regular user?`,
+          title: t('adminUsers.confirmations.makeUser.title'),
+          description: t('adminUsers.confirmations.makeUser.description', { name: user.name }),
           btnConfirmProps: { color: 'primary' },
         })
 
@@ -131,26 +133,26 @@ function getDropdownActions(user: AdminUser) {
         try {
           const { error } = await authClient.admin.setRole({ userId: user.id, role: 'user' })
           if (error) throw error
-          toast.add({ title: 'Role updated', description: `${user.name} is now a user.`, color: 'success' })
+          toast.add({ title: t('adminUsers.toasts.roleUpdated.title'), description: t('adminUsers.toasts.roleUpdated.description', { name: user.name, role: t('adminUsers.role.user') }), color: 'success' })
           await refresh()
         }
         catch (err: any) {
-          toast.add({ title: 'Error', description: err?.message || 'Failed to update role', color: 'error' })
+          toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to update role' }), color: 'error' })
         }
       },
     })
   }
 
   actions.push({
-    label: user.banned ? 'Unban' : 'Ban',
+    label: user.banned ? t('adminUsers.actions.unban') : t('adminUsers.actions.ban'),
     value: user.banned ? 'unban' : 'ban',
     icon: user.banned ? 'i-heroicons-check-circle' : 'i-heroicons-no-symbol',
     color: user.banned ? 'success' : 'error',
     async onSelect() {
       const isConfirmed = await confirmation.confirm({
         icon: user.banned ? 'i-heroicons-check-circle' : 'i-heroicons-no-symbol',
-        title: user.banned ? 'Unban User' : 'Ban User',
-        description: user.banned ? `Are you sure you want to unban ${user.name}? They will be able to log in again.` : `Are you sure you want to ban ${user.name}? They will not be able to log in.`,
+        title: user.banned ? t('adminUsers.confirmations.unban.title') : t('adminUsers.confirmations.ban.title'),
+        description: user.banned ? t('adminUsers.confirmations.unban.description', { name: user.name }) : t('adminUsers.confirmations.ban.description', { name: user.name }),
         btnConfirmProps: { color: user.banned ? 'success' : 'error' },
         iconClass: user.banned ? 'text-green-500' : 'text-red-500',
       })
@@ -160,31 +162,27 @@ function getDropdownActions(user: AdminUser) {
 
       if (user.banned) {
         await authClient.admin.unbanUser({ userId: user.id })
+        toast.add({ title: t('adminUsers.toasts.userUnbanned.title'), description: t('adminUsers.toasts.userUnbanned.description', { name: user.name }), color: 'success' })
       }
       else {
         await authClient.admin.banUser({ userId: user.id, banReason: 'Not valid user' })
+        toast.add({ title: t('adminUsers.toasts.userBanned.title'), description: t('adminUsers.toasts.userBanned.description', { name: user.name }), color: 'error' })
       }
-
-      toast.add({
-        title: user.banned ? 'User unbanned' : 'User banned',
-        description: user.banned ? `${user.name} has been unbanned and can log in again.` : `${user.name} has been banned and cannot log in.`,
-        color: user.banned ? 'success' : 'error',
-      })
 
       await refresh()
     },
   })
 
   actions.push({
-    label: 'Delete',
+    label: t('adminUsers.actions.delete'),
     value: 'delete',
     icon: 'i-heroicons-trash',
     color: 'error',
     async onSelect() {
       const isConfirmed = await confirmation.confirm({
         icon: 'i-heroicons-trash',
-        title: 'Delete User',
-        description: `Are you sure you want to permanently delete ${user.name}? This action cannot be undone.`,
+        title: t('adminUsers.confirmations.delete.title'),
+        description: t('adminUsers.confirmations.delete.description', { name: user.name }),
         btnConfirmProps: { color: 'error' },
       })
 
@@ -194,11 +192,11 @@ function getDropdownActions(user: AdminUser) {
       try {
         const { error } = await authClient.admin.removeUser({ userId: user.id })
         if (error) throw error
-        toast.add({ title: 'User deleted', description: `${user.name} has been removed.`, color: 'success' })
+        toast.add({ title: t('adminUsers.toasts.userDeleted.title'), description: t('adminUsers.toasts.userDeleted.description', { name: user.name }), color: 'success' })
         await refresh()
       }
       catch (err: any) {
-        toast.add({ title: 'Error', description: err?.message || 'Failed to delete user', color: 'error' })
+        toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to delete user' }), color: 'error' })
       }
     },
   })
@@ -214,7 +212,7 @@ function getDropdownActions(user: AdminUser) {
         icon="i-heroicons-plus"
         @click="openAdd"
       >
-        Add user
+        {{ t('adminUsers.addUser') }}
       </UButton>
     </template>
 
@@ -224,13 +222,13 @@ function getDropdownActions(user: AdminUser) {
           v-if="row.original.role === 'admin'"
           color="success"
         >
-          Admin
+          {{ t('adminUsers.role.admin') }}
         </UBadge>
         <UBadge
           v-else-if="row.original.role === 'user'"
           color="primary"
         >
-          User
+          {{ t('adminUsers.role.user') }}
         </UBadge>
       </template>
       <template #status-cell="{ row }">
@@ -240,7 +238,7 @@ function getDropdownActions(user: AdminUser) {
           variant="outline"
           icon="i-heroicons-no-symbol"
         >
-          Banned
+          {{ t('adminUsers.status.banned') }}
         </UBadge>
         <UBadge
           v-else
@@ -248,7 +246,7 @@ function getDropdownActions(user: AdminUser) {
           variant="outline"
           icon="i-heroicons-check-circle"
         >
-          Active
+          {{ t('adminUsers.status.active') }}
         </UBadge>
       </template>
       <template #action-cell="{ row }">
@@ -263,7 +261,7 @@ function getDropdownActions(user: AdminUser) {
             icon="i-lucide-ellipsis-vertical"
             color="neutral"
             variant="ghost"
-            aria-label="Actions"
+            :aria-label="t('adminUsers.columns.action')"
           />
         </UDropdownMenu>
       </template>
