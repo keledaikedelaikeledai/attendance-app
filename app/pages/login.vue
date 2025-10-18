@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { z } from 'zod'
 
@@ -8,6 +9,7 @@ const { t } = useI18n()
 const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: '' })
 const { value: password } = useField('password', toTypedSchema(z.string().min(6, 'Password must be at least 6 characters')), { initialValue: '' })
 const remember = useState('auth.remember', () => false)
+const showPassword = ref(false)
 
 const onSubmit = handleSubmit(async (values) => {
   try {
@@ -65,12 +67,27 @@ definePageMeta({
             <UFormField :label="t('auth.login.password')" :error="errors.password">
               <UInput
                 v-model="password"
+                id="login-password"
                 size="xl"
-                type="password"
+                :type="showPassword ? 'text' : 'password'"
                 :placeholder="t('auth.login.passwordPlaceholder')"
                 icon="i-heroicons-lock-closed"
                 class="w-full"
-              />
+                :ui="{ trailing: 'pe-1' }"
+              >
+                <template #trailing>
+                  <UButton
+                    color="neutral"
+                    variant="link"
+                    size="sm"
+                    :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                    :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                    :aria-pressed="showPassword"
+                    aria-controls="login-password"
+                    @click="showPassword = !showPassword"
+                  />
+                </template>
+              </UInput>
             </UFormField>
           </div>
           <UCheckbox v-model="remember" :label="t('auth.login.remember')" />
