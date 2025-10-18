@@ -36,7 +36,7 @@ definePageMeta({
   <UContainer class="py-10 max-w-md mx-auto">
     <div class="space-y-6">
       <div class="flex flex-row justify-center items-center mb-12 gap-2 pl-6">
-        <img src="/logo-dpd.jpeg" alt="App Logo" class="w-14 h-14 mt-2">
+        <img src="/logo-dpd.png" alt="App Logo" class="w-14 h-14 mt-2">
         <img src="/logo-protokol.webp" alt="App Logo" class="w-22 h-22">
       </div>
 
