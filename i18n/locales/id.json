@@ -135,5 +135,23 @@
       "profile": "Profil",
       "logoAlt": "Logo Aplikasi"
     }
+  },
+
+  "auth": {
+    "login": {
+      "title": "Masuk untuk mengelola waktu Anda",
+      "username": "Username",
+      "usernamePlaceholder": "protokol",
+      "password": "Password",
+      "passwordPlaceholder": "••••••••",
+      "remember": "Ingat saya",
+      "submit": "Masuk"
+    },
+    "forgot": {
+      "title": "Lupa Kata Sandi",
+      "description": "Jika Anda lupa kata sandi, silakan hubungi administrator Anda untuk meresetnya.",
+      "cardText": "Untuk alasan keamanan, reset kata sandi ditangani oleh administrator. Hubungi admin Anda untuk meminta reset.",
+      "back": "Kembali ke Login"
+    }
   }
 }

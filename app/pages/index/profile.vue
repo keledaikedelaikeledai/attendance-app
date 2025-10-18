@@ -20,7 +20,7 @@ const profileLocaleOptions = computed(() => {
   return (locs || []).map((l: any) => {
     const code = typeof l === 'string' ? l : l.code
     const name = typeof l === 'string' ? l : l.name || l.code
-    return { label: name, value: code }
+    return { label: name, value: code, icon: 'i-twemoji-flag-indonesia' }
   })
 })
 

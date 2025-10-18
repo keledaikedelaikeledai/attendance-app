@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { z } from 'zod'
 
 const { handleSubmit, errors, isSubmitting } = useForm()
+const { t } = useI18n()
 
 const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: '' })
 const { value: password } = useField('password', toTypedSchema(z.string().min(6, 'Password must be at least 6 characters')), { initialValue: '' })
@@ -39,20 +41,20 @@ definePageMeta({
       </div>
 
       <UCard>
-        <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
+        <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="mx-auto w-[150px] h-auto mb-4">
 
         <p class="mx-auto text-center text-lg font-semibold mb-4 text-gray-500 dark:text-gray-400">
-          Sign in to manage your time
+          {{ t('auth.login.title') }}
         </p>
 
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div class="space-y-2">
-            <UFormField label="Username" :error="errors.username">
+            <UFormField :label="t('auth.login.username')" :error="errors.username">
               <UInput
                 v-model="username"
                 size="xl"
                 type="text"
-                placeholder="protokol"
+                :placeholder="t('auth.login.usernamePlaceholder')"
                 icon="i-heroicons-envelope"
                 autofocus
                 class="w-full"
@@ -60,18 +62,18 @@ definePageMeta({
             </UFormField>
           </div>
           <div class="space-y-2">
-            <UFormField label="Password" :error="errors.password">
+            <UFormField :label="t('auth.login.password')" :error="errors.password">
               <UInput
                 v-model="password"
                 size="xl"
                 type="password"
-                placeholder="••••••••"
+                :placeholder="t('auth.login.passwordPlaceholder')"
                 icon="i-heroicons-lock-closed"
                 class="w-full"
               />
             </UFormField>
           </div>
-          <UCheckbox v-model="remember" label="Remember me" />
+          <UCheckbox v-model="remember" :label="t('auth.login.remember')" />
           <div class="pt-2">
             <UButton
               size="xl"
@@ -80,7 +82,7 @@ definePageMeta({
               type="submit"
               icon="i-heroicons-arrow-right-end-on-rectangle"
             >
-              Login
+              {{ t('auth.login.submit') }}
             </UButton>
           </div>
         </form>
@@ -92,7 +94,7 @@ definePageMeta({
           color="neutral"
           size="xs"
         >
-          Forgot password?
+          {{ t('auth.forgot.title') }}
         </UButton>
       </div>
     </div>

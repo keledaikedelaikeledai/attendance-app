@@ -135,5 +135,23 @@
       "profile": "Profile",
       "logoAlt": "App Logo"
     }
+  },
+
+  "auth": {
+    "login": {
+      "title": "Sign in to manage your time",
+      "username": "Username",
+      "usernamePlaceholder": "protokol",
+      "password": "Password",
+      "passwordPlaceholder": "••••••••",
+      "remember": "Remember me",
+      "submit": "Login"
+    },
+    "forgot": {
+      "title": "Forgot Password",
+      "description": "If you've forgotten your password, please contact your administrator to reset it.",
+      "cardText": "For security reasons password resets are handled by an administrator. Reach out to your admin to request a reset.",
+      "back": "Back to Login"
+    }
   }
 }
