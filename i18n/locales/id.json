@@ -22,5 +22,118 @@
     "hello": "Halo",
     "profile": "Profil",
     "signOut": "Keluar"
+  },
+  "profile": {
+    "header": "Profil",
+    "name": "Nama",
+    "email": "Email",
+    "role": "Peran",
+    "roleUser": "pengguna",
+    "theme": "Tema",
+    "language": "Bahasa",
+    "loading": "Memuat...",
+    "changePassword": "Ubah Kata Sandi",
+    "currentPassword": "Kata Sandi Saat Ini",
+    "newPassword": "Kata Sandi Baru",
+    "confirmNewPassword": "Konfirmasi Kata Sandi Baru",
+    "revokeOtherSessions": "Cabut sesi lain setelah mengubah kata sandi",
+    "changePasswordButton": "Ubah Kata Sandi",
+    "logout": "Keluar"
+  },
+  "toast": {
+    "passwordChanged": {
+      "title": "Kata sandi diubah",
+      "description": "Kata sandi Anda telah diperbarui"
+    },
+    "error": {
+      "title": "Kesalahan",
+      "description": "Gagal mengubah kata sandi"
+    }
+  },
+  "validation": {
+    "currentPasswordRequired": "Kata sandi saat ini diperlukan",
+    "newPasswordMin": "Kata sandi baru minimal 8 karakter",
+    "confirmPasswordMin": "Konfirmasi kata sandi minimal 8 karakter",
+    "passwordsDoNotMatch": "Kata sandi tidak cocok"
+  },
+  "report": {
+    "loading": "Memuat...",
+    "failedToLoad": "Gagal memuat laporan",
+    "overview": "Ikhtisar",
+    "totalWorkingDays": "Total Hari Kerja",
+    "harianShiftDays": "Hari Shift Harian",
+    "bantuanShiftDays": "Hari Shift Bantuan",
+    "totalLate": "Total Telat",
+    "totalEarlyLeave": "Total Pulang Awal",
+    "note": "* Telat = menit setelah jadwal mulai. Pulang Awal = menit sebelum jadwal selesai. Shift yang melintasi tengah malam ditangani.",
+    "dailyDetails": "Rincian Harian",
+    "noShifts": "Tidak ada shift",
+    "harian": "Harian",
+    "bantuan": "Bantuan",
+    "other": "Lainnya",
+    "unknown": "Tidak Diketahui",
+    "shift": "Shift",
+    "clockIn": "Masuk",
+    "clockOut": "Keluar",
+    "late": "Telat",
+    "early": "Pulang Awal"
+  },
+  "index": {
+    "clockedIn": "Sudah Masuk",
+    "notClockedIn": "Belum Masuk",
+    "lateBadge": "Telat · {late}",
+    "labels": {
+      "clockIn": "Masuk",
+      "clockOut": "Keluar",
+      "duration": "Durasi"
+    },
+    "shift": {
+      "label": "Shift",
+      "help": "Pilih jadwal shift Anda.",
+      "placeholder": "Pilih shift"
+    },
+    "shiftType": {
+      "label": "Tipe Shift",
+      "help": "Pilih tipe kehadiran Anda.",
+      "placeholder": "Pilih tipe shift",
+      "items": {
+        "harian": "Shift Harian",
+        "bantuan": "Shift Bantuan"
+      }
+    },
+    "buttons": {
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "refreshLocation": "Segarkan Lokasi"
+    },
+    "location": {
+      "title": "Lokasi",
+      "unsupported": "Geolokasi tidak didukung",
+      "mapAllow": "Izinkan akses lokasi dan segarkan untuk menampilkan posisi Anda di peta.",
+      "mapUnavailable": "Peta tidak tersedia karena geolokasi tidak didukung."
+    },
+    "modal": {
+      "title": "Konfirmasi Clock Out",
+      "confirmEarly": "Anda akan keluar sebelum shift berakhir pada {end} ({remaining} tersisa). Lanjutkan?",
+      "confirm": "Konfirmasi keluar?",
+      "reasonLabel": "Alasan keluar lebih awal (opsional)",
+      "reasonPlaceholder": "Opsional: alasan Anda keluar lebih awal (maks 200 karakter)",
+      "cancel": "Batal",
+      "confirmButton": "Ya, Keluar"
+    },
+    "toast": {
+      "locationRequired": {
+        "title": "Lokasi diperlukan",
+        "description": "Silakan izinkan akses lokasi untuk clock in/out"
+      }
+    }
+  },
+  "layout": {
+    "user": {
+      "home": "Beranda",
+      "reports": "Laporan",
+      "profile": "Profil",
+      "logoAlt": "Logo Aplikasi"
+    }
   }
 }

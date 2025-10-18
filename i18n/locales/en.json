@@ -22,5 +22,118 @@
     "hello": "Hello",
     "profile": "Profile",
     "signOut": "Sign Out"
+  },
+  "profile": {
+    "header": "Profile",
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "roleUser": "user",
+    "theme": "Theme",
+    "language": "Language",
+    "loading": "Loading...",
+    "changePassword": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmNewPassword": "Confirm New Password",
+    "revokeOtherSessions": "Revoke other sessions after password change",
+    "changePasswordButton": "Change Password",
+    "logout": "Logout"
+  },
+  "toast": {
+    "passwordChanged": {
+      "title": "Password changed",
+      "description": "Your password has been updated"
+    },
+    "error": {
+      "title": "Error",
+      "description": "Failed to change password"
+    }
+  },
+  "validation": {
+    "currentPasswordRequired": "Current password is required",
+    "newPasswordMin": "New password must be at least 8 characters",
+    "confirmPasswordMin": "Confirm password must be at least 8 characters",
+    "passwordsDoNotMatch": "Passwords do not match"
+  },
+  "report": {
+    "loading": "Loading...",
+    "failedToLoad": "Failed to load report",
+    "overview": "Overview",
+    "totalWorkingDays": "Total Working Days",
+    "harianShiftDays": "Harian Shift Days",
+    "bantuanShiftDays": "Bantuan Shift Days",
+    "totalLate": "Total Late",
+    "totalEarlyLeave": "Total Early Leave",
+    "note": "* Late = minutes after scheduled start. Early Leave = minutes before scheduled end. Crossing-midnight shifts handled.",
+    "dailyDetails": "Daily Details",
+    "noShifts": "No shifts",
+    "harian": "Harian",
+    "bantuan": "Bantuan",
+    "other": "Other",
+    "unknown": "Unknown",
+    "shift": "Shift",
+    "clockIn": "Clock In",
+    "clockOut": "Clock Out",
+    "late": "Late",
+    "early": "Early"
+  },
+  "index": {
+    "clockedIn": "Clocked In",
+    "notClockedIn": "Not Clocked In",
+    "lateBadge": "Late · {late}",
+    "labels": {
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "duration": "Duration"
+    },
+    "shift": {
+      "label": "Shift",
+      "help": "Select your scheduled shift.",
+      "placeholder": "Select shift"
+    },
+    "shiftType": {
+      "label": "Shift Type",
+      "help": "Select your attendance type.",
+      "placeholder": "Select shift type",
+      "items": {
+        "harian": "Shift Harian",
+        "bantuan": "Shift Bantuan"
+      }
+    },
+    "buttons": {
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "refreshLocation": "Refresh Location"
+    },
+    "location": {
+      "title": "Location",
+      "unsupported": "Geolocation unsupported",
+      "mapAllow": "Allow location access and refresh to display your position on the map.",
+      "mapUnavailable": "Map unavailable because geolocation isn't supported."
+    },
+    "modal": {
+      "title": "Confirm Clock Out",
+      "confirmEarly": "You're clocking out before your shift ends at {end} ({remaining} remaining). Continue?",
+      "confirm": "Confirm clock out?",
+      "reasonLabel": "Reason for early clock out (optional)",
+      "reasonPlaceholder": "Optional: why you're leaving early (max 200 chars)",
+      "cancel": "Cancel",
+      "confirmButton": "Yes, Clock Out"
+    },
+    "toast": {
+      "locationRequired": {
+        "title": "Location required",
+        "description": "Please allow location permission to clock in/out"
+      }
+    }
+  },
+  "layout": {
+    "user": {
+      "home": "Home",
+      "reports": "Reports",
+      "profile": "Profile",
+      "logoAlt": "App Logo"
+    }
   }
 }

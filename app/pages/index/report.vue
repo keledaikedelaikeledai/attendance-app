@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 interface ReportSummary {
   month: string
@@ -33,6 +34,8 @@ const loading = ref(false)
 const errorMsg = ref<string | null>(null)
 const summary = ref<ReportSummary | null>(null)
 const days = ref<DaySummary[]>([])
+
+const { t } = useI18n()
 
 function summarizeDay(d: DaySummary) {
   const res = { harian: 0, bantuan: 0, unknown: 0 }
@@ -243,7 +246,7 @@ async function fetchReport() {
     }
   }
   catch (e: any) {
-    errorMsg.value = e?.data?.message || e?.message || 'Failed to load report'
+    errorMsg.value = e?.data?.message || e?.message || t('report.failedToLoad')
   }
   finally {
     loading.value = false
@@ -285,9 +288,9 @@ watch(selectedMonth, fetchReport)
 </script>
 
 <template>
-  <div class="py-8 space-y-8">
+  <div class="pb-8 space-y-6">
     <div v-if="loading" class="text-sm text-gray-500">
-      Loading...
+      {{ t('report.loading') }}
     </div>
     <div v-if="errorMsg" class="text-sm text-red-600">
       {{ errorMsg }}
@@ -297,7 +300,7 @@ watch(selectedMonth, fetchReport)
       <UCard>
         <template #header>
           <div class="flex items-center justify-between">
-            <span class="font-medium">Overview</span>
+            <span class="font-medium">{{ t('report.overview') }}</span>
             <span class="text-sm text-gray-500">{{ monthLabel(summary?.month) }}</span>
           </div>
         </template>
@@ -305,7 +308,7 @@ watch(selectedMonth, fetchReport)
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 py-4">
           <div class="space-y-1">
             <p class="text-xs text-gray-500">
-              Total Working Days
+              {{ t('report.totalWorkingDays') }}
             </p>
             <p class="text-lg font-semibold">
               {{ summary.totalWorkingDays }}
@@ -313,7 +316,7 @@ watch(selectedMonth, fetchReport)
           </div>
           <div class="space-y-1">
             <p class="text-xs text-gray-500">
-              Harian Shift Days
+              {{ t('report.harianShiftDays') }}
             </p>
             <p class="text-lg font-semibold">
               {{ summary.totalHarianShift }}
@@ -321,7 +324,7 @@ watch(selectedMonth, fetchReport)
           </div>
           <div class="space-y-1">
             <p class="text-xs text-gray-500">
-              Bantuan Shift Days
+              {{ t('report.bantuanShiftDays') }}
             </p>
             <p class="text-lg font-semibold">
               {{ summary.totalBantuanShift }}
@@ -329,7 +332,7 @@ watch(selectedMonth, fetchReport)
           </div>
           <div class="space-y-1">
             <p class="text-xs text-gray-500">
-              Total Late
+              {{ t('report.totalLate') }}
             </p>
             <p class="text-lg font-semibold">
               {{ fmtMinutes(summary.totalLateMinutes) }}
@@ -337,7 +340,7 @@ watch(selectedMonth, fetchReport)
           </div>
           <div class="space-y-1">
             <p class="text-xs text-gray-500">
-              Total Early Leave
+              {{ t('report.totalEarlyLeave') }}
             </p>
             <p class="text-lg font-semibold">
               {{ fmtMinutes(summary.totalEarlyLeaveMinutes) }}
@@ -347,12 +350,12 @@ watch(selectedMonth, fetchReport)
       </UCard>
 
       <div class="text-xs text-gray-500">
-        * Late = minutes after scheduled start. Early Leave = minutes before scheduled end. Crossing-midnight shifts handled.
+        {{ t('report.note') }}
       </div>
 
       <div>
         <h3 class="mt-6 mb-3 font-medium">
-          Daily Details
+          {{ t('report.dailyDetails') }}
         </h3>
         <div class="space-y-4">
           <div v-for="d in days" :key="d.date">
@@ -363,18 +366,18 @@ watch(selectedMonth, fetchReport)
                 </div>
                 <div class="text-sm text-gray-500 flex items-center gap-2">
                   <template v-if="(d.shifts || []).length">
-                    <span v-if="summarizeDay(d).harian" class="text-xs px-2 py-0.5 bg-green-100 rounded">Harian: {{ summarizeDay(d).harian }}</span>
-                    <span v-if="summarizeDay(d).bantuan" class="text-xs px-2 py-0.5 bg-blue-100 rounded">Bantuan: {{ summarizeDay(d).bantuan }}</span>
-                    <span v-if="summarizeDay(d).unknown" class="text-xs px-2 py-0.5 bg-gray-100 rounded">Other: {{ summarizeDay(d).unknown }}</span>
+                    <span v-if="summarizeDay(d).harian" class="text-xs px-2 py-0.5 bg-green-100 rounded">{{ t('report.harian') }}: {{ summarizeDay(d).harian }}</span>
+                    <span v-if="summarizeDay(d).bantuan" class="text-xs px-2 py-0.5 bg-blue-100 rounded">{{ t('report.bantuan') }}: {{ summarizeDay(d).bantuan }}</span>
+                    <span v-if="summarizeDay(d).unknown" class="text-xs px-2 py-0.5 bg-gray-100 rounded">{{ t('report.other') }}: {{ summarizeDay(d).unknown }}</span>
                   </template>
                   <template v-else>
-                    <span class="text-xs text-muted">No shifts</span>
+                    <span class="text-xs text-muted">{{ t('report.noShifts') }}</span>
                   </template>
                 </div>
               </div>
 
               <div class="px-4 py-3 text-xs text-gray-500">
-                Late: {{ fmtMinutes(Math.ceil(dayTotalLateMs(d) / 60000)) }} • Early: {{ fmtMinutes(Math.ceil(dayTotalEarlyMs(d) / 60000)) }}
+                {{ t('report.late') }}: {{ fmtMinutes(Math.ceil(dayTotalLateMs(d) / 60000)) }} • {{ t('report.early') }}: {{ fmtMinutes(Math.ceil(dayTotalEarlyMs(d) / 60000)) }}
               </div>
 
               <div class="divide-y divide-neutral-200 dark:divide-neutral-800">
@@ -383,17 +386,17 @@ watch(selectedMonth, fetchReport)
                     <div class="flex flex-col sm:flex-row items-start gap-4 py-2">
                       <div class="sm:flex-none sm:w-40 w-full">
                         <div class="text-xs text-gray-500">
-                          Shift
+                          {{ t('report.shift') }}
                         </div>
                         <div class="mt-1 flex items-center gap-2">
                           <UBadge v-if="shift.selectedShiftCode" :color="shiftBadgeColor(shift.selectedShiftCode)" variant="solid">
                             {{ shift.selectedShiftCode }}
                           </UBadge>
                           <UBadge v-else variant="outline">
-                            {{ shift.shiftType ?? 'Unknown' }}
+                            {{ shift.shiftType ?? t('report.unknown') }}
                           </UBadge>
                           <UBadge :color="shift.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="subtle" size="xs">
-                            {{ shift.shiftType ? (shift.shiftType === 'harian' ? 'Harian' : 'Bantuan') : 'Unknown' }}
+                            {{ shift.shiftType ? (shift.shiftType === 'harian' ? t('report.harian') : t('report.bantuan')) : t('report.unknown') }}
                           </UBadge>
                         </div>
                       </div>

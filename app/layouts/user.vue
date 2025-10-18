@@ -1,18 +1,22 @@
 <script setup lang="ts">
-const items = ref([
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
+const items = computed(() => [
   {
-    label: 'Home',
+    label: t('layout.user.home'),
     icon: 'i-heroicons-home',
     to: '/',
     exact: true,
   },
   {
-    label: 'Reports',
+    label: t('layout.user.reports'),
     icon: 'i-heroicons-chart-bar',
     to: '/report',
   },
   {
-    label: 'Profile',
+    label: t('layout.user.profile'),
     icon: 'i-heroicons-user-circle',
     to: '/profile',
   },
@@ -23,7 +27,7 @@ const items = ref([
   <UContainer class="py-8 space-y-8 pb-28 md:pb-8">
     <div class="flex items-center justify-between">
       <div>
-        <img src="/applogo-alternate.png" alt="App Logo" class="w-[150px] h-auto">
+        <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="w-[150px] h-auto">
       </div>
       <div class="hidden md:block">
         <UNavigationMenu :items="items" highlight />
