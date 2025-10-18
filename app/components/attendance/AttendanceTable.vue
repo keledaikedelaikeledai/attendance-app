@@ -312,7 +312,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="border-y border-gray-200">
+  <div class="border-y border-gray-200 dark:border-gray-800">
     <u-table
       :data="attendances"
       :columns="columns"

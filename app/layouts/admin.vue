@@ -27,13 +27,7 @@ function onSignOut() {
     >
       <div class="h-screen flex flex-col px-3 py-4 bg-zinc-100 dark:bg-neutral-800">
         <div class="flex flex-col items-center justify-center mb-12">
-          <img
-            src="/logo.webp"
-            alt="Logo"
-            class="w-auto mb-4"
-            :class="{ 'h-8': isCollapsed, 'h-20': !isCollapsed }"
-          >
-          <span v-if="!isCollapsed" class="text-lg font-bold">Attendance App</span>
+          <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
         </div>
         <UNavigationMenu
           orientation="vertical"
@@ -48,6 +42,16 @@ function onSignOut() {
             :disable-closing-trigger="true"
           >
             <template #content>
+              <UButton
+                icon="i-lucide-user-circle"
+                size="sm"
+                color="neutral"
+                variant="link"
+                class="w-full p-[10px]"
+                to="/admin/profile"
+              >
+                Profile
+              </UButton>
               <UButton
                 icon="i-lucide-log-out"
                 size="sm"

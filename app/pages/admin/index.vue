@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
-import * as attendanceTime from '~/composables/useAttendanceTime'
+import { useI18n } from 'vue-i18n'
 // `computed`, `ref`, `onMounted`, etc. are auto-imported by Nuxt; do not import from 'vue' explicitly
+
+// useI18n imported once below
+import * as attendanceTime from '~/composables/useAttendanceTime'
+
+const { t } = useI18n()
 
 const month = ref(new Date().toISOString().slice(0, 7)) // YYYY-MM
 
@@ -12,6 +17,7 @@ const isLoading = computed(() => Boolean(attendancePending.value))
 
 const ApexChart = shallowRef<any>(null)
 const primaryColor = ref('#2563eb')
+const secondaryColor = ref('#60a5fa')
 
 function refreshAll() {
   void refreshAttendance()
@@ -25,14 +31,54 @@ onMounted(async () => {
     ApexChart.value = markRaw(mod.default || mod)
     try {
       const style = getComputedStyle(document.documentElement)
-      const found = (style.getPropertyValue('--u-color-primary') || style.getPropertyValue('--u-color-primary-500') || style.getPropertyValue('--u-color-primary-600') || style.getPropertyValue('--u-primary') || '').trim()
-      if (found) {
-        // ApexCharts works best with hex/rgb values. If the variable is in OKLCH form, fall back to provided hex.
-        if (found.startsWith('oklch')) {
-          primaryColor.value = '#efb100'
+      const foundRaw = (
+        [
+          '--u-color-primary',
+          '--u-color-primary-500',
+          '--color-primary-500',
+          '--u-primary',
+        ].map(k => style.getPropertyValue(k)).find(v => v && v.trim()) || ''
+      ).trim()
+
+      if (foundRaw) {
+        // Create a hidden element to let the browser resolve the color (OKLCH -> rgb if supported)
+        try {
+          const tmp = document.createElement('div')
+          tmp.style.color = foundRaw
+          tmp.style.display = 'none'
+          document.body.appendChild(tmp)
+          const resolved = getComputedStyle(tmp).color
+          document.body.removeChild(tmp)
+          if (resolved && resolved !== 'rgba(0, 0, 0, 0)') {
+            primaryColor.value = resolved
+          }
+          else {
+            primaryColor.value = foundRaw
+          }
         }
-        else {
-          primaryColor.value = found
+        catch {
+          primaryColor.value = foundRaw
+        }
+        // try to resolve a secondary tint for the 'bantuan' series from the theme
+        try {
+          const found2 = (
+            ['--u-color-primary-300', '--u-color-primary-200', '--color-primary-300']
+              .map(k => style.getPropertyValue(k))
+              .find(v => v && v.trim()) || ''
+          ).trim()
+          if (found2) {
+            const tmp2 = document.createElement('div')
+            tmp2.style.color = found2
+            tmp2.style.display = 'none'
+            document.body.appendChild(tmp2)
+            const resolved2 = getComputedStyle(tmp2).color
+            document.body.removeChild(tmp2)
+            if (resolved2 && resolved2 !== 'rgba(0, 0, 0, 0)') secondaryColor.value = resolved2
+            else secondaryColor.value = found2
+          }
+        }
+        catch {
+          // ignore
         }
       }
     }
@@ -150,27 +196,54 @@ const recentRecap = computed(() => {
   })
 })
 
-const recentRecapColumns: TableColumn<any>[] = [
-  { header: 'Name', accessorKey: 'name', size: 220 },
-  { header: 'Total Days', accessorKey: 'totalWorkingDays', size: 120 },
-  { header: 'Harian', accessorKey: 'harian', size: 100 },
-  { header: 'Bantuan', accessorKey: 'bantuan', size: 100 },
-  { header: 'Late Hours', accessorKey: 'lateHours', size: 140 },
-  { header: 'Early Leave Hours', accessorKey: 'earlyHours', size: 160 },
-]
+const recentRecapColumns = computed<TableColumn<any>[]>(() => [
+  { header: t('admin.index.name'), accessorKey: 'name', size: 220 },
+  { header: t('admin.index.totalDays'), accessorKey: 'totalWorkingDays', size: 120 },
+  { header: t('admin.index.harian'), accessorKey: 'harian', size: 100 },
+  { header: t('admin.index.bantuan'), accessorKey: 'bantuan', size: 100 },
+  { header: t('admin.index.lateHours'), accessorKey: 'lateHours', size: 140 },
+  { header: t('admin.index.earlyHours'), accessorKey: 'earlyHours', size: 160 },
+])
 
-const EXPLICIT_PRIMARY = '#efb100'
+// Chart color follows the resolved theme primary color. We populate `primaryColor` on mount.
 const chartOptions = computed(() => ({
-  chart: { id: 'presence-chart', toolbar: { show: false } },
-  colors: [EXPLICIT_PRIMARY],
-  fill: { colors: [EXPLICIT_PRIMARY] },
+  chart: { id: 'presence-chart', toolbar: { show: false }, stacked: true },
+  colors: [primaryColor.value, secondaryColor.value],
+  fill: { colors: [primaryColor.value, secondaryColor.value] },
   xaxis: { categories: data.value.days?.map((d: string) => d.split('-').pop()) || [] },
   yaxis: { title: { text: 'Users present' } },
   dataLabels: { enabled: false },
   stroke: { curve: 'smooth' as const },
 }))
 
-const chartSeries = computed(() => ([{ name: 'Present', data: presentCountsPerDay.value }]))
+// Produce two series: 'Harian' and 'Bantuan'. We assume attendance data rows aggregate shifts per day
+// by `workingShifts`, `harian`, and `bantuan` fields when present. Otherwise we fallback to counting entries.
+const chartSeries = computed(() => {
+  const days = data.value.days || []
+  const rows = data.value.rows || []
+  // Count present per day for each type
+  const harianCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
+    const cell = row.byDate?.[d]
+    if (!cell) return acc
+    if (typeof cell.harian === 'number') return acc + Number(cell.harian)
+    // fallback: count entries marked harian (entry.shiftType === 'harian')
+    const entries = attendanceTime.normalizeCell(cell)
+    return acc + entries.filter((e: any) => e?.shiftType === 'harian' && e?.clockIn).length
+  }, 0))
+
+  const bantuanCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
+    const cell = row.byDate?.[d]
+    if (!cell) return acc
+    if (typeof cell.bantuan === 'number') return acc + Number(cell.bantuan)
+    const entries = attendanceTime.normalizeCell(cell)
+    return acc + entries.filter((e: any) => e?.shiftType === 'bantuan' && e?.clockIn).length
+  }, 0))
+
+  return [
+    { name: 'Harian', data: harianCounts },
+    { name: 'Bantuan', data: bantuanCounts },
+  ]
+})
 
 function formatPercent(v: number) {
   return `${v}%`
@@ -205,14 +278,9 @@ definePageMeta({
 
 <template>
   <PageWrapper>
-    <!-- <template #navLeft>
-      <h1 class="text-2xl font-semibold">
-        Admin Dashboard
-      </h1>
-    </template> -->
     <template #navRight>
       <div class="flex items-center gap-3">
-        <label class="text-sm text-muted">Month</label>
+        <label class="text-sm text-muted">{{ t('admin.index.month') }}</label>
         <USelect
           v-model="month"
           class="w-52"
@@ -221,10 +289,11 @@ definePageMeta({
           value-attribute="value"
         />
         <UButton
+          icon="i-heroicons-arrow-path"
           :loading="isLoading"
           @click="refreshAll"
         >
-          Refresh
+          {{ t('admin.index.refresh') }}
         </UButton>
       </div>
     </template>
@@ -233,7 +302,7 @@ definePageMeta({
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
         <UCard>
           <div class="text-sm text-muted">
-            Total Users
+            {{ t('admin.index.totalUsers') }}
           </div>
           <div class="text-xl font-semibold">
             {{ totalUsers }}
@@ -241,7 +310,7 @@ definePageMeta({
         </UCard>
         <UCard>
           <div class="text-sm text-muted">
-            Days in Month
+            {{ t('admin.index.daysInMonth') }}
           </div>
           <div class="text-xl font-semibold">
             {{ totalDays }}
@@ -249,7 +318,7 @@ definePageMeta({
         </UCard>
         <UCard>
           <div class="text-sm text-muted">
-            Presence %
+            {{ t('admin.index.presencePercent') }}
           </div>
           <div class="text-xl font-semibold">
             {{ formatPercent(percentPresent) }}
@@ -257,7 +326,7 @@ definePageMeta({
         </UCard>
         <UCard>
           <div class="text-sm text-muted">
-            Avg Late / User
+            {{ t('admin.index.avgLatePerUser') }}
           </div>
           <div class="text-xl font-semibold">
             {{ averageLatePerUser }}
@@ -267,7 +336,7 @@ definePageMeta({
 
       <UCard>
         <div class="mb-4">
-          <strong>Daily Presence</strong>
+          <strong>{{ t('admin.index.dailyPresence') }}</strong>
         </div>
         <div>
           <client-only>
@@ -281,7 +350,7 @@ definePageMeta({
               />
             </div>
             <div v-else class="text-sm text-muted">
-              Chart loading...
+              {{ t('admin.index.chartLoading') }}
             </div>
           </client-only>
         </div>
@@ -290,7 +359,7 @@ definePageMeta({
       <div class="space-y-4">
         <UCard>
           <div class="mb-3">
-            <strong>User Recap</strong>
+            <strong>{{ t('admin.index.userRecap') }}</strong>
           </div>
           <UTable :data="recentRecap" :columns="recentRecapColumns">
             <template #name-cell="{ row }">
@@ -321,6 +390,6 @@ definePageMeta({
 <style scoped>
 .text-muted { color: var(--u-color-muted, #6b7280); }
   .admin-presence-chart :deep(.apexcharts-bar-area .apexcharts-series.apexcharts-series-0 .apexcharts-bar-path) {
-    fill: #efb100 !important;
+    fill: var(--u-color-primary-500, #efb100) !important;
   }
 </style>

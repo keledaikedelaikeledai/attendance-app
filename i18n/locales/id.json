@@ -1,0 +1,293 @@
+{
+  "admin": {
+    "index": {
+      "month": "Bulan",
+      "refresh": "Muat Ulang",
+      "totalUsers": "Total Pengguna",
+      "daysInMonth": "Jumlah Hari",
+      "presencePercent": "Persentase Hadir",
+      "avgLatePerUser": "Rata-rata Telat / Pengguna",
+      "dailyPresence": "Kehadiran Harian",
+      "chartLoading": "Grafik dimuat...",
+      "userRecap": "Rekap Pengguna",
+      "name": "Nama",
+      "totalDays": "Total Hari",
+      "harian": "Harian",
+      "bantuan": "Bantuan",
+      "lateHours": "Jam Telat",
+      "earlyHours": "Jam Pulang Awal"
+    }
+  },
+  "common": {
+    "hello": "Halo",
+    "profile": "Profil",
+    "signOut": "Keluar"
+  },
+  "profile": {
+    "header": "Profil",
+    "name": "Nama",
+    "email": "Email",
+    "role": "Peran",
+    "roleUser": "pengguna",
+    "theme": "Tema",
+    "language": "Bahasa",
+    "loading": "Memuat...",
+    "changePassword": "Ubah Kata Sandi",
+    "currentPassword": "Kata Sandi Saat Ini",
+    "newPassword": "Kata Sandi Baru",
+    "confirmNewPassword": "Konfirmasi Kata Sandi Baru",
+    "revokeOtherSessions": "Cabut sesi lain setelah mengubah kata sandi",
+    "changePasswordButton": "Ubah Kata Sandi",
+    "logout": "Keluar"
+  },
+  "toast": {
+    "passwordChanged": {
+      "title": "Kata sandi diubah",
+      "description": "Kata sandi Anda telah diperbarui"
+    },
+    "error": {
+      "title": "Kesalahan",
+      "description": "Gagal mengubah kata sandi"
+    }
+  },
+  "validation": {
+    "currentPasswordRequired": "Kata sandi saat ini diperlukan",
+    "newPasswordMin": "Kata sandi baru minimal 8 karakter",
+    "confirmPasswordMin": "Konfirmasi kata sandi minimal 8 karakter",
+    "passwordsDoNotMatch": "Kata sandi tidak cocok"
+  },
+  "report": {
+    "loading": "Memuat...",
+    "failedToLoad": "Gagal memuat laporan",
+    "overview": "Ikhtisar",
+    "totalWorkingDays": "Total Hari Kerja",
+    "harianShiftDays": "Hari Shift Harian",
+    "bantuanShiftDays": "Hari Shift Bantuan",
+    "totalLate": "Total Telat",
+    "totalEarlyLeave": "Total Pulang Awal",
+    "note": "* Telat = menit setelah jadwal mulai. Pulang Awal = menit sebelum jadwal selesai. Shift yang melintasi tengah malam ditangani.",
+    "dailyDetails": "Rincian Harian",
+    "noShifts": "Tidak ada shift",
+    "harian": "Harian",
+    "bantuan": "Bantuan",
+    "other": "Lainnya",
+    "unknown": "Tidak Diketahui",
+    "shift": "Shift",
+    "clockIn": "Masuk",
+    "clockOut": "Keluar",
+    "late": "Telat",
+    "early": "Pulang Awal"
+  },
+  "index": {
+    "clockedIn": "Sudah Masuk",
+    "notClockedIn": "Belum Masuk",
+    "lateBadge": "Telat · {late}",
+    "labels": {
+      "clockIn": "Masuk",
+      "clockOut": "Keluar",
+      "duration": "Durasi"
+    },
+    "shift": {
+      "label": "Shift",
+      "help": "Pilih jadwal shift Anda.",
+      "placeholder": "Pilih shift"
+    },
+    "shiftType": {
+      "label": "Tipe Shift",
+      "help": "Pilih tipe kehadiran Anda.",
+      "placeholder": "Pilih tipe shift",
+      "items": {
+        "harian": "Shift Harian",
+        "bantuan": "Shift Bantuan"
+      }
+    },
+    "buttons": {
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "refreshLocation": "Segarkan Lokasi"
+    },
+    "location": {
+      "title": "Lokasi",
+      "unsupported": "Geolokasi tidak didukung",
+      "mapAllow": "Izinkan akses lokasi dan segarkan untuk menampilkan posisi Anda di peta.",
+      "mapUnavailable": "Peta tidak tersedia karena geolokasi tidak didukung."
+    },
+    "modal": {
+      "title": "Konfirmasi Clock Out",
+      "confirmEarly": "Anda akan keluar sebelum shift berakhir pada {end} ({remaining} tersisa). Lanjutkan?",
+      "confirm": "Konfirmasi keluar?",
+      "reasonLabel": "Alasan keluar lebih awal (opsional)",
+      "reasonPlaceholder": "Opsional: alasan Anda keluar lebih awal (maks 200 karakter)",
+      "cancel": "Batal",
+      "confirmButton": "Ya, Keluar"
+    },
+    "toast": {
+      "locationRequired": {
+        "title": "Lokasi diperlukan",
+        "description": "Silakan izinkan akses lokasi untuk clock in/out"
+      }
+    }
+  },
+  "layout": {
+    "user": {
+      "home": "Beranda",
+      "reports": "Laporan",
+      "profile": "Profil",
+      "logoAlt": "Logo Aplikasi"
+    }
+  },
+
+  "adminUsers": {
+    "addUser": "Tambah pengguna",
+    "columns": {
+      "name": "Nama",
+      "username": "Username",
+      "email": "Email",
+      "role": "Peran",
+      "status": "Status",
+      "action": "Aksi"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "Pengguna"
+    },
+    "status": {
+      "banned": "Diblokir",
+      "active": "Aktif"
+    },
+    "actions": {
+      "edit": "Sunting",
+      "changePassword": "Ubah kata sandi",
+      "makeAdmin": "Jadikan Admin",
+      "makeUser": "Jadikan Pengguna",
+      "ban": "Blokir",
+      "unban": "Batalkan blokir",
+      "delete": "Hapus"
+    },
+    "confirmations": {
+      "makeAdmin": {
+        "title": "Jadikan Admin",
+        "description": "Jadikan {name} sebagai admin? Mereka akan menerima izin admin."
+      },
+      "makeUser": {
+        "title": "Jadikan Pengguna",
+        "description": "Cabut hak admin dari {name} dan jadikan mereka pengguna biasa?"
+      },
+      "ban": {
+        "title": "Blokir Pengguna",
+        "description": "Anda yakin ingin memblokir {name}? Mereka tidak akan dapat masuk."
+      },
+      "unban": {
+        "title": "Batalkan Blokir",
+        "description": "Anda yakin ingin membuka blokir {name}? Mereka akan dapat masuk lagi."
+      },
+      "delete": {
+        "title": "Hapus Pengguna",
+        "description": "Anda yakin ingin menghapus permanen {name}? Tindakan ini tidak dapat dibatalkan."
+      }
+    },
+    "toasts": {
+      "roleUpdated": {
+        "title": "Peran diperbarui",
+        "description": "{name} sekarang {role}."
+      },
+      "error": {
+        "title": "Kesalahan",
+        "description": "{message}"
+      },
+      "userBanned": {
+        "title": "Pengguna diblokir",
+        "description": "{name} telah diblokir dan tidak dapat masuk."
+      },
+      "userUnbanned": {
+        "title": "Pengguna dibuka blokir",
+        "description": "{name} telah dibuka blokir dan dapat masuk lagi."
+      },
+      "userDeleted": {
+        "title": "Pengguna dihapus",
+        "description": "{name} telah dihapus."
+      }
+    }
+  },
+
+  "adminShifts": {
+    "pageTitle": "Shift",
+    "add": "Tambah shift",
+    "columns": {
+      "code": "Kode",
+      "label": "Label",
+      "start": "Mulai",
+      "end": "Selesai",
+      "active": "Aktif",
+      "order": "Urutan",
+      "action": "Aksi"
+    },
+    "status": {
+      "active": "Aktif",
+      "inactive": "Nonaktif"
+    },
+    "actions": {
+      "edit": "Sunting",
+      "delete": "Hapus"
+    },
+    "actionsLabel": "Aksi",
+    "modal": {
+      "add": "Tambah Shift",
+      "edit": "Sunting Shift",
+      "cancel": "Batal",
+      "save": "Simpan"
+    },
+    "form": {
+      "code": "Kode",
+      "codePlaceholder": "mis. pagi",
+      "label": "Label",
+      "labelPlaceholder": "Pagi (07:00-15:00)",
+      "start": "Mulai",
+      "end": "Selesai",
+      "active": "Aktif",
+      "sortOrder": "Urutan"
+    },
+    "confirmations": {
+      "delete": {
+        "title": "Hapus shift",
+        "description": "Hapus shift {code}? Tindakan ini tidak dapat dibatalkan."
+      }
+    },
+    "toasts": {
+      "created": {
+        "title": "Shift dibuat",
+        "description": "Shift {code} telah dibuat."
+      },
+      "updated": {
+        "title": "Shift diperbarui",
+        "description": "Shift {code} telah diperbarui."
+      },
+      "deleted": {
+        "title": "Shift dihapus",
+        "description": "Shift {code} telah dihapus."
+      },
+      "error": {
+        "title": "Kesalahan",
+        "description": "{message}"
+      }
+    }
+  },
+
+  "auth": {
+    "login": {
+      "title": "Masuk untuk mengelola waktu Anda",
+      "username": "Username",
+      "usernamePlaceholder": "protokol",
+      "password": "Password",
+      "passwordPlaceholder": "••••••••",
+      "remember": "Ingat saya",
+      "submit": "Masuk"
+    },
+    "forgot": {
+      "title": "Lupa Kata Sandi",
+      "description": "Jika Anda lupa kata sandi, silakan hubungi administrator Anda untuk meresetnya.",
+      "cardText": "Untuk alasan keamanan, reset kata sandi ditangani oleh administrator. Hubungi admin Anda untuk meminta reset.",
+      "back": "Kembali ke Login"
+    }
+  }
+}

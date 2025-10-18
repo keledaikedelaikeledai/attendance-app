@@ -1,0 +1,293 @@
+{
+  "admin": {
+    "index": {
+      "month": "Month",
+      "refresh": "Refresh",
+      "totalUsers": "Total Users",
+      "daysInMonth": "Days in Month",
+      "presencePercent": "Presence %",
+      "avgLatePerUser": "Avg Late / User",
+      "dailyPresence": "Daily Presence",
+      "chartLoading": "Chart loading...",
+      "userRecap": "User Recap",
+      "name": "Name",
+      "totalDays": "Total Days",
+      "harian": "Harian",
+      "bantuan": "Bantuan",
+      "lateHours": "Late Hours",
+      "earlyHours": "Early Leave Hours"
+    }
+  },
+  "common": {
+    "hello": "Hello",
+    "profile": "Profile",
+    "signOut": "Sign Out"
+  },
+  "profile": {
+    "header": "Profile",
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "roleUser": "user",
+    "theme": "Theme",
+    "language": "Language",
+    "loading": "Loading...",
+    "changePassword": "Change Password",
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmNewPassword": "Confirm New Password",
+    "revokeOtherSessions": "Revoke other sessions after password change",
+    "changePasswordButton": "Change Password",
+    "logout": "Logout"
+  },
+  "toast": {
+    "passwordChanged": {
+      "title": "Password changed",
+      "description": "Your password has been updated"
+    },
+    "error": {
+      "title": "Error",
+      "description": "Failed to change password"
+    }
+  },
+  "validation": {
+    "currentPasswordRequired": "Current password is required",
+    "newPasswordMin": "New password must be at least 8 characters",
+    "confirmPasswordMin": "Confirm password must be at least 8 characters",
+    "passwordsDoNotMatch": "Passwords do not match"
+  },
+  "report": {
+    "loading": "Loading...",
+    "failedToLoad": "Failed to load report",
+    "overview": "Overview",
+    "totalWorkingDays": "Total Working Days",
+    "harianShiftDays": "Harian Shift Days",
+    "bantuanShiftDays": "Bantuan Shift Days",
+    "totalLate": "Total Late",
+    "totalEarlyLeave": "Total Early Leave",
+    "note": "* Late = minutes after scheduled start. Early Leave = minutes before scheduled end. Crossing-midnight shifts handled.",
+    "dailyDetails": "Daily Details",
+    "noShifts": "No shifts",
+    "harian": "Harian",
+    "bantuan": "Bantuan",
+    "other": "Other",
+    "unknown": "Unknown",
+    "shift": "Shift",
+    "clockIn": "Clock In",
+    "clockOut": "Clock Out",
+    "late": "Late",
+    "early": "Early"
+  },
+  "index": {
+    "clockedIn": "Clocked In",
+    "notClockedIn": "Not Clocked In",
+    "lateBadge": "Late · {late}",
+    "labels": {
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "duration": "Duration"
+    },
+    "shift": {
+      "label": "Shift",
+      "help": "Select your scheduled shift.",
+      "placeholder": "Select shift"
+    },
+    "shiftType": {
+      "label": "Shift Type",
+      "help": "Select your attendance type.",
+      "placeholder": "Select shift type",
+      "items": {
+        "harian": "Shift Harian",
+        "bantuan": "Shift Bantuan"
+      }
+    },
+    "buttons": {
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "refreshLocation": "Refresh Location"
+    },
+    "location": {
+      "title": "Location",
+      "unsupported": "Geolocation unsupported",
+      "mapAllow": "Allow location access and refresh to display your position on the map.",
+      "mapUnavailable": "Map unavailable because geolocation isn't supported."
+    },
+    "modal": {
+      "title": "Confirm Clock Out",
+      "confirmEarly": "You're clocking out before your shift ends at {end} ({remaining} remaining). Continue?",
+      "confirm": "Confirm clock out?",
+      "reasonLabel": "Reason for early clock out (optional)",
+      "reasonPlaceholder": "Optional: why you're leaving early (max 200 chars)",
+      "cancel": "Cancel",
+      "confirmButton": "Yes, Clock Out"
+    },
+    "toast": {
+      "locationRequired": {
+        "title": "Location required",
+        "description": "Please allow location permission to clock in/out"
+      }
+    }
+  },
+  "layout": {
+    "user": {
+      "home": "Home",
+      "reports": "Reports",
+      "profile": "Profile",
+      "logoAlt": "App Logo"
+    }
+  },
+
+  "adminUsers": {
+    "addUser": "Add user",
+    "columns": {
+      "name": "Name",
+      "username": "Username",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "action": "Action"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "User"
+    },
+    "status": {
+      "banned": "Banned",
+      "active": "Active"
+    },
+    "actions": {
+      "edit": "Edit",
+      "changePassword": "Change password",
+      "makeAdmin": "Make Admin",
+      "makeUser": "Make User",
+      "ban": "Ban",
+      "unban": "Unban",
+      "delete": "Delete"
+    },
+    "confirmations": {
+      "makeAdmin": {
+        "title": "Make Admin",
+        "description": "Make {name} an admin? They will receive admin permissions."
+      },
+      "makeUser": {
+        "title": "Make User",
+        "description": "Revoke admin privileges from {name} and make them a regular user?"
+      },
+      "ban": {
+        "title": "Ban User",
+        "description": "Are you sure you want to ban {name}? They will not be able to log in."
+      },
+      "unban": {
+        "title": "Unban User",
+        "description": "Are you sure you want to unban {name}? They will be able to log in again."
+      },
+      "delete": {
+        "title": "Delete User",
+        "description": "Are you sure you want to permanently delete {name}? This action cannot be undone."
+      }
+    },
+    "toasts": {
+      "roleUpdated": {
+        "title": "Role updated",
+        "description": "{name} is now {role}."
+      },
+      "error": {
+        "title": "Error",
+        "description": "{message}"
+      },
+      "userBanned": {
+        "title": "User banned",
+        "description": "{name} has been banned and cannot log in."
+      },
+      "userUnbanned": {
+        "title": "User unbanned",
+        "description": "{name} has been unbanned and can log in again."
+      },
+      "userDeleted": {
+        "title": "User deleted",
+        "description": "{name} has been removed."
+      }
+    }
+  },
+
+  "adminShifts": {
+    "pageTitle": "Shifts",
+    "add": "Add shift",
+    "columns": {
+      "code": "Code",
+      "label": "Label",
+      "start": "Start",
+      "end": "End",
+      "active": "Active",
+      "order": "Order",
+      "action": "Action"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "actionsLabel": "Actions",
+    "modal": {
+      "add": "Add Shift",
+      "edit": "Edit Shift",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "form": {
+      "code": "Code",
+      "codePlaceholder": "e.g. pagi",
+      "label": "Label",
+      "labelPlaceholder": "Pagi (07:00-15:00)",
+      "start": "Start",
+      "end": "End",
+      "active": "Active",
+      "sortOrder": "Sort Order"
+    },
+    "confirmations": {
+      "delete": {
+        "title": "Delete shift",
+        "description": "Delete shift {code}? This cannot be undone."
+      }
+    },
+    "toasts": {
+      "created": {
+        "title": "Shift created",
+        "description": "Shift {code} has been created."
+      },
+      "updated": {
+        "title": "Shift updated",
+        "description": "Shift {code} has been updated."
+      },
+      "deleted": {
+        "title": "Shift deleted",
+        "description": "Shift {code} has been deleted."
+      },
+      "error": {
+        "title": "Error",
+        "description": "{message}"
+      }
+    }
+  },
+
+  "auth": {
+    "login": {
+      "title": "Sign in to manage your time",
+      "username": "Username",
+      "usernamePlaceholder": "protokol",
+      "password": "Password",
+      "passwordPlaceholder": "••••••••",
+      "remember": "Remember me",
+      "submit": "Login"
+    },
+    "forgot": {
+      "title": "Forgot Password",
+      "description": "If you've forgotten your password, please contact your administrator to reset it.",
+      "cardText": "For security reasons password resets are handled by an administrator. Reach out to your admin to request a reset.",
+      "back": "Back to Login"
+    }
+  }
+}

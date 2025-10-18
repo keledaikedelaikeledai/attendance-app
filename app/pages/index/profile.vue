@@ -1,14 +1,44 @@
 <script setup lang="ts">
-/* eslint-disable import/order */
+// ...existing imports
 import { toTypedSchema } from '@vee-validate/zod'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { z } from 'zod'
 import { authClient } from '~/utils/auth'
 
 const toast = useToast()
+const { t } = useI18n()
 
 const user = ref<any>(null)
 const loading = ref(true)
+
+// i18n: language switcher (use a select on the profile page)
+const { locale, locales, setLocale } = useI18n()
+
+const profileLocaleOptions = computed(() => {
+  const locs = (locales as any)?.value ?? locales
+  return (locs || []).map((l: any) => {
+    const code = typeof l === 'string' ? l : l.code
+    const name = typeof l === 'string' ? l : l.name || l.code
+    return { label: name, value: code, icon: `i-circle-flags-${l.code}` }
+  })
+})
+
+const profileSelectedLocale = computed({
+  get() {
+    return (locale as any)?.value ?? (locale as any)
+  },
+  set(v: string) {
+    try {
+      void (setLocale as any)(v)
+    }
+    catch {
+      const lc = locale as any
+      if (lc && typeof lc === 'object' && 'value' in lc) lc.value = v
+      else (locale as any) = v
+    }
+  },
+})
 
 onMounted(async () => {
   const { data } = await authClient.useSession(useFetch)
@@ -31,19 +61,19 @@ const { handleSubmit, errors, isSubmitting } = useForm()
 
 const { value: currentPassword } = useField(
   'currentPassword',
-  toTypedSchema(z.string().min(1, 'Current password is required')),
+  toTypedSchema(z.string().min(1, t('validation.currentPasswordRequired'))),
   { initialValue: '' },
 )
 
 const { value: newPassword } = useField(
   'newPassword',
-  toTypedSchema(z.string().min(8, 'New password must be at least 8 characters')),
+  toTypedSchema(z.string().min(8, t('validation.newPasswordMin'))),
   { initialValue: '' },
 )
 
 const { value: confirmPassword } = useField(
   'confirmPassword',
-  toTypedSchema(z.string().min(8, 'Confirm password must be at least 8 characters').refine(val => val === newPassword.value, { message: 'Passwords do not match' })),
+  toTypedSchema(z.string().min(8, t('validation.confirmPasswordMin')).refine(val => val === newPassword.value, { message: t('validation.passwordsDoNotMatch') })),
   { initialValue: '' },
 )
 
@@ -56,7 +86,7 @@ const onSubmit = handleSubmit(async (values) => {
       currentPassword: values.currentPassword,
       revokeOtherSessions: !!values.revokeOtherSessions,
     })
-    toast.add({ title: 'Password changed', description: 'Your password has been updated', color: 'success' })
+    toast.add({ title: t('toast.passwordChanged.title'), description: t('toast.passwordChanged.description'), color: 'success' })
     // clear fields
     currentPassword.value = ''
     newPassword.value = ''
@@ -64,8 +94,8 @@ const onSubmit = handleSubmit(async (values) => {
     revokeOtherSessions.value = true
   }
   catch (err: any) {
-    const msg = (err && err.message) ? err.message : 'Failed to change password'
-    toast.add({ title: 'Error', description: msg, color: 'error' })
+    const msg = (err && err.message) ? err.message : t('toast.error.description')
+    toast.add({ title: t('toast.error.title'), description: msg, color: 'error' })
   }
 })
 </script>
@@ -75,17 +105,17 @@ const onSubmit = handleSubmit(async (values) => {
     <UCard>
       <template #header>
         <div class="font-medium">
-          Profile
+          {{ t('profile.header') }}
         </div>
       </template>
       <div class="p-4 space-y-4">
         <div v-if="loading" class="text-sm text-gray-500">
-          Loading...
+          {{ t('profile.loading') }}
         </div>
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <div class="text-sm text-gray-500">
-              Name
+              {{ t('profile.name') }}
             </div>
             <div class="font-medium">
               {{ user?.user?.displayName ?? user?.user?.username ?? '-' }}
@@ -93,7 +123,7 @@ const onSubmit = handleSubmit(async (values) => {
           </div>
           <div>
             <div class="text-sm text-gray-500">
-              Email
+              {{ t('profile.email') }}
             </div>
             <div class="font-medium">
               {{ user?.user?.email ?? '-' }}
@@ -101,10 +131,36 @@ const onSubmit = handleSubmit(async (values) => {
           </div>
           <div>
             <div class="text-sm text-gray-500">
-              Role
+              {{ t('profile.role') }}
             </div>
             <div class="font-medium">
-              {{ (user?.user?.role) ?? 'user' }}
+              {{ (user?.user?.role) ?? t('profile.roleUser') }}
+            </div>
+          </div>
+          <div class="w-full">
+            <div>
+              <div class="text-sm text-gray-500">
+                {{ t('profile.theme') }}
+              </div>
+              <div class="font-medium mt-1">
+                <UColorModeSelect class="w-full" />
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <div class="text-sm text-gray-500">
+                {{ t('profile.language') }}
+              </div>
+              <div class="font-medium mt-1">
+                <USelect
+                  v-model="profileSelectedLocale"
+                  :items="profileLocaleOptions"
+                  :icon="`i-circle-flags-${profileSelectedLocale}`"
+                  option-attribute="label"
+                  value-attribute="value"
+                  class="w-full"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -114,34 +170,34 @@ const onSubmit = handleSubmit(async (values) => {
     <UCard>
       <template #header>
         <div class="font-medium">
-          Change Password
+          {{ t('profile.changePassword') }}
         </div>
       </template>
       <div class="p-4">
         <form class="space-y-4" @submit.prevent="onSubmit">
-          <UFormField label="Current Password" :error="errors.currentPassword">
+          <UFormField :label="t('profile.currentPassword')" :error="errors.currentPassword">
             <UInput
               v-model="currentPassword"
               type="password"
-              placeholder="Current password"
+              :placeholder="t('profile.currentPassword')"
               class="w-full"
             />
           </UFormField>
 
-          <UFormField label="New Password" :error="errors.newPassword">
+          <UFormField :label="t('profile.newPassword')" :error="errors.newPassword">
             <UInput
               v-model="newPassword"
               type="password"
-              placeholder="New password"
+              :placeholder="t('profile.newPassword')"
               class="w-full"
             />
           </UFormField>
 
-          <UFormField label="Confirm New Password" :error="errors.confirmPassword">
+          <UFormField :label="t('profile.confirmNewPassword')" :error="errors.confirmPassword">
             <UInput
               v-model="confirmPassword"
               type="password"
-              placeholder="Repeat new password"
+              :placeholder="t('profile.confirmNewPassword')"
               class="w-full"
             />
           </UFormField>
@@ -149,13 +205,13 @@ const onSubmit = handleSubmit(async (values) => {
           <div class="flex items-center gap-3">
             <USwitch v-model="revokeOtherSessions" />
             <div class="text-sm text-gray-600">
-              Revoke other sessions after password change
+              {{ t('profile.revokeOtherSessions') }}
             </div>
           </div>
 
           <div class="flex justify-end">
             <UButton :loading="isSubmitting" color="primary" type="submit">
-              Change Password
+              {{ t('profile.changePasswordButton') }}
             </UButton>
           </div>
         </form>
@@ -169,7 +225,7 @@ const onSubmit = handleSubmit(async (values) => {
         class="w-full text-center flex justify-center"
         @click="onLogout"
       >
-        Logout
+        {{ t('profile.logout') }}
       </UButton>
     </div>
   </div>

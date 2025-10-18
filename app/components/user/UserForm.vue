@@ -3,11 +3,23 @@ import { USelect } from '#components'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
 
-const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: '' })
-const { value: name } = useField('name', toTypedSchema(z.string().min(1, 'Full name is required')), { initialValue: '' })
-const { value: email } = useField('email', toTypedSchema(z.string().min(1, 'Email is required').email('Email must be valid')), { initialValue: '' })
-const { value: password } = useField('password', toTypedSchema(z.string().min(6, 'Password must be at least 6 characters')), { initialValue: '' })
-const { value: role } = useField('role', toTypedSchema(z.enum(['admin', 'user'])), { initialValue: 'user' })
+const props = defineProps<{
+  initial?: {
+    username?: string
+    name?: string
+    email?: string
+    role?: 'admin' | 'user'
+  }
+}>()
+
+// Use provided initial values (edit mode) or fallbacks for create mode
+const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: props.initial?.username ?? '' })
+const { value: name } = useField('name', toTypedSchema(z.string().min(1, 'Full name is required')), { initialValue: props.initial?.name ?? '' })
+const { value: email } = useField('email', toTypedSchema(z.string().min(1, 'Email is required').email('Email must be valid')), { initialValue: props.initial?.email ?? '' })
+// Password should be optional for edit: keep validation but allow empty if editing (we'll handle omission in submit)
+const passwordSchema = props.initial ? z.string().min(0) : z.string().min(6, 'Password must be at least 6 characters')
+const { value: password } = useField('password', toTypedSchema(passwordSchema), { initialValue: '' })
+const { value: role } = useField('role', toTypedSchema(z.enum(['admin', 'user'])), { initialValue: props.initial?.role ?? 'user' })
 
 const roles = [
   'admin',
@@ -57,7 +69,8 @@ const errors = useFormErrors()
           />
         </UFormField>
       </div>
-      <div class="space-y-2">
+      <!-- Hide password input in edit mode (initial provided). Password can be omitted to keep existing password. -->
+      <div v-if="!props.initial" class="space-y-2">
         <UFormField label="Password" :error="errors.password">
           <UInput
             v-model="password"
@@ -69,7 +82,8 @@ const errors = useFormErrors()
           />
         </UFormField>
       </div>
-      <div class="space-y-2">
+      <!-- Hide role select in edit mode -->
+      <div v-if="!props.initial" class="space-y-2">
         <UFormField label="Role" :error="errors.role">
           <USelect
             v-model="role"
