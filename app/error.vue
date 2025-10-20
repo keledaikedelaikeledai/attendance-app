@@ -34,7 +34,12 @@ function tryAgain() {
             <UButton color="primary" icon="i-heroicons-home" @click="goHome">
               Go Home
             </UButton>
-            <UButton color="neutral" variant="soft" icon="i-heroicons-arrow-path" @click="tryAgain">
+            <UButton
+              color="neutral"
+              variant="soft"
+              icon="i-heroicons-arrow-path"
+              @click="tryAgain"
+            >
               Try Again
             </UButton>
           </div>

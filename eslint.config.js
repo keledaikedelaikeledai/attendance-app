@@ -1,6 +1,14 @@
 import antfu from '@antfu/eslint-config'
 
 export default antfu({
+  // Ignore patterns (replaces legacy .eslintignore)
+  'ignores': [
+    'node_modules/**',
+    'dist/**',
+    '.output/**',
+    'scripts/**',
+    'server/migrations.sqlite.backup/**',
+  ],
   'vue': true,
   'rules': {
     'vue/max-attributes-per-line': [

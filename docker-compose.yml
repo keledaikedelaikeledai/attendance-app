@@ -6,7 +6,7 @@ services:
     networks:
       - internal
     ports:
-      - "7070:3000" # Optional: expose locally for debugging
+      - '7070:3000' # Optional: expose locally for debugging
     environment:
       # Add your app-specific env vars here
       NODE_ENV: production
@@ -40,7 +40,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - '5432:5432'
 
 volumes:
   postgres_data:

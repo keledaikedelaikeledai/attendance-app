@@ -49,14 +49,6 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
         void (setLocale as any)(l.code)
       }
       catch {
-        // fallback: attempt to set the locale ref directly
-        const composerLocaleFallback = locale as any
-        if (composerLocaleFallback && typeof composerLocaleFallback === 'object' && 'value' in composerLocaleFallback) {
-          composerLocaleFallback.value = l.code
-        }
-        else {
-          (locale as any) = l.code
-        }
       }
     },
     // prevent default navigation behavior (checkbox items usually prevent links)
