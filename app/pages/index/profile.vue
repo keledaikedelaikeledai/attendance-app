@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// ...existing imports
 import { toTypedSchema } from '@vee-validate/zod'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -33,9 +32,6 @@ const profileSelectedLocale = computed({
       void (setLocale as any)(v)
     }
     catch {
-      const lc = locale as any
-      if (lc && typeof lc === 'object' && 'value' in lc) lc.value = v
-      else (locale as any) = v
     }
   },
 })

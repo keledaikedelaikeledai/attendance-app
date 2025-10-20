@@ -66,8 +66,8 @@ definePageMeta({
           <div class="space-y-2">
             <UFormField :label="t('auth.login.password')" :error="errors.password">
               <UInput
-                v-model="password"
                 id="login-password"
+                v-model="password"
                 size="xl"
                 :type="showPassword ? 'text' : 'password'"
                 :placeholder="t('auth.login.passwordPlaceholder')"
