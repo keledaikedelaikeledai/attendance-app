@@ -222,6 +222,7 @@ async function exportWithExcelJS() {
   // ensure shifts are loaded so per-entry calculations use shift defs when available
   await attendanceTime.ensureShifts()
   const ExcelJS = await getExcelJS()
+  // (no global export debug flag here; debug flags are declared in the fallback branch)
   // Try template first
   try {
     const resp = await fetch('/attendance-template.xlsx')
@@ -497,12 +498,13 @@ async function exportWithExcelJS() {
             const cell = ws.getRow(botSheetRow).getCell(pCol)
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
           }
-          // If the original logical row had two shifts for this date, do NOT merge any subcolumns for the day.
-          const pairIndex = i
-          const edtf = effectiveDayTwoFlags
-          const dayHasTwo = Boolean(edtf?.[pairIndex]?.[dIdx])
-          if (!dayHasTwo) {
-            // If a slot is empty on bottom, merge top+bottom for that column to present as single cell
+          // Determine clock-in presence by checking the per-day M subcolumn (startIdx + 0)
+          const topClock = String(topArr[startIdx + 0] || '').trim()
+          const botClock = String(botArr[startIdx + 0] || '').trim()
+          const entryCount = (topClock ? 1 : 0) + (botClock ? 1 : 0)
+          // Only merge top+bottom when there are ZERO clock-ins for the day. If there is 1 or 2 clock-ins,
+          // we must NOT merge so each slot remains visible on its own row.
+          if (entryCount === 0) {
             for (let colOffset = 0; colOffset < subLen; colOffset++) {
               const botVal = String(botArr[startIdx + colOffset] || '').trim()
               const col = startCol + colOffset
@@ -604,18 +606,23 @@ async function exportWithExcelJS() {
         const botSheetRow = topSheetRow + 1
         for (let dIdx = 0; dIdx < days.length; dIdx++) {
           const startCol = base + dIdx * subCols.length + 1
-          const isTwo = Boolean(effectiveDayTwoFlags?.[i]?.[dIdx])
-          if (!isTwo) continue
-          // for each subcolumn for the day, only unmerge top/bottom if the bottom
-          // sheet cell actually contains data. This avoids undoing valid merges when
-          // the bottom is empty (single-shift days).
+          // Determine whether this logical day has any clock-ins by checking the M subcolumn in top/bottom rows
+          let entryCount = 0
+          try {
+            const topArr = expandedRows[i * 2] || []
+            const botArr = expandedRows[i * 2 + 1] || []
+            const startIdx = 6 + dIdx * subCols.length
+            const topClock = String(topArr[startIdx + 0] || '').trim()
+            const botClock = String(botArr[startIdx + 0] || '').trim()
+            entryCount = (topClock ? 1 : 0) + (botClock ? 1 : 0)
+          }
+          catch {}
+          if (entryCount === 0) continue
+          // For days with 1 or 2 clock-ins (entryCount >= 1) we must unmerge per-day subcolumns so
+          // top and bottom rows remain separate and show the actual content.
           for (let colOffset = 0; colOffset < subCols.length; colOffset++) {
             const col = startCol + colOffset
             try {
-              const botCell = ws.getRow(botSheetRow).getCell(col)
-              const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-              if (!botVal) continue
-              // unMerge using coordinates (startRow, startCol, endRow, endCol)
               ws.unMergeCells(topSheetRow, col, botSheetRow, col)
             }
             catch {}
@@ -638,17 +645,25 @@ async function exportWithExcelJS() {
         const botSheetRow = topSheetRow + 1
         for (let dIdx = 0; dIdx < days.length; dIdx++) {
           const startCol = base + dIdx * subLen + 1
-          // if this logical day is a two-shift day for this pair, skip defensive merges for its subcolumns
-          const edtf2 = effectiveDayTwoFlags
-          const isTwo = Boolean(edtf2?.[i]?.[dIdx])
+          // determine entryCount from the M subcolumn (clock-in) in top/bottom expanded rows
+          let entryCount = 0
+          try {
+            const tArr = expandedRows[i * 2] || []
+            const bArr = expandedRows[i * 2 + 1] || []
+            const startIdx = 6 + dIdx * subLen
+            const topClock = String(tArr[startIdx + 0] || '').trim()
+            const botClock = String(bArr[startIdx + 0] || '').trim()
+            entryCount = (topClock ? 1 : 0) + (botClock ? 1 : 0)
+          }
+          catch {}
           for (let colOffset = 0; colOffset < subLen; colOffset++) {
             const col = startCol + colOffset
             try {
               const topCell = ws.getRow(topSheetRow).getCell(col)
               const botCell = ws.getRow(botSheetRow).getCell(col)
               const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-              // If this is a two-shift day, do not merge subcolumns even if bottom is empty
-              if (!isTwo && !botVal) {
+              // Only merge subcolumns when there are ZERO clock-ins (entryCount === 0)
+              if (entryCount === 0 && !botVal) {
                 // check whether already part of a merge by inspecting model.merges if available
                 let alreadyMerged = false
                 try {
@@ -694,25 +709,34 @@ async function exportWithExcelJS() {
         const botSheetRow = topSheetRow + 1
         for (let dIdx = 0; dIdx < days.length; dIdx++) {
           const startCol = base + dIdx * subLen + 1
-          // Determine whether bottom cell actually contains data. Prefer real sheet content
-          // over the dayTwoFlagsList when deciding to merge. If bottom is non-empty, treat
-          // it as a genuine second-row value and skip merging for that subcolumn.
+          // Determine dynamically whether this logical day has two shifts
+          let isTwo = false
+          try {
+            const tArr = expandedRows[i * 2] || []
+            const bArr = expandedRows[i * 2 + 1] || []
+            const startIdx = 6 + dIdx * subLen
+            const anyTop = [0, 1, 2, 3, 4, 5].some(off => String(tArr[startIdx + off] || '').trim() !== '')
+            const anyBot = [0, 1, 2, 3, 4, 5].some(off => String(bArr[startIdx + off] || '').trim() !== '')
+            isTwo = Boolean(effectiveDayTwoFlags?.[i]?.[dIdx]) || (anyTop && anyBot)
+          }
+          catch {}
+          // If this logical day is a two-shift day, skip forcing merges for its subcolumns
+          if (isTwo) continue
           for (let colOffset = 0; colOffset < subLen; colOffset++) {
             const col = startCol + colOffset
             try {
               const botCell = ws.getRow(botSheetRow).getCell(col)
               const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-              // If bottom has content, skip merging to preserve two-row content.
-              if (botVal) continue
-              // Otherwise, ensure this subcolumn is merged top+bottom.
-              try {
-                ws.unMergeCells(topSheetRow, col, botSheetRow, col)
+              if (!botVal) {
+                try {
+                  ws.unMergeCells(topSheetRow, col, botSheetRow, col)
+                }
+                catch {}
+                try {
+                  ws.mergeCells(topSheetRow, col, botSheetRow, col)
+                }
+                catch {}
               }
-              catch {}
-              try {
-                ws.mergeCells(topSheetRow, col, botSheetRow, col)
-              }
-              catch {}
             }
             catch {}
           }
@@ -1049,6 +1073,10 @@ async function exportWithExcelJS() {
 
   // Highlight M/P per slot and merge empty bottoms (per-day) and merge summary columns per pair
   try {
+    // Debugging helpers (toggle to true to enable):
+    const EXPORT_DEBUG = true
+    // The day-of-month to inspect (1-based). Change this when debugging other days.
+    const DEBUG_DAY = 17
     const subLen = 6
     const pairCount = expandedRows.length / 2
     for (let i = 0; i < pairCount; i++) {
@@ -1083,8 +1111,28 @@ async function exportWithExcelJS() {
           const cell = ws.getRow(botSheetRow).getCell(pCol)
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
         }
-        const pairIndex = i
-        const dayHasTwo = Boolean(dayTwoFlagsList?.[pairIndex]?.[dIdx])
+        // If dayTwoFlagsList indicates two entries for this day, respect it. Also detect two shifts by checking any subcolumn content.
+        const tArr = topArr || []
+        const bArr = botArr || []
+        const anyTop2 = [0, 1, 2, 3, 4, 5].some(off => String(tArr[startIdx + off] || '').trim() !== '')
+        const anyBot2 = [0, 1, 2, 3, 4, 5].some(off => String(bArr[startIdx + off] || '').trim() !== '')
+        const dayHasTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx]) || (anyTop2 && anyBot2)
+        if (EXPORT_DEBUG && (dIdx + 1) === DEBUG_DAY) {
+          try {
+            console.info('[EXPORT_DEBUG] pairIndex=', i, 'dIdx=', dIdx)
+            console.info('[EXPORT_DEBUG] topArr=', JSON.stringify(topArr))
+            console.info('[EXPORT_DEBUG] botArr=', JSON.stringify(botArr))
+            console.info('[EXPORT_DEBUG] dayTwoFlagsList=', JSON.stringify(dayTwoFlagsList?.[i]))
+            try {
+              const merges = (ws.model && ws.model.merges) ? ws.model.merges : null
+              console.info('[EXPORT_DEBUG] current merges (sample)=', merges ? (Array.isArray(merges) ? merges.slice(0, 20) : merges) : merges)
+            }
+            catch (e) {
+              console.info('[EXPORT_DEBUG] reading merges failed', e)
+            }
+          }
+          catch {}
+        }
         if (!dayHasTwo) {
           for (let colOffset = 0; colOffset < subLen; colOffset++) {
             const botVal = String(botArr[startIdx + colOffset] || '').trim()
@@ -1150,8 +1198,17 @@ async function exportWithExcelJS() {
             const topCell = ws.getRow(topSheetRow).getCell(col)
             const botCell = ws.getRow(botSheetRow).getCell(col)
             const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-            // if this logical day is a two-shift day for this pair, skip defensive merges for its subcolumns
-            const isTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx])
+            // determine dynamically whether this logical day has two shifts
+            let isTwo = false
+            try {
+              const tArr = expandedRows[i * 2] || []
+              const bArr = expandedRows[i * 2 + 1] || []
+              const startIdx = 6 + dIdx * subLen
+              const anyTop = [0, 1, 2, 3, 4, 5].some(off => String(tArr[startIdx + off] || '').trim() !== '')
+              const anyBot = [0, 1, 2, 3, 4, 5].some(off => String(bArr[startIdx + off] || '').trim() !== '')
+              isTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx]) || (anyTop && anyBot)
+            }
+            catch {}
             if (!isTwo && !botVal) {
               let alreadyMerged = false
               try {
