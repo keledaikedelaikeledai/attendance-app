@@ -88,7 +88,6 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
           variant="ghost"
         />
         <template #content>
-          <!-- <div class="w-[60vw] p-4"> -->
           <div class="h-screen flex flex-col px-3 py-4 bg-zinc-100 dark:bg-neutral-800">
             <div class="flex flex-col items-center justify-center mb-6">
               <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
@@ -148,7 +147,6 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
               </UPopover>
             </div>
           </div>
-          <!-- </div> -->
         </template>
       </UDrawer>
       <UButton
@@ -159,7 +157,7 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
         @click="isCollapsed = !isCollapsed"
       />
       <title>{{ route.meta.pageTitle }}</title>
-      <h1 class="font-semibold">
+      <h1 class="font-semibold hidden sm:block text-lg">
         {{ route.meta.title }}
       </h1>
       <slot name="navLeft" />

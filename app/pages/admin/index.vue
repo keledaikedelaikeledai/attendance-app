@@ -291,6 +291,7 @@ definePageMeta({
         <UButton
           icon="i-heroicons-arrow-path"
           :loading="isLoading"
+          class="hidden md:inline-flex"
           @click="refreshAll"
         >
           {{ t('admin.index.refresh') }}

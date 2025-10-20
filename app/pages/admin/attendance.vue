@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TabsItem } from '@nuxt/ui'
+import type { DropdownMenuItem } from '@nuxt/ui'
 
 import * as attendanceTime from '~/composables/useAttendanceTime'
 
@@ -28,11 +28,30 @@ const monthOptions = computed(() => {
   return arr
 })
 
+const monthItems = computed<DropdownMenuItem[]>(() => {
+  return monthOptions.value.map(m => ({
+    label: m.label,
+    value: m.value,
+    type: 'checkbox',
+    checked: m.value === month.value,
+    // called when checkbox is toggled
+    onUpdateChecked(checked: boolean) {
+      if (!checked) return
+      month.value = m.value
+    },
+    onSelect(e: Event) {
+      // prevent default navigation behavior
+      e.preventDefault()
+    },
+  }))
+})
+
 function onRefresh() {
   refresh()
 }
 
-const type = ref<TabsItem[]>([
+interface SimpleTab { label: string, icon?: string, value: string }
+const type = ref<SimpleTab[]>([
   {
     label: 'Grid',
     icon: 'lucide:layout-grid',
@@ -45,6 +64,15 @@ const type = ref<TabsItem[]>([
   },
 ])
 const activeType = ref<'table' | 'grid'>('grid')
+
+const iconOnlyType = computed(() => {
+  // Map to a minimal plain object (same shape as SimpleTab but empty label)
+  return (type.value || []).map(t => ({
+    icon: t.icon,
+    value: t.value,
+    label: '',
+  }))
+})
 
 const attendances = computed(() => data.value?.rows || [])
 
@@ -84,7 +112,7 @@ function toDateLabel(iso?: string) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function buildDataAoA() {
+function buildDataAoA(): { rows: any[][], dayTwoFlagsList: boolean[][] } {
   const days = data.value?.days || []
   const rows: any[][] = []
   const dayTwoFlagsAll: boolean[][] = []
@@ -241,7 +269,7 @@ async function exportWithExcelJS() {
     const dayCount = days.length
     const subLen = subCols.length
     for (let ri = 0; ri < (rows || []).length; ri++) {
-      const r = rows[ri]
+      const r = rows[ri] || []
       const top: any[] = []
       const bot: any[] = []
       // summary cols
@@ -471,7 +499,8 @@ async function exportWithExcelJS() {
           }
           // If the original logical row had two shifts for this date, do NOT merge any subcolumns for the day.
           const pairIndex = i
-          const dayHasTwo = Array.isArray(effectiveDayTwoFlags[pairIndex]) ? !!effectiveDayTwoFlags[pairIndex][dIdx] : false
+          const edtf = effectiveDayTwoFlags
+          const dayHasTwo = Boolean(edtf?.[pairIndex]?.[dIdx])
           if (!dayHasTwo) {
             // If a slot is empty on bottom, merge top+bottom for that column to present as single cell
             for (let colOffset = 0; colOffset < subLen; colOffset++) {
@@ -575,7 +604,7 @@ async function exportWithExcelJS() {
         const botSheetRow = topSheetRow + 1
         for (let dIdx = 0; dIdx < days.length; dIdx++) {
           const startCol = base + dIdx * subCols.length + 1
-          const isTwo = Array.isArray(effectiveDayTwoFlags[i]) ? !!effectiveDayTwoFlags[i][dIdx] : false
+          const isTwo = Boolean(effectiveDayTwoFlags?.[i]?.[dIdx])
           if (!isTwo) continue
           // for each subcolumn for the day, only unmerge top/bottom if the bottom
           // sheet cell actually contains data. This avoids undoing valid merges when
@@ -610,7 +639,8 @@ async function exportWithExcelJS() {
         for (let dIdx = 0; dIdx < days.length; dIdx++) {
           const startCol = base + dIdx * subLen + 1
           // if this logical day is a two-shift day for this pair, skip defensive merges for its subcolumns
-          const isTwo = Array.isArray(effectiveDayTwoFlags[i]) ? !!effectiveDayTwoFlags[i][dIdx] : false
+          const edtf2 = effectiveDayTwoFlags
+          const isTwo = Boolean(edtf2?.[i]?.[dIdx])
           for (let colOffset = 0; colOffset < subLen; colOffset++) {
             const col = startCol + colOffset
             try {
@@ -865,11 +895,10 @@ async function exportWithExcelJS() {
     }
   }
   catch {}
-  const dataRows = buildDataAoA()
+  const { rows: dataRows, dayTwoFlagsList } = buildDataAoA()
 
   // Expand data rows into top/bottom physical rows (same behavior as template branch)
   const expandedRows: any[] = []
-  const dayTwoFlagsList: boolean[][] = []
   for (const r of (dataRows || [])) {
     const dayTwoFlags: boolean[] = []
     const top: any[] = []
@@ -1055,7 +1084,7 @@ async function exportWithExcelJS() {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
         }
         const pairIndex = i
-        const dayHasTwo = Array.isArray(dayTwoFlagsList[pairIndex]) ? !!dayTwoFlagsList[pairIndex][dIdx] : false
+        const dayHasTwo = Boolean(dayTwoFlagsList?.[pairIndex]?.[dIdx])
         if (!dayHasTwo) {
           for (let colOffset = 0; colOffset < subLen; colOffset++) {
             const botVal = String(botArr[startIdx + colOffset] || '').trim()
@@ -1122,7 +1151,7 @@ async function exportWithExcelJS() {
             const botCell = ws.getRow(botSheetRow).getCell(col)
             const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
             // if this logical day is a two-shift day for this pair, skip defensive merges for its subcolumns
-            const isTwo = Array.isArray(dayTwoFlagsList[i]) ? !!dayTwoFlagsList[i][dIdx] : false
+            const isTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx])
             if (!isTwo && !botVal) {
               let alreadyMerged = false
               try {
@@ -1238,7 +1267,7 @@ async function exportWithExcelJS() {
         const botSheetRow = topSheetRow + 1
         for (let dIdx = 0; dIdx < days.length; dIdx++) {
           const startCol = base + dIdx * subLen + 1
-          const isTwo = Array.isArray(dayTwoFlagsList[i]) ? !!dayTwoFlagsList[i][dIdx] : false
+          const isTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx])
           if (isTwo) continue
           for (let colOffset = 0; colOffset < subLen; colOffset++) {
             const col = startCol + colOffset
@@ -1335,38 +1364,64 @@ definePageMeta({
 <template>
   <PageWrapper>
     <template #navLeft>
+      <!-- Desktop: full tabs (label + icon) -->
       <UTabs
         v-model="activeType"
         :content="false"
         :items="type"
-        class="w-full ml-2"
+        class="hidden sm:block w-full ml-2"
         size="sm"
+      />
+
+      <!-- Mobile: icon-only tabs -->
+      <UTabs
+        v-model="activeType"
+        :content="false"
+        :items="iconOnlyType"
+        class="sm:hidden"
+        size="sm"
+        aria-label="View type"
       />
     </template>
     <template #navRight>
       <div class="flex items-center gap-3">
         <USelect
           v-model="month"
-          class="w-50"
+          class="w-50 hidden sm:block"
           :items="monthOptions"
           option-attribute="label"
           value-attribute="value"
         />
 
+        <!-- Mobile: compact month picker as dropdown menu -->
+        <ClientOnly>
+          <UDropdownMenu :items="monthItems" :content="{ align: 'end' }" class="sm:hidden">
+            <UButton
+              icon="i-heroicons-calendar"
+              class="w-8 h-8"
+              color="neutral"
+              variant="ghost"
+              aria-label="Month"
+            />
+          </UDropdownMenu>
+        </ClientOnly>
+
         <UButton
           icon="i-heroicons-arrow-path"
           variant="soft"
           :loading="status === 'pending'"
+          aria-label="Refresh"
           @click="onRefresh"
         >
-          Refresh
+          <span class="hidden sm:inline">Refresh</span>
         </UButton>
         <UButton
           icon="i-heroicons-arrow-down-tray"
           :disabled="(data?.days || []).length === 0 || status === 'pending'"
+          aria-label="Export"
           @click="exportXlsx"
         >
-          Export
+          <span class="hidden sm:inline">Export</span>
         </UButton>
       </div>
     </template>
