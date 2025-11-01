@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
+import { useWindowSize } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 // `computed`, `ref`, `onMounted`, etc. are auto-imported by Nuxt; do not import from 'vue' explicitly
 
@@ -18,6 +19,20 @@ const isLoading = computed(() => Boolean(attendancePending.value))
 const ApexChart = shallowRef<any>(null)
 const primaryColor = ref('#2563eb')
 const secondaryColor = ref('#60a5fa')
+
+// Responsive helpers for chart
+const { width: windowWidth } = useWindowSize()
+const chartHeight = computed(() => (windowWidth.value && windowWidth.value < 640) ? 220 : 320)
+// Compute chart width: on mobile make the chart wider than the viewport so it can scroll horizontally
+const chartWidth = computed(() => {
+  const isMobile = Boolean(windowWidth.value && windowWidth.value < 640)
+  const daysCount = (data.value.days || []).length || 0
+  if (!isMobile) return '100%'
+  // target ~28-36px per day bar to avoid cramping; clamp to a reasonable max
+  const perDay = 34
+  const w = Math.max(640, Math.min(2400, daysCount * perDay))
+  return `${w}px`
+})
 
 function refreshAll() {
   void refreshAttendance()
@@ -206,15 +221,40 @@ const recentRecapColumns = computed<TableColumn<any>[]>(() => [
 ])
 
 // Chart color follows the resolved theme primary color. We populate `primaryColor` on mount.
-const chartOptions = computed(() => ({
-  chart: { id: 'presence-chart', toolbar: { show: false }, stacked: true },
-  colors: [primaryColor.value, secondaryColor.value],
-  fill: { colors: [primaryColor.value, secondaryColor.value] },
-  xaxis: { categories: data.value.days?.map((d: string) => d.split('-').pop()) || [] },
-  yaxis: { title: { text: 'Users present' } },
-  dataLabels: { enabled: false },
-  stroke: { curve: 'smooth' as const },
-}))
+const chartOptions = computed(() => {
+  const isMobile = Boolean(windowWidth.value && windowWidth.value < 640)
+  return {
+    chart: { id: 'presence-chart', toolbar: { show: false }, stacked: true },
+    colors: [primaryColor.value, secondaryColor.value],
+    fill: { colors: [primaryColor.value, secondaryColor.value] },
+    plotOptions: {
+      bar: {
+        horizontal: false,
+        columnWidth: isMobile ? '70%' : '50%',
+      },
+    },
+    xaxis: {
+      categories: data.value.days?.map((d: string) => d.split('-').pop()) || [],
+      labels: {
+        rotate: isMobile ? -45 : 0,
+        hideOverlappingLabels: true,
+        trim: true,
+      },
+    },
+    yaxis: { title: { text: 'Users present' } },
+    dataLabels: { enabled: false },
+    stroke: { curve: 'smooth' as const },
+    responsive: [
+      {
+        breakpoint: 640,
+        options: {
+          legend: { position: 'bottom' },
+          plotOptions: { bar: { columnWidth: '70%' } },
+        },
+      },
+    ],
+  }
+})
 
 // Produce two series: 'Harian' and 'Bantuan'. We assume attendance data rows aggregate shifts per day
 // by `workingShifts`, `harian`, and `bantuan` fields when present. Otherwise we fallback to counting entries.
@@ -342,13 +382,19 @@ definePageMeta({
         <div>
           <client-only>
             <div v-if="ApexChart" class="admin-presence-chart">
-              <component
-                :is="ApexChart"
-                type="bar"
-                :options="chartOptions"
-                :series="chartSeries"
-                height="320"
-              />
+              <!-- On mobile the inner container will be wider than the viewport so the chart can be scrolled horizontally -->
+              <div class="w-full overflow-x-auto" style="-webkit-overflow-scrolling: touch;">
+                <div :style="{ minWidth: typeof chartWidth === 'number' ? `${chartWidth}px` : chartWidth }">
+                  <component
+                    :is="ApexChart"
+                    type="bar"
+                    :options="chartOptions"
+                    :series="chartSeries"
+                    :height="chartHeight"
+                    :width="chartWidth"
+                  />
+                </div>
+              </div>
             </div>
             <div v-else class="text-sm text-muted">
               {{ t('admin.index.chartLoading') }}
