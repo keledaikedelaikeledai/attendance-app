@@ -9,6 +9,8 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
+    "k6:run": "k6 run performance/k6/default.js",
+    "k6:cloud": "k6 cloud performance/k6/default.js",
     "lint": "eslint --ext .js,.ts,.vue .",
     "lint:fix": "eslint --fix --ext .js,.ts,.vue .",
     "auth:schema": "bunx @better-auth/cli generate --config ./server/utils/auth.ts --output ./server/database/schemas/auth-schema.ts",
