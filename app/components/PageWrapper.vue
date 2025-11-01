@@ -4,6 +4,19 @@ import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 
+// get current user session for profile/avatar in mobile drawer
+const { data: user } = await authClient.useSession(useFetch)
+
+function onSignOut() {
+  authClient.signOut({
+    fetchOptions: {
+      onSuccess() {
+        navigateTo('/login', { external: true })
+      },
+    },
+  })
+}
+
 const isCollapsed = useState('admin-is-collapsed')
 
 const menus = computed<NavigationMenuItem[]>(() => [
@@ -75,12 +88,64 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
           variant="ghost"
         />
         <template #content>
-          <div class="w-[60vw] p-4">
+          <div class="h-screen flex flex-col px-3 py-4 bg-zinc-100 dark:bg-neutral-800">
+            <div class="flex flex-col items-center justify-center mb-6">
+              <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
+            </div>
+
             <UNavigationMenu
               orientation="vertical"
               :items="menus"
               class="data-[orientation=vertical]:w-full flex-1 overflow-y-auto"
             />
+
+            <div class="flex flex-col pl-1 pr-2 mt-4">
+              <USeparator />
+              <UPopover :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }" trigger="click">
+                <template #content>
+                  <UButton
+                    icon="i-lucide-user-circle"
+                    size="sm"
+                    color="neutral"
+                    variant="link"
+                    class="w-full p-[10px]"
+                    to="/admin/profile"
+                  >
+                    Profile
+                  </UButton>
+                  <UButton
+                    icon="i-lucide-log-out"
+                    size="sm"
+                    color="neutral"
+                    variant="link"
+                    class="w-full p-[10px]"
+                    @click="onSignOut"
+                  >
+                    Sign Out
+                  </UButton>
+                </template>
+
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  class="w-full flex items-center justify-between mt-2 pt-2 pb-2 p-0"
+                  aria-label="User menu"
+                >
+                  <div class="flex items-center">
+                    <UAvatar
+                      :src="user?.user.image || undefined"
+                      :alt="user?.user.username || 'User Avatar'"
+                      size="lg"
+                      class="border border-neutral-300 dark:border-neutral-700"
+                    />
+                    <span v-if="true" class="text-xs ml-2">
+                      {{ user?.user.name }}
+                    </span>
+                  </div>
+                  <UIcon name="i-lucide-ellipsis-vertical" />
+                </UButton>
+              </UPopover>
+            </div>
           </div>
         </template>
       </UDrawer>
@@ -92,7 +157,7 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
         @click="isCollapsed = !isCollapsed"
       />
       <title>{{ route.meta.pageTitle }}</title>
-      <h1 class="font-semibold">
+      <h1 class="font-semibold hidden sm:block text-lg">
         {{ route.meta.title }}
       </h1>
       <slot name="navLeft" />
