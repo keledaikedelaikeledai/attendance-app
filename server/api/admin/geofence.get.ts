@@ -23,10 +23,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
   const db = useDb()
-  let [config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
+  const [config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
   if (!config) {
-    await db.insert(geoFence).values({ id: 'global', name: 'Global', isActive: false, type: 'point', radiusMeters: 100, interactionMode: 'disallow' })
-    ;[config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
+    throw createError({ statusCode: 404, statusMessage: 'Global geofence not found' })
   }
 
   return { config }
