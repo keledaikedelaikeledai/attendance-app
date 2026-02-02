@@ -9,6 +9,7 @@ const menus = computed<NavigationMenuItem[]>(() => [
   { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
   { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
   { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
+  { label: 'Geofence', icon: 'i-heroicons-map-pin', to: '/admin/geofence' },
 ])
 
 definePageMeta({

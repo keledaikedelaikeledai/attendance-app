@@ -37,6 +37,11 @@ const permissionStatus = ref<'prompt' | 'granted' | 'denied' | 'unsupported'>('p
 const coords = ref<{ lat?: number, lng?: number, accuracy?: number }>({})
 const locating = ref(false)
 const geoError = ref<string | null>(null)
+const geofence = ref<any | null>(null)
+const geofenceLoading = ref(true)
+const geofenceError = ref<string | null>(null)
+const geofenceBlocked = ref(false)
+const geofenceBlockedMessage = ref('')
 const showConfirmOut = ref(false)
 const confirmOutMessage = ref(t('index.modal.confirm'))
 const earlyReason = ref<string>('')
@@ -49,6 +54,89 @@ const mapCenter = computed<[number, number]>(() => [
   coords.value.lng ?? 0,
 ])
 const mapZoom = computed(() => (hasLocation.value ? 17 : 14))
+
+function distanceMeters(a: [number, number], b: [number, number]) {
+  const R = 6371000
+  const toRad = (x: number) => (x * Math.PI) / 180
+  const dLat = toRad(b[0] - a[0])
+  const dLng = toRad(b[1] - a[1])
+  const lat1 = toRad(a[0])
+  const lat2 = toRad(b[0])
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+function pointInPolygon(point: [number, number], poly: Array<[number, number]>) {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const curr = poly[i]
+    const prev = poly[j]
+    if (!curr || !prev)
+      continue
+    const xi = curr[1]
+    const yi = curr[0]
+    const xj = prev[1]
+    const yj = prev[0]
+    const intersect = ((yi > point[0]) !== (yj > point[0])) && (point[1] < ((xj - xi) * (point[0] - yi)) / (yj - yi) + xi)
+    if (intersect)
+      inside = !inside
+  }
+  return inside
+}
+
+function formatDistance(meters?: number | null) {
+  if (meters == null)
+    return ''
+  if (meters < 1000)
+    return `${Math.round(meters)} m`
+  return `${(meters / 1000).toFixed(2)} km`
+}
+
+function checkGeofence(lat?: number, lng?: number): { allowed: boolean, message?: string } {
+  if (!geofence.value || !geofence.value.useRadius)
+    return { allowed: true }
+  if (typeof lat !== 'number' || typeof lng !== 'number')
+    return { allowed: true }
+  const cfg = geofence.value
+  if (cfg.type === 'point' && typeof cfg.centerLat === 'number' && typeof cfg.centerLng === 'number' && typeof cfg.radiusMeters === 'number') {
+    const dist = distanceMeters([lat, lng], [cfg.centerLat, cfg.centerLng])
+    if (dist <= cfg.radiusMeters)
+      return { allowed: true }
+    return { allowed: false, message: `You are outside the allowed radius (${formatDistance(dist)} away, limit ${formatDistance(cfg.radiusMeters)}). Move closer to the allowed location.` }
+  }
+  if (cfg.type === 'polygon' && Array.isArray(cfg.polygon) && cfg.polygon.length >= 3) {
+    const inside = pointInPolygon([lat, lng], cfg.polygon)
+    if (inside)
+      return { allowed: true }
+    return { allowed: false, message: 'You are outside the allowed area. Move inside the polygon to clock in/out.' }
+  }
+  return { allowed: true }
+}
+
+function guardGeofenceOrNotify(lat?: number, lng?: number) {
+  const { allowed, message } = checkGeofence(lat, lng)
+  if (!allowed) {
+    geofenceBlockedMessage.value = message || 'You are outside the allowed area.'
+    geofenceBlocked.value = true
+    return false
+  }
+  return true
+}
+
+async function loadGeofence() {
+  try {
+    geofenceLoading.value = true
+    geofenceError.value = null
+    const res: any = await $fetch('/api/attendance/geofence', { credentials: 'include' })
+    geofence.value = res?.config || null
+  }
+  catch (err: any) {
+    geofenceError.value = err?.message || 'Failed to load geofence config'
+  }
+  finally {
+    geofenceLoading.value = false
+  }
+}
 
 function formatTime(iso?: string) {
   if (!iso)
@@ -154,6 +242,11 @@ async function handleClock(action: 'in' | 'out') {
     toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
     return
   }
+  if (geofenceLoading.value)
+    await loadGeofence()
+  const allowed = guardGeofenceOrNotify(coords.value.lat, coords.value.lng)
+  if (!allowed)
+    return
   if (action === 'in') {
     const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
     clockIn({ coords: c, shiftCode: selectedShiftCode.value })
@@ -183,6 +276,11 @@ async function onConfirmClockOut() {
     toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
     return
   }
+  if (geofenceLoading.value)
+    await loadGeofence()
+  const allowed = guardGeofenceOrNotify(coords.value.lat, coords.value.lng)
+  if (!allowed)
+    return
   const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
   await clockOut(c, earlyReason.value && earlyReason.value.length ? earlyReason.value.slice(0, 200) : undefined)
   earlyReason.value = ''
@@ -203,6 +301,7 @@ onMounted(async () => {
   if (!selectedShiftCode.value && (shifts as any)?.value && (shifts as any).value.length) {
     selectedShiftCode.value = (shifts as any).value[0].code
   }
+  loadGeofence()
 })
 </script>
 
@@ -316,6 +415,9 @@ onMounted(async () => {
                 <span class="font-medium">Accuracy:</span> ±{{ Math.round(coords.accuracy) }}m
               </p>
             </template>
+            <p v-if="geofenceError" class="text-xs text-red-500">
+              {{ geofenceError }}
+            </p>
           </div>
           <div>
             <UButton
@@ -384,6 +486,19 @@ onMounted(async () => {
           </UButton>
           <UButton color="primary" icon="i-heroicons-check" @click="onConfirmClockOut">
             {{ t('index.modal.confirmButton') }}
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="geofenceBlocked" title="Outside allowed area">
+      <template #body>
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.' }}
+        </p>
+        <div class="flex justify-end gap-2 mt-4">
+          <UButton color="primary" variant="solid" @click="geofenceBlocked = false">
+            OK
           </UButton>
         </div>
       </template>

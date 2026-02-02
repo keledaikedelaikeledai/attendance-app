@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { boolean, check, doublePrecision, integer, pgTable, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core'
+import { boolean, check, doublePrecision, integer, jsonb, pgTable, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core'
 import { user } from './auth-schema'
 
 // Shift definitions table
@@ -55,3 +55,22 @@ export const attendanceLog = pgTable('attendance_log', {
   createdAt: timestamp('created_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
 })
+
+// Geofence / radius configuration (global)
+export const geoConfig = pgTable(
+  'geo_config',
+  {
+    id: text('id').primaryKey().$defaultFn(() => 'global'),
+    useRadius: boolean('use_radius').default(false).notNull(),
+    type: text('type').default('point').notNull().$type<'point' | 'polygon'>(),
+    centerLat: doublePrecision('center_lat'),
+    centerLng: doublePrecision('center_lng'),
+    radiusMeters: doublePrecision('radius_meters'),
+    polygon: jsonb('polygon').$type<Array<[number, number]>>(),
+    createdAt: timestamp('created_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
+  },
+  table => ({
+    typeCheck: check('geo_config_type_check', sql`${table.type} IN ('point','polygon')`),
+  }),
+)
