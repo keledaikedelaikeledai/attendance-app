@@ -1,5 +1,6 @@
+import { eq } from 'drizzle-orm'
 import { createError } from 'h3'
-import { geoConfig } from '~~/server/database/schemas'
+import { geoFence } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -9,11 +10,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const db = useDb()
-  let [config] = await db.select().from(geoConfig).limit(1)
-  if (!config) {
-    await db.insert(geoConfig).values({ id: 'global', useRadius: false, type: 'point', radiusMeters: 100 })
-    ;[config] = await db.select().from(geoConfig).limit(1)
+  let [global] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
+  if (!global) {
+    await db.insert(geoFence).values({ id: 'global', name: 'Global', isActive: false, type: 'point', radiusMeters: 100, interactionMode: 'disallow' })
+    ;[global] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
   }
 
-  return { config }
+  const geofences = await db.select().from(geoFence)
+  return { geofences }
 })

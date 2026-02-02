@@ -2,7 +2,7 @@ import process from 'node:process'
 import { eq } from 'drizzle-orm'
 import { createError } from 'h3'
 import { geoFence } from '~~/server/database/schemas'
-import { useDb } from '../../utils/db'
+import { useDb } from '../../../utils/db'
 
 function isAllowedAdmin(email?: string | null) {
   const raw = process.env.NUXT_ADMIN_EMAILS || ''
@@ -22,12 +22,11 @@ export default defineEventHandler(async (event) => {
   if (!isAllowedAdmin(session.user.email))
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
-  const db = useDb()
-  let [config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
-  if (!config) {
-    await db.insert(geoFence).values({ id: 'global', name: 'Global', isActive: false, type: 'point', radiusMeters: 100, interactionMode: 'disallow' })
-    ;[config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
-  }
+  const id = event.context.params?.id
+  if (!id)
+    throw createError({ statusCode: 400, statusMessage: 'Missing geofence id' })
 
-  return { config }
+  const db = useDb()
+  await db.delete(geoFence).where(eq(geoFence.id, id))
+  return { ok: true }
 })

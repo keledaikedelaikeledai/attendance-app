@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, shiftType, coords, date: clientDate } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number }, date?: string }
+  const { shiftCode, shiftType, coords, date: clientDate, geofenceComment, geofenceId, geofenceName } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number }, date?: string, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
 
   const db = useDb()
   const userId = session.user.id
@@ -93,6 +93,9 @@ export default defineEventHandler(async (event) => {
     accuracy: coords?.accuracy,
     shiftType: shiftType ?? null,
     shiftCode,
+    geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
+    geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
+    geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
     createdAt: now,
     updatedAt: now,
   })

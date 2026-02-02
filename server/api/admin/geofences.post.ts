@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto'
 import process from 'node:process'
-import { eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { geoFence } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 type GeofenceType = 'point' | 'polygon'
+
+type InteractionMode = 'disallow' | 'allow' | 'allow_with_comment'
 
 function isAllowedAdmin(email?: string | null) {
   const raw = process.env.NUXT_ADMIN_EMAILS || ''
@@ -31,11 +33,12 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody<any>(event)
   const isActive = Boolean(body?.isActive)
-  const interactionMode: 'disallow' | 'allow' | 'allow_with_comment' = body?.interactionMode === 'allow_with_comment'
+  const interactionMode: InteractionMode = body?.interactionMode === 'allow_with_comment'
     ? 'allow_with_comment'
     : body?.interactionMode === 'allow'
       ? 'allow'
       : 'disallow'
+  const name = typeof body?.name === 'string' && body.name.trim() ? body.name.trim() : 'Untitled geofence'
   const type: GeofenceType = body?.type === 'polygon' ? 'polygon' : 'point'
   const radiusMeters = toNumberOrNull(body?.radiusMeters)
   const centerLat = toNumberOrNull(body?.centerLat)
@@ -56,28 +59,22 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Polygon requires at least 3 points' })
   }
 
+  const now = new Date()
   const db = useDb()
-  const [existing] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
   const payload = {
-    id: existing?.id || 'global',
-    name: existing?.name || 'Global',
+    id: randomUUID(),
+    name,
     isActive,
+    interactionMode,
     type,
     centerLat: type === 'point' ? centerLat : null,
     centerLng: type === 'point' ? centerLng : null,
     radiusMeters: radiusMeters != null ? radiusMeters : null,
     polygon: type === 'polygon' ? polygon : null,
-    interactionMode,
-    updatedAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
   }
 
-  if (existing) {
-    await db.update(geoFence).set(payload).where(eq(geoFence.id, existing.id))
-  }
-  else {
-    await db.insert(geoFence).values({ ...payload, createdAt: new Date() })
-  }
-
-  const [config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
-  return { config }
+  await db.insert(geoFence).values(payload)
+  return { geofence: payload }
 })

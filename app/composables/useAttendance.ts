@@ -11,6 +11,9 @@ export interface AttendanceLog {
   shiftCode?: ShiftCode
   shiftType?: 'harian' | 'bantuan'
   earlyReason?: string | null
+  geofenceComment?: string | null
+  geofenceId?: string | null
+  geofenceName?: string | null
 }
 
 // Shifts are loaded from DB via API
@@ -81,6 +84,9 @@ async function refresh() {
       }
     })(),
     earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
+    geofenceComment: (l as any).geofenceComment ?? (l as any).geofence_comment ?? null,
+    geofenceId: (l as any).geofenceId ?? (l as any).geofence_id ?? null,
+    geofenceName: (l as any).geofenceName ?? (l as any).geofence_name ?? null,
   }))
   selectedShiftCode.value = s.selectedShiftCode ?? undefined
   selectedShiftType.value = s.shiftType ?? undefined
@@ -185,7 +191,7 @@ async function ensureDefaultShift() {
   }
 }
 
-interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCode | undefined }
+interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCode | undefined, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
 async function clockIn(opts?: ClockInOptions) {
   if (clockedIn.value)
     return
@@ -237,6 +243,15 @@ async function clockIn(opts?: ClockInOptions) {
             accuracy: opts.coords.accuracy,
           }
         : undefined,
+      geofenceComment: typeof opts?.geofenceComment === 'string' && opts.geofenceComment.length
+        ? opts.geofenceComment.slice(0, 200)
+        : undefined,
+      geofenceId: typeof opts?.geofenceId === 'string' && opts.geofenceId.length
+        ? opts.geofenceId.slice(0, 64)
+        : undefined,
+      geofenceName: typeof opts?.geofenceName === 'string' && opts.geofenceName.length
+        ? opts.geofenceName.slice(0, 200)
+        : undefined,
     },
     credentials: 'include',
   })
@@ -252,7 +267,7 @@ async function clockIn(opts?: ClockInOptions) {
   await refresh()
 }
 
-async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | null) {
+async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | null, geofenceComment?: string | null, geofenceId?: string | null, geofenceName?: string | null) {
   if (!clockedIn.value)
     return
   const now = new Date()
@@ -271,8 +286,18 @@ async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | 
           date: localDate,
           tzOffset,
           earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
+          geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
+          geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
+          geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
         }
-      : { shiftType: selectedShiftType.value, date: localDate, tzOffset },
+      : {
+          shiftType: selectedShiftType.value,
+          date: localDate,
+          tzOffset,
+          geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
+          geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
+          geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
+        },
     credentials: 'include',
   })
   if (res) {

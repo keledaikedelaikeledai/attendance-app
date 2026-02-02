@@ -52,25 +52,32 @@ export const attendanceLog = pgTable('attendance_log', {
   shiftCode: text('shift_code'),
   // Optional short reason for early clock-out (max 200 chars enforced by application)
   earlyReason: text('early_reason'),
+  // Optional comment when clocking in/out outside geofence (max 200 chars enforced by application)
+  geofenceComment: text('geofence_comment'),
+  geofenceId: text('geofence_id'),
+  geofenceName: text('geofence_name'),
   createdAt: timestamp('created_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
 })
 
-// Geofence / radius configuration (global)
-export const geoConfig = pgTable(
-  'geo_config',
+// Geofence configuration (multiple rows)
+export const geoFence = pgTable(
+  'geo_fence',
   {
-    id: text('id').primaryKey().$defaultFn(() => 'global'),
-    useRadius: boolean('use_radius').default(false).notNull(),
+    id: text('id').primaryKey(),
+    name: text('name'),
+    isActive: boolean('is_active').default(false).notNull(),
     type: text('type').default('point').notNull().$type<'point' | 'polygon'>(),
     centerLat: doublePrecision('center_lat'),
     centerLng: doublePrecision('center_lng'),
     radiusMeters: doublePrecision('radius_meters'),
     polygon: jsonb('polygon').$type<Array<[number, number]>>(),
+    interactionMode: text('interaction_mode').default('disallow').notNull().$type<'disallow' | 'allow' | 'allow_with_comment'>(),
     createdAt: timestamp('created_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
     updatedAt: timestamp('updated_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
   },
   table => ({
-    typeCheck: check('geo_config_type_check', sql`${table.type} IN ('point','polygon')`),
+    typeCheck: check('geo_fence_type_check', sql`${table.type} IN ('point','polygon')`),
+    interactionModeCheck: check('geo_fence_interaction_mode_check', sql`${table.interactionMode} IN ('disallow','allow','allow_with_comment')`),
   }),
 )

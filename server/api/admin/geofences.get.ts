@@ -1,5 +1,5 @@
 import process from 'node:process'
-import { eq } from 'drizzle-orm'
+import { asc } from 'drizzle-orm'
 import { createError } from 'h3'
 import { geoFence } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
@@ -23,11 +23,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
   const db = useDb()
-  let [config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
-  if (!config) {
-    await db.insert(geoFence).values({ id: 'global', name: 'Global', isActive: false, type: 'point', radiusMeters: 100, interactionMode: 'disallow' })
-    ;[config] = await db.select().from(geoFence).where(eq(geoFence.id, 'global')).limit(1)
-  }
-
-  return { config }
+  const geofences = await db.select().from(geoFence).orderBy(asc(geoFence.createdAt))
+  return { geofences }
 })
