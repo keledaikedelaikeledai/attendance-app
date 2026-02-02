@@ -12,7 +12,6 @@ const geofenceItems = [
   { label: 'Polygon', value: 'polygon' },
 ]
 const interactionMode = ref<'move' | 'add'>('move')
-const mapCursorClass = computed(() => interactionMode.value === 'add' ? 'cursor-crosshair' : 'cursor-grab')
 const radiusMeters = ref<number | null>(100)
 const pointRadiusBackup = ref<number | null>(100)
 const center = ref<{ lat: number, lng: number } | null>(null)
@@ -21,14 +20,16 @@ const drawing = ref(false)
 const saving = ref(false)
 const isLoading = computed(() => Boolean(pending.value))
 const isRadiusEditable = computed(() => geofenceType.value === 'point')
+const isApplyingConfig = ref(false)
 
 const defaultCenter: [number, number] = [-6.2, 106.816666]
 
 watch(
   () => data.value,
-  (val) => {
+  async (val) => {
     const cfg = (val as any)?.config
     if (!cfg) return
+    isApplyingConfig.value = true
     useRadius.value = Boolean(cfg.useRadius)
     geofenceType.value = cfg.type === 'polygon' ? 'polygon' : 'point'
     radiusMeters.value = typeof cfg.radiusMeters === 'number' ? cfg.radiusMeters : null
@@ -44,19 +45,28 @@ watch(
     else {
       polygon.value = []
     }
+    await nextTick()
+    isApplyingConfig.value = false
   },
   { immediate: true },
 )
 
 watch(
   () => geofenceType.value,
-  (val) => {
+  (val, prev) => {
+    if (isApplyingConfig.value || val === prev)
+      return
     if (val === 'polygon') {
+      center.value = null
       pointRadiusBackup.value = radiusMeters.value ?? pointRadiusBackup.value
       radiusMeters.value = 0
+      polygon.value = []
+      drawing.value = false
     }
     else {
       radiusMeters.value = pointRadiusBackup.value ?? 100
+      polygon.value = []
+      drawing.value = false
     }
   },
 )
@@ -70,10 +80,28 @@ const mapCenter = computed<[number, number]>(() => {
   return defaultCenter
 })
 
-const mapZoom = computed(() => (geofenceType.value === 'point' && center.value) ? 16 : (polygon.value.length ? 15 : 12))
+const mapZoom = computed(() => {
+  if (geofenceType.value === 'point')
+    return center.value ? 16 : 12
+  return 12
+})
+
+const mapKey = computed(() => {
+  if (geofenceType.value === 'point') {
+    if (center.value)
+      return `point-${center.value.lat}-${center.value.lng}`
+    return 'point-empty'
+  }
+  return 'polygon'
+})
 
 function onMapClick(e: any) {
   if (interactionMode.value !== 'add') return
+  // Prevent zoom on double-click leak
+  if (e.originalEvent) {
+    e.originalEvent.preventDefault?.()
+    e.originalEvent.stopPropagation?.()
+  }
   const { lat, lng } = e.latlng
   if (geofenceType.value === 'point') {
     center.value = { lat, lng }
@@ -82,6 +110,14 @@ function onMapClick(e: any) {
     if (!drawing.value) polygon.value = []
     drawing.value = true
     polygon.value = [...polygon.value, [lat, lng]]
+  }
+}
+
+function onMapDblClick(e: any) {
+  if (interactionMode.value !== 'add') return
+  if (e.originalEvent) {
+    e.originalEvent.preventDefault?.()
+    e.originalEvent.stopPropagation?.()
   }
 }
 
@@ -177,7 +213,9 @@ async function saveConfig() {
                 Require location to be within allowed radius.
               </p>
             </div>
-            <USwitch v-model="useRadius" />
+            <ClientOnly>
+              <USwitch v-model="useRadius" :loading="pending" />
+            </ClientOnly>
           </div>
 
           <div>
@@ -307,20 +345,17 @@ async function saveConfig() {
         <ClientOnly>
           <div
             class="h-[420px] overflow-hidden rounded-b-lg border border-gray-200 dark:border-gray-800"
-            :class="mapCursorClass"
+            :class="[interactionMode === 'add' ? '!cursor-crosshair' : '']"
           >
             <LMap
-              style="height: 420px"
+              :key="mapKey"
+              :style="{ height: '420px', cursor: interactionMode === 'add' ? 'crosshair' : '' }"
               :zoom="mapZoom"
               :center="mapCenter"
               :use-global-leaflet="false"
-              :dragging="interactionMode === 'move'"
-              :scroll-wheel-zoom="interactionMode === 'move'"
-              :touch-zoom="interactionMode === 'move'"
-              :double-click-zoom="interactionMode === 'move'"
-              :box-zoom="interactionMode === 'move'"
-              :keyboard="interactionMode === 'move'"
+              :options="{ zoomControl: true, dragging: interactionMode === 'move', scrollWheelZoom: interactionMode === 'move', touchZoom: interactionMode === 'move', doubleClickZoom: false, boxZoom: interactionMode === 'move', keyboard: interactionMode === 'move' }"
               @click="onMapClick"
+              @dblclick="onMapDblClick"
             >
               <LTileLayer :url="mapTileUrl" :attribution="mapAttribution" />
               <template v-if="geofenceType === 'point' && center">
@@ -328,7 +363,9 @@ async function saveConfig() {
                 <LMarker :lat-lng="[center.lat, center.lng]" />
               </template>
               <template v-else>
-                <LPolygon v-if="polygon.length" :lat-lngs="polygon" :color="drawing ? 'orange' : 'blue'" />
+                <LPolygon v-if="polygon.length >= 3" :lat-lngs="polygon" :color="drawing ? 'orange' : 'blue'" />
+                <LPolyline v-else-if="polygon.length >= 2" :lat-lngs="polygon" color="orange" />
+                <LMarker v-for="(p, idx) in polygon" :key="idx" :lat-lng="p" />
               </template>
             </LMap>
           </div>
