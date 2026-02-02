@@ -49,6 +49,7 @@ watch(
   (val, prev) => {
     if (isApplyingConfig.value || val === prev)
       return
+    interactionMode.value = 'move'
     if (val === 'polygon') {
       center.value = null
       pointRadiusBackup.value = radiusMeters.value ?? pointRadiusBackup.value
@@ -95,6 +96,19 @@ const mapKey = computed(() => {
     return `point-empty-${id}`
   }
   return `polygon-${id}-${polygon.value.length}`
+})
+
+const mapOptions = computed(() => {
+  const allowMove = interactionMode.value === 'move' || isReadOnly.value
+  return {
+    zoomControl: true,
+    dragging: allowMove,
+    scrollWheelZoom: allowMove,
+    touchZoom: allowMove,
+    doubleClickZoom: false,
+    boxZoom: allowMove,
+    keyboard: allowMove,
+  }
 })
 
 function applyGeofence(fence: any, nextMode: 'view' | 'edit' | 'create') {
@@ -563,7 +577,7 @@ async function deleteGeofence() {
                   :zoom="mapZoom"
                   :center="mapCenter"
                   :use-global-leaflet="false"
-                  :options="{ zoomControl: true, dragging: interactionMode === 'move' || isReadOnly, scrollWheelZoom: interactionMode === 'move' || isReadOnly, touchZoom: interactionMode === 'move' || isReadOnly, doubleClickZoom: false, boxZoom: interactionMode === 'move' || isReadOnly, keyboard: interactionMode === 'move' || isReadOnly }"
+                  :options="mapOptions"
                   @click="onMapClick"
                   @dblclick="onMapDblClick"
                 >
