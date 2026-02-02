@@ -37,6 +37,16 @@ const permissionStatus = ref<'prompt' | 'granted' | 'denied' | 'unsupported'>('p
 const coords = ref<{ lat?: number, lng?: number, accuracy?: number }>({})
 const locating = ref(false)
 const geoError = ref<string | null>(null)
+const geofences = ref<any[]>([])
+const geofenceLoading = ref(true)
+const geofenceError = ref<string | null>(null)
+const geofenceBlocked = ref(false)
+const geofenceBlockedMessage = ref('')
+const geofenceComment = ref('')
+const geofencePendingAction = ref<'in' | 'out' | null>(null)
+const geofenceCommentModalOpen = ref(false)
+const geofenceUsed = ref<{ id?: string | null, name?: string | null } | null>(null)
+const geofencePendingFence = ref<any | null>(null)
 const showConfirmOut = ref(false)
 const confirmOutMessage = ref(t('index.modal.confirm'))
 const earlyReason = ref<string>('')
@@ -49,6 +59,167 @@ const mapCenter = computed<[number, number]>(() => [
   coords.value.lng ?? 0,
 ])
 const mapZoom = computed(() => (hasLocation.value ? 17 : 14))
+
+function distanceMeters(a: [number, number], b: [number, number]) {
+  const R = 6371000
+  const toRad = (x: number) => (x * Math.PI) / 180
+  const dLat = toRad(b[0] - a[0])
+  const dLng = toRad(b[1] - a[1])
+  const lat1 = toRad(a[0])
+  const lat2 = toRad(b[0])
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+function distanceToSegmentMeters(point: [number, number], a: [number, number], b: [number, number]) {
+  const R = 6371000
+  const lat0 = (point[0] * Math.PI) / 180
+  const toXY = ([lat, lng]: [number, number]) => {
+    const x = ((lng - point[1]) * Math.PI / 180) * Math.cos(lat0) * R
+    const y = ((lat - point[0]) * Math.PI / 180) * R
+    return { x, y }
+  }
+  const p = { x: 0, y: 0 }
+  const aXY = toXY(a)
+  const bXY = toXY(b)
+  const dx = bXY.x - aXY.x
+  const dy = bXY.y - aXY.y
+  const len2 = dx * dx + dy * dy
+  if (!len2) {
+    return Math.sqrt((p.x - aXY.x) ** 2 + (p.y - aXY.y) ** 2)
+  }
+  let t = ((p.x - aXY.x) * dx + (p.y - aXY.y) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  const projX = aXY.x + t * dx
+  const projY = aXY.y + t * dy
+  return Math.sqrt((p.x - projX) ** 2 + (p.y - projY) ** 2)
+}
+
+function distanceToPolygonMeters(point: [number, number], poly: Array<[number, number]>) {
+  if (!poly.length)
+    return Infinity
+  if (pointInPolygon(point, poly))
+    return 0
+  let min = Infinity
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    if (!a || !b)
+      continue
+    const dist = distanceToSegmentMeters(point, a, b)
+    if (dist < min)
+      min = dist
+  }
+  return min
+}
+
+function pointInPolygon(point: [number, number], poly: Array<[number, number]>) {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const curr = poly[i]
+    const prev = poly[j]
+    if (!curr || !prev)
+      continue
+    const xi = curr[1]
+    const yi = curr[0]
+    const xj = prev[1]
+    const yj = prev[0]
+    const intersect = ((yi > point[0]) !== (yj > point[0])) && (point[1] < ((xj - xi) * (point[0] - yi)) / (yj - yi) + xi)
+    if (intersect)
+      inside = !inside
+  }
+  return inside
+}
+
+function formatDistance(meters?: number | null) {
+  if (meters == null)
+    return ''
+  if (meters < 1000)
+    return `${Math.round(meters)} m`
+  return `${(meters / 1000).toFixed(2)} km`
+}
+
+function getClosestActiveGeofence(lat?: number, lng?: number) {
+  if (typeof lat !== 'number' || typeof lng !== 'number')
+    return null
+  const active = geofences.value.filter(g => g?.isActive)
+  if (!active.length)
+    return null
+  let best: { fence: any, dist: number, inside: boolean } | null = null
+  for (const fence of active) {
+    let dist = Infinity
+    let inside = false
+    if (fence.type === 'point' && typeof fence.centerLat === 'number' && typeof fence.centerLng === 'number') {
+      dist = distanceMeters([lat, lng], [fence.centerLat, fence.centerLng])
+      inside = typeof fence.radiusMeters === 'number' ? dist <= fence.radiusMeters : false
+    }
+    else if (fence.type === 'polygon' && Array.isArray(fence.polygon) && fence.polygon.length >= 3) {
+      inside = pointInPolygon([lat, lng], fence.polygon)
+      dist = distanceToPolygonMeters([lat, lng], fence.polygon)
+    }
+    if (!best || dist < best.dist)
+      best = { fence, dist, inside }
+  }
+  return best
+}
+
+function evaluateGeofence(lat?: number, lng?: number) {
+  if (!geofences.value.length)
+    return { allowed: true, requireComment: false, fence: null }
+  const closest = getClosestActiveGeofence(lat, lng)
+  if (!closest)
+    return { allowed: true, requireComment: false, fence: null }
+  const { fence, dist, inside } = closest
+  const mode = fence?.interactionMode || 'disallow'
+  if (mode === 'allow')
+    return { allowed: true, requireComment: false, fence }
+  if (inside)
+    return { allowed: true, requireComment: false, fence }
+  if (mode === 'allow_with_comment') {
+    return { allowed: true, requireComment: true, message: 'You are outside the allowed area. Please add a comment to continue.', fence }
+  }
+  if (fence.type === 'point' && typeof fence.radiusMeters === 'number') {
+    return {
+      allowed: false,
+      requireComment: false,
+      message: `You are outside the allowed radius (${formatDistance(dist)} away, limit ${formatDistance(fence.radiusMeters)}). Move closer to the allowed location.`,
+      fence,
+    }
+  }
+  return { allowed: false, requireComment: false, message: 'You are outside the allowed area. Move inside the polygon to clock in/out.', fence }
+}
+
+function guardGeofenceOrNotify(lat?: number, lng?: number) {
+  const { allowed, requireComment, message, fence } = evaluateGeofence(lat, lng)
+  geofenceUsed.value = fence ? { id: fence.id ?? null, name: fence.name ?? null } : null
+  if (!allowed) {
+    geofenceBlockedMessage.value = message || 'You are outside the allowed area.'
+    geofenceBlocked.value = true
+    return { proceed: false, requireComment: false }
+  }
+  if (requireComment) {
+    geofenceBlockedMessage.value = message || ''
+    geofencePendingFence.value = fence
+    return { proceed: false, requireComment: true }
+  }
+  geofencePendingFence.value = null
+  return { proceed: true, requireComment: false }
+}
+
+async function loadGeofence() {
+  try {
+    geofenceLoading.value = true
+    geofenceError.value = null
+    const res: any = await $fetch('/api/attendance/geofence', { credentials: 'include' })
+    geofences.value = Array.isArray(res?.geofences) ? res.geofences : []
+  }
+  catch (err: any) {
+    geofenceError.value = err?.message || 'Failed to load geofence config'
+  }
+  finally {
+    geofenceLoading.value = false
+  }
+}
 
 function formatTime(iso?: string) {
   if (!iso)
@@ -154,26 +325,82 @@ async function handleClock(action: 'in' | 'out') {
     toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
     return
   }
+  if (geofenceLoading.value)
+    await loadGeofence()
+  const guard = guardGeofenceOrNotify(coords.value.lat, coords.value.lng)
+  if (!guard.proceed) {
+    if (guard.requireComment) {
+      geofencePendingAction.value = action
+      geofenceComment.value = ''
+      geofenceCommentModalOpen.value = true
+    }
+    return
+  }
   if (action === 'in') {
     const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
-    clockIn({ coords: c, shiftCode: selectedShiftCode.value })
+    clockIn({
+      coords: c,
+      shiftCode: selectedShiftCode.value,
+      geofenceComment: geofenceComment.value || undefined,
+      geofenceId: geofenceUsed.value?.id || undefined,
+      geofenceName: geofenceUsed.value?.name || undefined,
+    })
   }
   else {
-    // Always confirm, with special message if before scheduled end
-    const se = getShiftStartEnd(clockInTime.value, selectedShiftCode.value)
-    const now = new Date()
-    if (se && now < se.end) {
-      const remaining = Math.max(0, Math.ceil((se.end.getTime() - now.getTime()) / 60000))
-      const endStr = se.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      confirmOutMessage.value = t('index.modal.confirmEarly', { end: endStr, remaining: formatHumanMinutes(remaining) })
-      isEarlyOut.value = true
-    }
-    else {
-      confirmOutMessage.value = t('index.modal.confirm')
-      isEarlyOut.value = false
-    }
-    showConfirmOut.value = true
+    startClockOutFlow()
   }
+}
+
+function startClockOutFlow() {
+  // Always confirm, with special message if before scheduled end
+  const se = getShiftStartEnd(clockInTime.value, selectedShiftCode.value)
+  const now = new Date()
+  if (se && now < se.end) {
+    const remaining = Math.max(0, Math.ceil((se.end.getTime() - now.getTime()) / 60000))
+    const endStr = se.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    confirmOutMessage.value = t('index.modal.confirmEarly', { end: endStr, remaining: formatHumanMinutes(remaining) })
+    isEarlyOut.value = true
+  }
+  else {
+    confirmOutMessage.value = t('index.modal.confirm')
+    isEarlyOut.value = false
+  }
+  showConfirmOut.value = true
+}
+
+function submitGeofenceComment() {
+  if (!geofenceComment.value.trim()) {
+    toast.add({ title: 'Comment required', description: 'Please enter a comment to continue.', color: 'warning' })
+    return
+  }
+  const action = geofencePendingAction.value
+  geofencePendingAction.value = null
+  geofenceCommentModalOpen.value = false
+  if (action === 'in') {
+    const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
+    clockIn({
+      coords: c,
+      shiftCode: selectedShiftCode.value,
+      geofenceComment: geofenceComment.value,
+      geofenceId: geofencePendingFence.value?.id || undefined,
+      geofenceName: geofencePendingFence.value?.name || undefined,
+    })
+  }
+  else if (action === 'out') {
+    geofenceUsed.value = geofencePendingFence.value
+      ? { id: geofencePendingFence.value.id ?? null, name: geofencePendingFence.value.name ?? null }
+      : null
+    startClockOutFlow()
+  }
+  geofencePendingFence.value = null
+}
+
+function cancelGeofenceComment() {
+  geofenceCommentModalOpen.value = false
+  geofencePendingAction.value = null
+  geofenceComment.value = ''
+  geofencePendingFence.value = null
+  geofenceUsed.value = null
 }
 
 async function onConfirmClockOut() {
@@ -183,9 +410,27 @@ async function onConfirmClockOut() {
     toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
     return
   }
+  if (geofenceLoading.value)
+    await loadGeofence()
+  const guard = guardGeofenceOrNotify(coords.value.lat, coords.value.lng)
+  if (!guard.proceed) {
+    if (guard.requireComment) {
+      geofencePendingAction.value = 'out'
+      geofenceComment.value = ''
+      geofenceCommentModalOpen.value = true
+    }
+    return
+  }
   const c = coords.value.lat !== undefined ? { latitude: coords.value.lat, longitude: coords.value.lng!, accuracy: coords.value.accuracy! } as any : undefined
-  await clockOut(c, earlyReason.value && earlyReason.value.length ? earlyReason.value.slice(0, 200) : undefined)
+  await clockOut(
+    c,
+    earlyReason.value && earlyReason.value.length ? earlyReason.value.slice(0, 200) : undefined,
+    geofenceComment.value,
+    geofenceUsed.value?.id || undefined,
+    geofenceUsed.value?.name || undefined,
+  )
   earlyReason.value = ''
+  geofenceComment.value = ''
 }
 
 function onCancelClockOut() {
@@ -193,6 +438,8 @@ function onCancelClockOut() {
   // reset the early reason when the user cancels to avoid leftover text
   earlyReason.value = ''
   isEarlyOut.value = false
+  geofenceComment.value = ''
+  geofenceUsed.value = null
 }
 
 onMounted(async () => {
@@ -203,6 +450,7 @@ onMounted(async () => {
   if (!selectedShiftCode.value && (shifts as any)?.value && (shifts as any).value.length) {
     selectedShiftCode.value = (shifts as any).value[0].code
   }
+  loadGeofence()
 })
 </script>
 
@@ -316,6 +564,9 @@ onMounted(async () => {
                 <span class="font-medium">Accuracy:</span> ±{{ Math.round(coords.accuracy) }}m
               </p>
             </template>
+            <p v-if="geofenceError" class="text-xs text-red-500">
+              {{ geofenceError }}
+            </p>
           </div>
           <div>
             <UButton
@@ -384,6 +635,48 @@ onMounted(async () => {
           </UButton>
           <UButton color="primary" icon="i-heroicons-check" @click="onConfirmClockOut">
             {{ t('index.modal.confirmButton') }}
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="geofenceBlocked" title="Outside allowed area">
+      <template #body>
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.' }}
+        </p>
+        <div class="flex justify-end gap-2 mt-4">
+          <UButton color="primary" variant="solid" @click="geofenceBlocked = false">
+            OK
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="geofenceCommentModalOpen" title="Comment required">
+      <template #body>
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ geofenceBlockedMessage || 'You are outside the allowed area. Please add a comment to continue.' }}
+        </p>
+        <div class="mt-3">
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Comment</label>
+          <textarea
+            v-model="geofenceComment"
+            maxlength="200"
+            rows="3"
+            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2"
+            placeholder="Add a brief reason..."
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            {{ geofenceComment.length }}/200
+          </p>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+          <UButton color="neutral" variant="soft" @click="cancelGeofenceComment">
+            Cancel
+          </UButton>
+          <UButton color="primary" icon="i-heroicons-check" @click="submitGeofenceComment">
+            Continue
           </UButton>
         </div>
       </template>
