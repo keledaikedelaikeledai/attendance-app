@@ -88,8 +88,13 @@ async function refresh() {
     geofenceId: (l as any).geofenceId ?? (l as any).geofence_id ?? null,
     geofenceName: (l as any).geofenceName ?? (l as any).geofence_name ?? null,
   }))
-  selectedShiftCode.value = s.selectedShiftCode ?? undefined
-  selectedShiftType.value = s.shiftType ?? undefined
+  const latestClockIn = logs.value.find(l => l.type === 'clock-in')
+  selectedShiftCode.value = s.clockedIn
+    ? (latestClockIn?.shiftCode ?? s.selectedShiftCode ?? undefined)
+    : (s.selectedShiftCode ?? undefined)
+  selectedShiftType.value = s.clockedIn
+    ? (latestClockIn?.shiftType ?? s.shiftType ?? undefined)
+    : (s.shiftType ?? undefined)
 }
 
 const durationMs = computed(() => {
@@ -149,9 +154,14 @@ function shiftStartDate(clockInIso: string, code: ShiftCode | undefined) {
 }
 
 const lateByMs = computed(() => {
-  if (!clockInTime.value || !selectedShiftCode.value)
+  if (!clockInTime.value)
     return 0
-  const start = shiftStartDate(clockInTime.value, selectedShiftCode.value)
+  const activeClockInShiftCode = (clockedIn.value
+    ? logs.value.find(l => l.type === 'clock-in')?.shiftCode
+    : undefined) ?? selectedShiftCode.value
+  if (!activeClockInShiftCode)
+    return 0
+  const start = shiftStartDate(clockInTime.value, activeClockInShiftCode)
   if (!start)
     return 0
   const ci = new Date(clockInTime.value)
@@ -173,12 +183,17 @@ const lateByHuman = computed(() => {
 async function setShift(code: ShiftCode | undefined, type?: 'harian' | 'bantuan' | undefined) {
   selectedShiftCode.value = code
   if (type) selectedShiftType.value = type
-  await $fetch('/api/attendance/shift', { method: 'POST', body: { shiftCode: code, shiftType: type }, credentials: 'include' })
+  const now = new Date()
+  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  await $fetch('/api/attendance/shift', { method: 'POST', body: { shiftCode: code, shiftType: type, date: localDate }, credentials: 'include' })
   await refresh()
 }
 
 // Ensure a sensible default shift is chosen based on current time
 async function ensureDefaultShift() {
+  if (clockedIn.value) {
+    return
+  }
   if (!shifts.value.length) {
     await loadShifts()
   }
