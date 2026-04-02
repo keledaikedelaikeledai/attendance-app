@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lte } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
-import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
+import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -60,17 +60,77 @@ export default defineEventHandler(async (event) => {
       .orderBy(desc(attendanceLog.timestamp))
   }
 
-  // derive state
-  const clockIn = (logs as Log[]).find((l: Log) => l.type === 'clock-in')
-  const clockOut = (logs as Log[]).find((l: Log) => l.type === 'clock-out' && (!clockIn || normalizeTimestampRaw(l.timestamp) > normalizeTimestampRaw(clockIn.timestamp)))
+  // derive state from today's logs first
+  let stateDay: any = day
+  let stateLogs: Log[] = logs as Log[]
+  let clockIn = stateLogs.find((l: Log) => l.type === 'clock-in')
+  let clockOut = stateLogs.find((l: Log) => l.type === 'clock-out' && (!clockIn || normalizeTimestampRaw(l.timestamp) > normalizeTimestampRaw(clockIn.timestamp)))
+
+  // Cross-midnight handling:
+  // If today has no active session, check previous date for an open clock-in whose
+  // shift spans midnight and hasn't reached its end time in the client's timezone.
+  if (!clockIn || clockOut) {
+    try {
+      const [yy, mm, dd] = today.split('-').map(Number)
+      if (![yy, mm, dd].some(Number.isNaN)) {
+        const prevDateObj = new Date(Date.UTC(yy, mm - 1, dd))
+        prevDateObj.setUTCDate(prevDateObj.getUTCDate() - 1)
+        const prevDate = `${prevDateObj.getUTCFullYear()}-${String(prevDateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(prevDateObj.getUTCDate()).padStart(2, '0')}`
+
+        const [prevDay] = await db
+          .select()
+          .from(attendanceDay)
+          .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, prevDate)))
+          .limit(1)
+
+        const prevLogs = await db
+          .select()
+          .from(attendanceLog)
+          .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, prevDate)))
+          .orderBy(desc(attendanceLog.timestamp))
+
+        const prevClockIn = (prevLogs as Log[]).find((l: Log) => l.type === 'clock-in')
+        const prevClockOut = (prevLogs as Log[]).find((l: Log) => l.type === 'clock-out' && (!prevClockIn || normalizeTimestampRaw(l.timestamp) > normalizeTimestampRaw(prevClockIn.timestamp)))
+
+        if (prevClockIn && !prevClockOut) {
+          const shiftCode = (prevDay as any)?.selectedShiftCode || (prevClockIn as any)?.shiftCode || null
+          if (shiftCode) {
+            const [sd] = await db.select().from(shift).where(eq(shift.code, shiftCode)).limit(1)
+            if (sd) {
+              const [sh, sm] = (sd.start || '').split(':').map(Number)
+              const [eh, em] = (sd.end || '').split(':').map(Number)
+              if (![sh, sm, eh, em].some(Number.isNaN)) {
+                const startMin = sh * 60 + sm
+                const endMin = eh * 60 + em
+                const crossesMidnight = startMin > endMin
+                if (crossesMidnight) {
+                  const endUtcMs = Date.UTC(yy, mm - 1, dd, eh, em, 0, 0) + ((typeof tzOffset === 'number' && !Number.isNaN(tzOffset)) ? (tzOffset * 60000) : 0)
+                  const nowMs = Date.now()
+                  if (nowMs <= endUtcMs) {
+                    stateDay = prevDay
+                    stateLogs = prevLogs as Log[]
+                    clockIn = prevClockIn
+                    clockOut = prevClockOut
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    catch {
+      // ignore fallback logic errors and keep today's state
+    }
+  }
 
   return {
     date: today,
-    selectedShiftCode: day?.selectedShiftCode ?? null,
-    shiftType: (day as any)?.shiftType ?? null,
+    selectedShiftCode: stateDay?.selectedShiftCode ?? null,
+    shiftType: (stateDay as any)?.shiftType ?? null,
     clockedIn: Boolean(clockIn && !clockOut),
     clockInTime: clockIn ? new Date(normalizeTimestampRaw(clockIn.timestamp)).toISOString() : undefined,
     clockOutTime: clockOut ? new Date(normalizeTimestampRaw(clockOut.timestamp)).toISOString() : undefined,
-    logs,
+    logs: stateLogs,
   }
 })
