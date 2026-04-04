@@ -14,6 +14,7 @@ const month = ref(new Date().toISOString().slice(0, 7)) // YYYY-MM
 // useFetch for attendance (reactive to `month`) and users
 const { data: attendanceData, pending: attendancePending, refresh: refreshAttendance } = useFetch('/api/admin/attendance', { method: 'get', credentials: 'include', query: { month } })
 const data = computed(() => attendanceData.value ?? { month: '', days: [], rows: [] })
+const normalizedRows = computed(() => attendanceTime.normalizeRowsCrossday((data.value?.rows || []) as any[], data.value?.days || []))
 const isLoading = computed(() => Boolean(attendancePending.value))
 
 const ApexChart = shallowRef<any>(null)
@@ -113,7 +114,7 @@ const totalDays = computed(() => data.value.days?.length || 0)
 const presentCountsPerDay = computed(() => {
   const days = data.value.days || []
   return days.map((d: string) => {
-    return (data.value.rows || []).reduce((acc: number, row: any) => {
+    return (normalizedRows.value || []).reduce((acc: number, row: any) => {
       const cell = row.byDate?.[d]
       if (!cell) return acc
       if (typeof cell.workingShifts === 'number') return acc + Math.max(0, Math.floor(cell.workingShifts))
@@ -131,7 +132,7 @@ const percentPresent = computed(() => {
   return denom ? Math.round((totalPresent.value / denom) * 10000) / 100 : 0
 })
 
-const lateCountsPerUser = computed(() => (data.value.rows || []).map((row: any) => {
+const lateCountsPerUser = computed(() => (normalizedRows.value || []).map((row: any) => {
   const days = data.value.days || []
   const count = days.reduce((acc: number, d: string) => {
     const cell = row.byDate?.[d]
@@ -156,7 +157,7 @@ const averageLatePerUser = computed(() => {
 // recentUsersColumns removed; replaced by `recentRecapColumns` for the recap table
 
 const recentRecap = computed(() => {
-  const rows = data.value.rows || []
+  const rows = normalizedRows.value || []
   const days = data.value.days || []
   return rows.map((row: any) => {
     let totalWorkingDays = 0
@@ -260,7 +261,7 @@ const chartOptions = computed(() => {
 // by `workingShifts`, `harian`, and `bantuan` fields when present. Otherwise we fallback to counting entries.
 const chartSeries = computed(() => {
   const days = data.value.days || []
-  const rows = data.value.rows || []
+  const rows = normalizedRows.value || []
   // Count present per day for each type
   const harianCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
     const cell = row.byDate?.[d]
