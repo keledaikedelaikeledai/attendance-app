@@ -118,53 +118,6 @@ function toDateLabel(iso?: string) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function normalizeByDateForCrossday(rawByDate: Record<string, any>) {
-  const byDate: Record<string, any> = {}
-  for (const [day, cell] of Object.entries(rawByDate || {})) {
-    const grouped = cell?.grouped && typeof cell.grouped === 'object'
-      ? Object.fromEntries(Object.entries(cell.grouped).map(([k, v]) => [k, { ...(v as any) }]))
-      : {}
-    byDate[day] = { ...(cell || {}), grouped }
-  }
-
-  const orderedDays = ((data.value?.days || []) as string[]).filter(d => byDate[d])
-  for (let i = 1; i < orderedDays.length; i++) {
-    const prevDay = orderedDays[i - 1]
-    const currDay = orderedDays[i]
-    if (!prevDay || !currDay)
-      continue
-    const prevCell = byDate[prevDay]
-    const currCell = byDate[currDay]
-    const prevGrouped = prevCell?.grouped || {}
-    const currGrouped = currCell?.grouped || {}
-
-    for (const [shiftType, currValRaw] of Object.entries(currGrouped)) {
-      const currVal = currValRaw as any
-      if (!currVal || currVal.clockIn || !currVal.clockOut)
-        continue
-      const prevVal = prevGrouped[shiftType] as any
-      if (!prevVal?.clockIn || prevVal?.clockOut)
-        continue
-
-      prevVal.clockOut = currVal.clockOut
-      prevVal.clockOutLat = currVal.clockOutLat
-      prevVal.clockOutLng = currVal.clockOutLng
-      prevVal.clockOutAccuracy = currVal.clockOutAccuracy
-      if (currVal.earlyReason != null)
-        prevVal.earlyReason = currVal.earlyReason
-      if (!prevVal.shiftCode && currVal.shiftCode)
-        prevVal.shiftCode = currVal.shiftCode
-
-      delete currGrouped[shiftType]
-    }
-
-    prevCell.grouped = prevGrouped
-    currCell.grouped = currGrouped
-  }
-
-  return byDate
-}
-
 function buildDataAoA(): { rows: any[][], dayTwoFlagsList: boolean[][] } {
   const days = normalizedData.value?.days || []
   const rows: any[][] = []
@@ -173,7 +126,7 @@ function buildDataAoA(): { rows: any[][], dayTwoFlagsList: boolean[][] } {
   // (no-op if already cached)
   // Note: exportWithExcelJS will await this before calling buildDataAoA
   for (const r of attendances.value as any[]) {
-    const byDate = normalizeByDateForCrossday((r?.byDate) || {})
+    const byDate = attendanceTime.normalizeByDateCrossday((r?.byDate) || {}, days)
     // Work per-date so we can respect any aggregated values the server provides
     const cellsRaw: any[] = Object.values(byDate)
     const entriesAll: any[] = cellsRaw.flatMap(c => attendanceTime.normalizeCellForExport(c))
