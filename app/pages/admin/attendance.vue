@@ -74,7 +74,13 @@ const iconOnlyType = computed(() => {
   }))
 })
 
-const attendances = computed(() => data.value?.rows || [])
+const normalizedRows = computed(() => attendanceTime.normalizeRowsCrossday((data.value?.rows || []) as any[], data.value?.days || []))
+const normalizedData = computed(() => ({
+  ...(data.value || { month: '', days: [], rows: [] }),
+  rows: normalizedRows.value,
+}))
+
+const attendances = computed(() => normalizedRows.value || [])
 
 // legacy per-cell lateMs helper removed in favor of entry-level calculations
 
@@ -113,14 +119,14 @@ function toDateLabel(iso?: string) {
 }
 
 function buildDataAoA(): { rows: any[][], dayTwoFlagsList: boolean[][] } {
-  const days = data.value?.days || []
+  const days = normalizedData.value?.days || []
   const rows: any[][] = []
   const dayTwoFlagsAll: boolean[][] = []
   // ensure we have shift defs available for accurate per-entry calculations
   // (no-op if already cached)
   // Note: exportWithExcelJS will await this before calling buildDataAoA
   for (const r of attendances.value as any[]) {
-    const byDate = (r?.byDate) || {}
+    const byDate = attendanceTime.normalizeByDateCrossday((r?.byDate) || {}, days)
     // Work per-date so we can respect any aggregated values the server provides
     const cellsRaw: any[] = Object.values(byDate)
     const entriesAll: any[] = cellsRaw.flatMap(c => attendanceTime.normalizeCellForExport(c))
@@ -1482,7 +1488,7 @@ definePageMeta({
         </UButton>
       </div>
     </template>
-    <AttendanceGrid v-if="activeType === 'grid'" :data="data" :loading="status === 'pending'" />
-    <AttendanceTable v-else :data="data" :loading="status === 'pending'" />
+    <AttendanceGrid v-if="activeType === 'grid'" :data="normalizedData" :loading="status === 'pending'" />
+    <AttendanceTable v-else :data="normalizedData" :loading="status === 'pending'" />
   </PageWrapper>
 </template>

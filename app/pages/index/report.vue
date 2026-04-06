@@ -79,6 +79,82 @@ function shiftBadgeColor(code?: string) {
   }
 }
 
+function shiftCrossesMidnight(def?: { start?: string, end?: string } | null) {
+  if (!def?.start || !def?.end) return false
+  const [sh, sm] = def.start.split(':').map(s => Number(s ?? '0'))
+  const [eh, em] = def.end.split(':').map(s => Number(s ?? '0'))
+  if ([sh, sm, eh, em].some(Number.isNaN)) return false
+  return (sh * 60 + sm) > (eh * 60 + em)
+}
+
+function addDaysYmd(ymd: string, days: number) {
+  const [y, m, d] = ymd.split('-').map(s => Number(s ?? '0'))
+  const dt = new Date(y, m - 1, d)
+  dt.setDate(dt.getDate() + days)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+function mergeCrossdayShifts(rawDays: any[], shiftMap: Map<string, any>) {
+  const sorted = [...(rawDays || [])].sort((a, b) => {
+    if (a.date !== b.date) return String(a.date).localeCompare(String(b.date))
+    const at = Date.parse(a.clockIn || a.clockOut || '') || 0
+    const bt = Date.parse(b.clockIn || b.clockOut || '') || 0
+    return at - bt
+  })
+
+  const used = new Set<number>()
+  const merged: any[] = []
+
+  for (let i = 0; i < sorted.length; i++) {
+    if (used.has(i)) continue
+    const base = {
+      ...sorted[i],
+      logs: Array.isArray(sorted[i]?.logs) ? [...sorted[i].logs] : [],
+    }
+
+    const baseShiftCode = base.selectedShiftCode
+      ?? base.logs?.find((l: any) => l?.type === 'clock-in')?.shiftCode
+      ?? null
+    const baseDef = baseShiftCode ? shiftMap.get(baseShiftCode) : null
+
+    const isCrossday = shiftCrossesMidnight(baseDef)
+    const hasClockInOnly = !!base.clockIn && !base.clockOut
+
+    if (isCrossday && hasClockInOnly) {
+      const nextDate = addDaysYmd(base.date, 1)
+
+      for (let j = i + 1; j < sorted.length; j++) {
+        if (used.has(j)) continue
+        const candidate = sorted[j]
+        if (candidate?.date !== nextDate) continue
+
+        const candidateHasClockOutOnly = !candidate?.clockIn && !!candidate?.clockOut
+        const sameShiftType = (candidate?.shiftType ?? null) === (base.shiftType ?? null)
+
+        if (candidateHasClockOutOnly && sameShiftType) {
+          base.clockOut = candidate.clockOut
+          base.clockOutLat = candidate.clockOutLat ?? null
+          base.clockOutLng = candidate.clockOutLng ?? null
+          base.clockOutAccuracy = candidate.clockOutAccuracy ?? null
+          base.earlyMs = (base.earlyMs || 0) + (candidate.earlyMs || 0)
+          base.logs = [...(base.logs || []), ...((candidate.logs || []) as any[])]
+          base.logs.sort((a: any, b: any) => {
+            const at = a?.timestampMs ?? Date.parse(a?.timestamp || '') ?? 0
+            const bt = b?.timestampMs ?? Date.parse(b?.timestamp || '') ?? 0
+            return at - bt
+          })
+          used.add(j)
+          break
+        }
+      }
+    }
+
+    merged.push(base)
+  }
+
+  return merged
+}
+
 // month in YYYY-MM
 const now = new Date()
 const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -92,10 +168,22 @@ async function fetchReport() {
       credentials: 'include',
       query: { month: selectedMonth.value },
     })
+    let shiftsForMonth: any[] = []
+    try {
+      shiftsForMonth = await $fetch<any[]>('/api/shifts', {
+        credentials: 'include',
+        query: { ts: Date.now() },
+      })
+    }
+    catch {
+      shiftsForMonth = []
+    }
+    const monthShiftMap = new Map((shiftsForMonth || []).map((s: any) => [s.code, s]))
+
     // If server returned aggregated days, use them
     if ((res as any).days && (res as any).days.length) {
       summary.value = res as ReportSummary
-      const rawDays = (res as any).days ?? []
+      const rawDays = mergeCrossdayShifts((res as any).days ?? [], monthShiftMap)
       const byDate = new Map<string, any[]>()
       for (const item of rawDays) {
         if (!byDate.has(item.date)) byDate.set(item.date, [])

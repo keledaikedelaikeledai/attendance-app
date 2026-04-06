@@ -252,6 +252,39 @@ export default defineEventHandler(async (event) => {
     logsByDate.get(l.date)!.push(l as any)
   }
 
+  // Reconcile crossday orphan clock-out logs:
+  // If day D has clock-out-only entries for a shiftType and day D-1 has an open clock-in
+  // for the same shiftType, move those clock-out entries to day D-1 so one logical shift
+  // is represented consistently.
+  const orderedDates = Array.from(logsByDate.keys()).sort((a, b) => a.localeCompare(b))
+  for (let i = 1; i < orderedDates.length; i++) {
+    const prevDate = orderedDates[i - 1]
+    const currDate = orderedDates[i]
+    if (!prevDate || !currDate) continue
+    const prevLogs = logsByDate.get(prevDate) as any[] | undefined
+    const currLogs = logsByDate.get(currDate) as any[] | undefined
+    if (!prevLogs || !currLogs?.length) continue
+
+    const outTypes = new Set(currLogs.filter(l => l?.type === 'clock-out').map(l => l?.shiftType || 'unknown'))
+    for (const st of outTypes) {
+      const currHasIn = currLogs.some(l => l?.type === 'clock-in' && ((l?.shiftType || 'unknown') === st))
+      if (currHasIn) continue
+
+      const currOuts = currLogs.filter(l => l?.type === 'clock-out' && ((l?.shiftType || 'unknown') === st))
+      if (!currOuts.length) continue
+
+      const prevHasIn = prevLogs.some(l => l?.type === 'clock-in' && ((l?.shiftType || 'unknown') === st))
+      const prevHasOut = prevLogs.some(l => l?.type === 'clock-out' && ((l?.shiftType || 'unknown') === st))
+      if (!prevHasIn || prevHasOut) continue
+
+      for (const outLog of currOuts) {
+        prevLogs.push(outLog)
+      }
+      const remaining = currLogs.filter(l => !(l?.type === 'clock-out' && ((l?.shiftType || 'unknown') === st)))
+      logsByDate.set(currDate, remaining)
+    }
+  }
+
   // Build per-day summaries to return to the frontend (for AttendanceCard rendering)
   const daySummaries: any[] = []
 

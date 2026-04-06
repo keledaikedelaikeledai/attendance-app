@@ -1,6 +1,6 @@
 import process from 'node:process'
 import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
-import { attendanceDay, attendanceLog, shift, user } from '~~/server/database/schemas'
+import { attendanceLog, shift, user } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -53,12 +53,6 @@ export default defineEventHandler(async (event) => {
   }
 
   const userIds = users.map(u => u.id)
-
-  // Fetch days for the month (selected shift useful for context)
-  const days = await db
-    .select({ userId: attendanceDay.userId, date: attendanceDay.date, selectedShiftCode: attendanceDay.selectedShiftCode, shiftType: attendanceDay.shiftType })
-    .from(attendanceDay)
-    .where(and(inArray(attendanceDay.userId, userIds), gte(attendanceDay.date, startDate), lte(attendanceDay.date, endDate)))
 
   // Fetch logs and pick earliest clock-in and latest clock-out per user/date
   const logs = await db
@@ -114,13 +108,6 @@ export default defineEventHandler(async (event) => {
     } as any)
   }
 
-  // Map selected shift code and type from days table
-  const shiftByUserDate: Record<string, Record<string, { code?: string, type?: 'harian' | 'bantuan' }>> = {}
-  for (const d of days) {
-    shiftByUserDate[d.userId] ||= {}
-    shiftByUserDate[d.userId][d.date] = { code: d.selectedShiftCode ?? undefined, type: (d as any).shiftType ?? undefined }
-  }
-
   // Load shift definitions for enrichment
   const shifts = await db.select().from(shift)
   const shiftMap = Object.fromEntries(shifts.map(s => [s.code, { code: s.code, label: s.label, start: s.start, end: s.end }])) as Record<string, { code: string, label: string, start: string, end: string }>
@@ -152,167 +139,207 @@ export default defineEventHandler(async (event) => {
     return instant.toISOString()
   }
 
+  function finalizeDayCell(ds: string, groupedByShiftType: Record<string, any>) {
+    let totalLateMs = 0
+    let totalEarlyMs = 0
+    let countWorkingShifts = 0
+    let harian = 0
+    let bantuan = 0
+
+    for (const [st, val] of Object.entries(groupedByShiftType)) {
+      if (val.clockIn) {
+        countWorkingShifts++
+        if (st === 'harian') harian++
+        else if (st === 'bantuan') bantuan++
+        const sd = val.shiftCode ? shiftMap[val.shiftCode] : undefined
+        if (sd) {
+          const ci = new Date(val.clockIn)
+          const partsStart = (sd.start || '').split(':')
+          const partsEnd = (sd.end || '').split(':')
+          const sh = Number(partsStart[0])
+          const sm = Number(partsStart[1])
+          const eh = Number(partsEnd[0])
+          const em = Number(partsEnd[1])
+          if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
+            const startMin = sh * 60 + sm
+            const endMin = eh * 60 + em
+            // anchor schedule to the attendance day `ds` (YYYY-MM-DD) to avoid timezone/date shifts
+            const [yy, mm2, dd2] = ds.split('-').map(Number)
+            let y = yy
+            let m = mm2 - 1
+            let d = dd2
+            // If shift crosses midnight and the clock-in minute is before endMin, it likely belongs to the next-day portion
+            const ciMin = ci.getHours() * 60 + ci.getMinutes()
+            if (startMin > endMin && ciMin < endMin) {
+              // treat startDate as previous day
+              const prev = new Date(y, m, d)
+              prev.setDate(prev.getDate() - 1)
+              y = prev.getFullYear()
+              m = prev.getMonth()
+              d = prev.getDate()
+            }
+            // compute anchor instant in business timezone and compare using UTC ms
+            const anchorDate = new Date(y, m, d)
+            const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
+            const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
+            groupedByShiftType[st].shiftStartIso = startIso
+            totalLateMs += Math.max(0, ci.getTime() - Date.parse(startIso))
+          }
+        }
+      }
+      if (val.clockOut && val.shiftCode) {
+        const sd = shiftMap[val.shiftCode]
+        if (sd) {
+          const co = new Date(val.clockOut)
+          const partsStart = (sd.start || '').split(':')
+          const partsEnd = (sd.end || '').split(':')
+          const sh = Number(partsStart[0])
+          const sm = Number(partsStart[1])
+          const eh = Number(partsEnd[0])
+          const em = Number(partsEnd[1])
+          if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
+            const startMin = sh * 60 + sm
+            const endMin = eh * 60 + em
+            // anchor schedule to the attendance day `ds` (YYYY-MM-DD)
+            const [yy, mm2, dd2] = ds.split('-').map(Number)
+            let y = yy
+            let m = mm2 - 1
+            let d = dd2
+            const crosses = startMin > endMin
+            // If shift crosses midnight and clockOut time is before endMin, it belongs to the next-day portion
+            if (crosses && (co.getHours() * 60 + co.getMinutes()) < endMin) {
+              const prev = new Date(y, m, d)
+              prev.setDate(prev.getDate() - 1)
+              y = prev.getFullYear()
+              m = prev.getMonth()
+              d = prev.getDate()
+            }
+            const anchorDate = new Date(y, m, d)
+            const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
+            // compute start and end instants in business timezone
+            const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
+            // if shift crosses midnight, end is next day
+            let endAnchorYmd = anchorYmd
+            if (startMin > endMin) {
+              const next = new Date(anchorDate)
+              next.setDate(next.getDate() + 1)
+              endAnchorYmd = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
+            }
+            const endIso = localDateTimeToUtcIso(endAnchorYmd, eh, em, BUSINESS_TZ)
+            groupedByShiftType[st].shiftStartIso = startIso
+            groupedByShiftType[st].shiftEndIso = endIso
+            totalEarlyMs += Math.max(0, Date.parse(endIso) - co.getTime())
+          }
+        }
+      }
+    }
+
+    return {
+      grouped: groupedByShiftType,
+      clockIn: undefined,
+      clockOut: undefined,
+      clockInLat: undefined,
+      clockInLng: undefined,
+      clockInAccuracy: undefined,
+      clockOutLat: undefined,
+      clockOutLng: undefined,
+      clockOutAccuracy: undefined,
+      shiftCode: undefined,
+      shiftType: undefined,
+      shift: undefined,
+      lateMs: totalLateMs,
+      earlyMs: totalEarlyMs,
+      workingShifts: countWorkingShifts,
+      harian,
+      bantuan,
+    } as const
+  }
+
   const rows = users.map(u => ({
     userId: u.id,
     email: u.email,
     name: u.name,
     username: u.username,
-    byDate: Object.fromEntries(allDays.map((ds) => {
-      // We want to support multiple shift entries per day (harian + bantuan).
-      const explicitShift = shiftByUserDate[u.id]?.[ds]
-      const entries = (byUserDate[u.id]?.[ds]?.entries ?? []) as any[]
-      const _shiftDef = (explicitShift?.code && shiftMap[explicitShift.code]) || undefined
-      // Compute lateMs server-side to keep UI simple and consistent
-      // For admin grid, compute aggregated values: count of distinct shiftTypes with a clock-in, earliest clock-in per shift, latest clock-out per shift
-      const groupedByShiftType: Record<string, any> = {}
-      for (const e of entries) {
-        const st = e.shiftType || 'unknown'
-        groupedByShiftType[st] ||= {} as any
-        // keep earliest clock-in for "start of shift" calculations (existing behavior)
-        if (e.type === 'clock-in') {
-          if (!groupedByShiftType[st].clockIn || new Date(e.timestamp) < new Date(groupedByShiftType[st].clockIn)) {
-            groupedByShiftType[st].clockIn = e.timestamp
-            groupedByShiftType[st].clockInLat = e.lat
-            groupedByShiftType[st].clockInLng = e.lng
-            groupedByShiftType[st].clockInAccuracy = e.accuracy
-            groupedByShiftType[st].shiftCode = e.shiftCode
+    byDate: (() => {
+      const byDate = Object.fromEntries(allDays.map((ds) => {
+        // We want to support multiple shift entries per day (harian + bantuan).
+        const entries = (byUserDate[u.id]?.[ds]?.entries ?? []) as any[]
+        // For admin grid, compute aggregated values: count of distinct shiftTypes with a clock-in, earliest clock-in per shift, latest clock-out per shift
+        const groupedByShiftType: Record<string, any> = {}
+        for (const e of entries) {
+          const st = e.shiftType || 'unknown'
+          groupedByShiftType[st] ||= {} as any
+          // keep earliest clock-in for "start of shift" calculations (existing behavior)
+          if (e.type === 'clock-in') {
+            if (!groupedByShiftType[st].clockIn || new Date(e.timestamp) < new Date(groupedByShiftType[st].clockIn)) {
+              groupedByShiftType[st].clockIn = e.timestamp
+              groupedByShiftType[st].clockInLat = e.lat
+              groupedByShiftType[st].clockInLng = e.lng
+              groupedByShiftType[st].clockInAccuracy = e.accuracy
+              groupedByShiftType[st].shiftCode = e.shiftCode
+            }
+            // also track the latest clock-in so callers can see the most recent activity
+            if (!groupedByShiftType[st].clockInLast || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockInLast)) {
+              groupedByShiftType[st].clockInLast = e.timestamp
+              groupedByShiftType[st].clockInLastLat = e.lat
+              groupedByShiftType[st].clockInLastLng = e.lng
+              groupedByShiftType[st].clockInLastAccuracy = e.accuracy
+              // keep the most recent shiftCode too (may be null)
+              groupedByShiftType[st].shiftCodeLast = e.shiftCode
+            }
           }
-          // also track the latest clock-in so callers can see the most recent activity
-          if (!groupedByShiftType[st].clockInLast || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockInLast)) {
-            groupedByShiftType[st].clockInLast = e.timestamp
-            groupedByShiftType[st].clockInLastLat = e.lat
-            groupedByShiftType[st].clockInLastLng = e.lng
-            groupedByShiftType[st].clockInLastAccuracy = e.accuracy
-            // keep the most recent shiftCode too (may be null)
-            groupedByShiftType[st].shiftCodeLast = e.shiftCode
-          }
-        }
-        else if (e.type === 'clock-out') {
-          if (!groupedByShiftType[st].clockOut || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockOut)) {
-            groupedByShiftType[st].clockOut = e.timestamp
-            groupedByShiftType[st].clockOutLat = e.lat
-            groupedByShiftType[st].clockOutLng = e.lng
-            groupedByShiftType[st].clockOutAccuracy = e.accuracy
-            // attach any early clock-out reason so admin UI/export can show it
-            groupedByShiftType[st].earlyReason = (e as any).earlyReason ?? (e as any).early_reason ?? null
-          }
-        }
-      }
-
-      // compute lateMs per shift using shiftMap where possible and sum
-      let totalLateMs = 0
-      let totalEarlyMs = 0
-      let countWorkingShifts = 0
-      let harian = 0
-      let bantuan = 0
-      for (const [st, val] of Object.entries(groupedByShiftType)) {
-        if (val.clockIn) {
-          countWorkingShifts++
-          if (st === 'harian') harian++
-          else if (st === 'bantuan') bantuan++
-          const sd = val.shiftCode ? shiftMap[val.shiftCode] : undefined
-          if (sd) {
-            const ci = new Date(val.clockIn)
-            const partsStart = (sd.start || '').split(':')
-            const partsEnd = (sd.end || '').split(':')
-            const sh = Number(partsStart[0])
-            const sm = Number(partsStart[1])
-            const eh = Number(partsEnd[0])
-            const em = Number(partsEnd[1])
-            if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
-              const startMin = sh * 60 + sm
-              const endMin = eh * 60 + em
-              // anchor schedule to the attendance day `ds` (YYYY-MM-DD) to avoid timezone/date shifts
-              const [yy, mm2, dd2] = ds.split('-').map(Number)
-              let y = yy
-              let m = mm2 - 1
-              let d = dd2
-              // If shift crosses midnight and the clock-in minute is before endMin, it likely belongs to the next-day portion
-              const ciMin = ci.getHours() * 60 + ci.getMinutes()
-              if (startMin > endMin && ciMin < endMin) {
-                // treat startDate as previous day
-                const prev = new Date(y, m, d)
-                prev.setDate(prev.getDate() - 1)
-                y = prev.getFullYear()
-                m = prev.getMonth()
-                d = prev.getDate()
-              }
-              // compute anchor instant in business timezone and compare using UTC ms
-              const anchorDate = new Date(y, m, d)
-              const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
-              const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
-              groupedByShiftType[st].shiftStartIso = startIso
-              totalLateMs += Math.max(0, ci.getTime() - Date.parse(startIso))
+          else if (e.type === 'clock-out') {
+            if (!groupedByShiftType[st].clockOut || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockOut)) {
+              groupedByShiftType[st].clockOut = e.timestamp
+              groupedByShiftType[st].clockOutLat = e.lat
+              groupedByShiftType[st].clockOutLng = e.lng
+              groupedByShiftType[st].clockOutAccuracy = e.accuracy
+              // attach any early clock-out reason so admin UI/export can show it
+              groupedByShiftType[st].earlyReason = (e as any).earlyReason ?? (e as any).early_reason ?? null
             }
           }
         }
-        if (val.clockOut && val.shiftCode) {
-          const sd = shiftMap[val.shiftCode]
-          if (sd) {
-            const co = new Date(val.clockOut)
-            const partsStart = (sd.start || '').split(':')
-            const partsEnd = (sd.end || '').split(':')
-            const sh = Number(partsStart[0])
-            const sm = Number(partsStart[1])
-            const eh = Number(partsEnd[0])
-            const em = Number(partsEnd[1])
-            if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
-              const startMin = sh * 60 + sm
-              const endMin = eh * 60 + em
-              // anchor schedule to the attendance day `ds` (YYYY-MM-DD)
-              const [yy, mm2, dd2] = ds.split('-').map(Number)
-              let y = yy
-              let m = mm2 - 1
-              let d = dd2
-              const crosses = startMin > endMin
-              // If shift crosses midnight and clockOut time is before endMin, it belongs to the next-day portion
-              if (crosses && (co.getHours() * 60 + co.getMinutes()) < endMin) {
-                const prev = new Date(y, m, d)
-                prev.setDate(prev.getDate() - 1)
-                y = prev.getFullYear()
-                m = prev.getMonth()
-                d = prev.getDate()
-              }
-              const anchorDate = new Date(y, m, d)
-              const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
-              // compute start and end instants in business timezone
-              const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
-              // if shift crosses midnight, end is next day
-              let endAnchorYmd = anchorYmd
-              if (startMin > endMin) {
-                const next = new Date(anchorDate)
-                next.setDate(next.getDate() + 1)
-                endAnchorYmd = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
-              }
-              const endIso = localDateTimeToUtcIso(endAnchorYmd, eh, em, BUSINESS_TZ)
-              groupedByShiftType[st].shiftStartIso = startIso
-              groupedByShiftType[st].shiftEndIso = endIso
-              totalEarlyMs += Math.max(0, Date.parse(endIso) - co.getTime())
-            }
+
+        return [ds, finalizeDayCell(ds, groupedByShiftType)]
+      })) as Record<string, any>
+
+      // Reconcile crossday rows: if current day has clockOut-only for a shiftType and
+      // previous day has open clockIn for the same shiftType, merge that clockOut back
+      // to previous day so admin views/export show one logical overnight entry.
+      for (let i = 1; i < allDays.length; i++) {
+        const prevDs = allDays[i - 1]
+        const currDs = allDays[i]
+        if (!prevDs || !currDs) continue
+        const prevCell = byDate[prevDs]
+        const currCell = byDate[currDs]
+        const prevGrouped = prevCell?.grouped as Record<string, any> | undefined
+        const currGrouped = currCell?.grouped as Record<string, any> | undefined
+        if (!prevGrouped || !currGrouped) continue
+
+        let changed = false
+        for (const [st, currVal] of Object.entries(currGrouped)) {
+          if (!currVal || currVal.clockIn || !currVal.clockOut) continue
+          const prevVal = prevGrouped[st]
+          if (prevVal?.clockIn && !prevVal?.clockOut) {
+            prevVal.clockOut = currVal.clockOut
+            prevVal.clockOutLat = currVal.clockOutLat
+            prevVal.clockOutLng = currVal.clockOutLng
+            prevVal.clockOutAccuracy = currVal.clockOutAccuracy
+            if (currVal.earlyReason != null) prevVal.earlyReason = currVal.earlyReason
+            if (!prevVal.shiftCode && currVal.shiftCode) prevVal.shiftCode = currVal.shiftCode
+            delete currGrouped[st]
+            changed = true
           }
+        }
+
+        if (changed) {
+          byDate[prevDs] = finalizeDayCell(prevDs, prevGrouped)
+          byDate[currDs] = finalizeDayCell(currDs, currGrouped)
         }
       }
 
-      return [ds, {
-        grouped: groupedByShiftType,
-        clockIn: undefined,
-        clockOut: undefined,
-        clockInLat: undefined,
-        clockInLng: undefined,
-        clockInAccuracy: undefined,
-        clockOutLat: undefined,
-        clockOutLng: undefined,
-        clockOutAccuracy: undefined,
-        shiftCode: undefined,
-        shiftType: undefined,
-        shift: undefined,
-        lateMs: totalLateMs,
-        earlyMs: totalEarlyMs,
-        workingShifts: countWorkingShifts,
-        harian,
-        bantuan,
-      } as const]
-    })),
+      return byDate
+    })(),
   }))
 
   return { month, days: allDays, rows }

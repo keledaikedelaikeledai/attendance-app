@@ -78,6 +78,91 @@ export function normalizeCell(cell: any) {
   return base
 }
 
+function cloneCell(cell: any) {
+  if (!cell || typeof cell !== 'object') return cell
+  const grouped = (cell.grouped && typeof cell.grouped === 'object')
+    ? Object.fromEntries(Object.entries(cell.grouped).map(([k, v]) => [k, v && typeof v === 'object' ? { ...v } : v]))
+    : undefined
+  return {
+    ...cell,
+    ...(grouped ? { grouped } : {}),
+  }
+}
+
+function recomputeCellAggregates(cell: any) {
+  if (!cell || typeof cell !== 'object') return cell
+  const entries = normalizeCell(cell)
+  const withClockIn = entries.filter((e: any) => e?.clockIn)
+  const workingShifts = withClockIn.length
+  const harian = withClockIn.filter((e: any) => e?.shiftType === 'harian').length
+  const bantuan = withClockIn.filter((e: any) => e?.shiftType === 'bantuan').length
+  const lateMs = entries.reduce((a: number, e: any) => a + entryLateMs(e, undefined, entries), 0)
+  const earlyMs = entries.reduce((a: number, e: any) => a + entryEarlyMs(e, undefined, entries), 0)
+  return {
+    ...cell,
+    workingShifts,
+    harian,
+    bantuan,
+    lateMs,
+    earlyMs,
+  }
+}
+
+export function normalizeByDateCrossday(byDate: Record<string, any>, orderedDays?: string[]) {
+  const source = byDate || {}
+  const days = Array.isArray(orderedDays) && orderedDays.length
+    ? [...orderedDays]
+    : Object.keys(source).sort((a, b) => a.localeCompare(b))
+
+  const out: Record<string, any> = Object.fromEntries(
+    days.map(d => [d, cloneCell(source[d] || { grouped: {}, lateMs: 0, earlyMs: 0, workingShifts: 0, harian: 0, bantuan: 0 })]),
+  )
+
+  for (let i = 1; i < days.length; i++) {
+    const prevDay = days[i - 1]
+    const currDay = days[i]
+    if (!prevDay || !currDay) continue
+    const prevCell = out[prevDay]
+    const currCell = out[currDay]
+    const prevGrouped = prevCell?.grouped
+    const currGrouped = currCell?.grouped
+    if (!prevGrouped || !currGrouped || typeof prevGrouped !== 'object' || typeof currGrouped !== 'object') continue
+
+    let changed = false
+    for (const [st, currVal] of Object.entries(currGrouped as Record<string, any>)) {
+      if (!currVal || currVal.clockIn || !currVal.clockOut) continue
+      const prevVal = (prevGrouped as Record<string, any>)[st]
+      if (prevVal?.clockIn && !prevVal?.clockOut) {
+        prevVal.clockOut = currVal.clockOut
+        prevVal.clockOutLat = currVal.clockOutLat
+        prevVal.clockOutLng = currVal.clockOutLng
+        prevVal.clockOutAccuracy = currVal.clockOutAccuracy
+        if (currVal.earlyReason != null) prevVal.earlyReason = currVal.earlyReason
+        if (!prevVal.shiftCode && currVal.shiftCode) prevVal.shiftCode = currVal.shiftCode
+        delete (currGrouped as Record<string, any>)[st]
+        changed = true
+      }
+    }
+
+    if (changed) {
+      out[prevDay] = recomputeCellAggregates(prevCell)
+      out[currDay] = recomputeCellAggregates(currCell)
+    }
+  }
+
+  return out
+}
+
+export function normalizeRowsCrossday<T extends { byDate?: Record<string, any> }>(rows: T[], orderedDays?: string[]) {
+  return (rows || []).map((row) => {
+    const byDate = normalizeByDateCrossday((row as any)?.byDate || {}, orderedDays)
+    return {
+      ...row,
+      byDate,
+    }
+  }) as T[]
+}
+
 export const normalizeCellForExport = normalizeCell
 
 export function entryLateMs(e: any, parentCell?: any, entries?: any[]) {
