@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
+import { addDaysYmd, isYmd, localDateTimeToUtcMs, localNowYmdFromOffset } from '~~/server/utils/local-date'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -11,24 +12,31 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, shiftType, coords, date: clientDate, geofenceComment, geofenceId, geofenceName } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number }, date?: string, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
+  const { shiftCode, shiftType, coords, date: clientDate, tzOffset: bodyTzOffset, geofenceComment, geofenceId, geofenceName } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number }, date?: string, tzOffset?: number | string, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
 
   const db = useDb()
   const userId = session.user.id
-  // Prefer client-provided local date when available to avoid server/UTC calendar drift
   const now = new Date()
-  const date = typeof clientDate === 'string' && clientDate ? clientDate : new Date().toISOString().slice(0, 10)
+  const parsedTzOffset = typeof bodyTzOffset === 'string' ? Number(bodyTzOffset) : bodyTzOffset
+  const tzOffset = typeof parsedTzOffset === 'number' && Number.isFinite(parsedTzOffset)
+    ? parsedTzOffset
+    : now.getTimezoneOffset()
+  // Prefer client-provided local date when available to avoid server/UTC calendar drift
+  const date = isYmd(clientDate) ? clientDate : localNowYmdFromOffset(now, tzOffset)
 
   // If the user's selected shift for the previous day crosses midnight and
   // the current clock-in happens after midnight but before that shift's end,
   // attribute the clock-in to the previous date so the shift remains grouped.
   let targetDate = date
   try {
-    const prev = new Date(now)
-    prev.setDate(prev.getDate() - 1)
-    const prevDateStr = prev.toISOString().slice(0, 10)
+    const prevDateStr = addDaysYmd(date, -1)
     const [prevDayRow] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, prevDateStr))).limit(1)
-    const prevShiftCode = (prevDayRow as any)?.selectedShiftCode ?? null
+    let prevShiftCode = (prevDayRow as any)?.selectedShiftCode ?? null
+    if (!prevShiftCode) {
+      const prevLogs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, prevDateStr)))
+      const latestCi = [...prevLogs].reverse().find((l: any) => l.type === 'clock-in')
+      prevShiftCode = latestCi ? ((latestCi as any).shiftCode ?? null) : null
+    }
     if (prevShiftCode) {
       const [sd] = await db.select().from(shift).where(eq(shift.code, prevShiftCode)).limit(1)
       if (sd) {
@@ -43,9 +51,9 @@ export default defineEventHandler(async (event) => {
           const endMin = eh * 60 + em
           if (startMin > endMin) {
             // crossing midnight, compute end anchored to prev date + 1
-            const endDate = new Date(prev.getFullYear(), prev.getMonth(), prev.getDate(), eh, em, 0, 0)
-            endDate.setDate(endDate.getDate() + 1)
-            if (now.getTime() <= endDate.getTime()) {
+            const endDateYmd = addDaysYmd(prevDateStr, 1)
+            const endMsUtc = localDateTimeToUtcMs(endDateYmd, eh, em, tzOffset)
+            if (now.getTime() <= endMsUtc) {
               targetDate = prevDateStr
             }
           }

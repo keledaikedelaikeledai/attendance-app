@@ -83,7 +83,8 @@ export default defineEventHandler(async (event) => {
   const byUserDate: Record<string, Record<string, {
     entries: Array<{
       type: 'clock-in' | 'clock-out'
-      timestamp: string
+      timestamp: string | null
+      timestampMs: number | null
       lat?: number | null
       lng?: number | null
       accuracy?: number | null
@@ -96,9 +97,11 @@ export default defineEventHandler(async (event) => {
     const keyD = l.date
     byUserDate[keyU] ||= {}
     byUserDate[keyU][keyD] ||= { entries: [] }
+    const tsMs = normalizeTimestampRaw(l.timestamp)
     byUserDate[keyU][keyD].entries.push({
       type: l.type as any,
-      timestamp: new Date(normalizeTimestampRaw(l.timestamp)).toISOString(),
+      timestamp: Number.isFinite(tsMs) ? new Date(tsMs).toISOString() : null,
+      timestampMs: Number.isFinite(tsMs) ? tsMs : null,
       lat: l.lat ?? null,
       lng: l.lng ?? null,
       accuracy: l.accuracy ?? null,
@@ -271,7 +274,7 @@ export default defineEventHandler(async (event) => {
           groupedByShiftType[st] ||= {} as any
           // keep earliest clock-in for "start of shift" calculations (existing behavior)
           if (e.type === 'clock-in') {
-            if (!groupedByShiftType[st].clockIn || new Date(e.timestamp) < new Date(groupedByShiftType[st].clockIn)) {
+            if (e.timestamp && (!groupedByShiftType[st].clockIn || (e.timestampMs != null && e.timestampMs < Date.parse(groupedByShiftType[st].clockIn)))) {
               groupedByShiftType[st].clockIn = e.timestamp
               groupedByShiftType[st].clockInLat = e.lat
               groupedByShiftType[st].clockInLng = e.lng
@@ -279,7 +282,7 @@ export default defineEventHandler(async (event) => {
               groupedByShiftType[st].shiftCode = e.shiftCode
             }
             // also track the latest clock-in so callers can see the most recent activity
-            if (!groupedByShiftType[st].clockInLast || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockInLast)) {
+            if (e.timestamp && (!groupedByShiftType[st].clockInLast || (e.timestampMs != null && e.timestampMs > Date.parse(groupedByShiftType[st].clockInLast)))) {
               groupedByShiftType[st].clockInLast = e.timestamp
               groupedByShiftType[st].clockInLastLat = e.lat
               groupedByShiftType[st].clockInLastLng = e.lng
@@ -289,14 +292,30 @@ export default defineEventHandler(async (event) => {
             }
           }
           else if (e.type === 'clock-out') {
-            if (!groupedByShiftType[st].clockOut || new Date(e.timestamp) > new Date(groupedByShiftType[st].clockOut)) {
+            if (e.timestamp && (!groupedByShiftType[st].clockOut || (e.timestampMs != null && e.timestampMs > Date.parse(groupedByShiftType[st].clockOut)))) {
               groupedByShiftType[st].clockOut = e.timestamp
               groupedByShiftType[st].clockOutLat = e.lat
               groupedByShiftType[st].clockOutLng = e.lng
               groupedByShiftType[st].clockOutAccuracy = e.accuracy
+              groupedByShiftType[st].shiftCode = groupedByShiftType[st].shiftCode ?? e.shiftCode ?? null
               // attach any early clock-out reason so admin UI/export can show it
               groupedByShiftType[st].earlyReason = (e as any).earlyReason ?? (e as any).early_reason ?? null
             }
+          }
+        }
+
+        // Guard against invalid pairing caused by date-bucket anomalies.
+        // If selected clock-out is earlier than selected clock-in, keep clock-in open.
+        for (const val of Object.values(groupedByShiftType)) {
+          if (!val?.clockIn || !val?.clockOut) continue
+          const cin = Date.parse(val.clockIn)
+          const cout = Date.parse(val.clockOut)
+          if (Number.isFinite(cin) && Number.isFinite(cout) && cout < cin) {
+            delete val.clockOut
+            delete val.clockOutLat
+            delete val.clockOutLng
+            delete val.clockOutAccuracy
+            delete val.earlyReason
           }
         }
 
@@ -319,12 +338,36 @@ export default defineEventHandler(async (event) => {
         let changed = false
         for (const [st, currVal] of Object.entries(currGrouped)) {
           if (!currVal || currVal.clockIn || !currVal.clockOut) continue
-          const prevVal = prevGrouped[st]
-          if (prevVal?.clockIn && !prevVal?.clockOut) {
-            prevVal.clockOut = currVal.clockOut
-            prevVal.clockOutLat = currVal.clockOutLat
-            prevVal.clockOutLng = currVal.clockOutLng
-            prevVal.clockOutAccuracy = currVal.clockOutAccuracy
+          const currShiftCode = currVal.shiftCode ?? currVal.shiftCodeLast ?? null
+          const currOutMs = Date.parse(currVal.clockOut)
+          if (!Number.isFinite(currOutMs)) continue
+
+          let prevKey: string | null = st
+          let prevVal = prevGrouped[prevKey]
+
+          if (!prevVal?.clockIn) {
+            prevKey = null
+            for (const [candidateKey, candidateVal] of Object.entries(prevGrouped)) {
+              if (!candidateVal?.clockIn) continue
+              const candidateCode = candidateVal.shiftCode ?? candidateVal.shiftCodeLast ?? null
+              if (currShiftCode && candidateCode && candidateCode !== currShiftCode) continue
+              prevKey = candidateKey
+              prevVal = candidateVal
+              break
+            }
+          }
+
+          const prevShiftCode = prevVal?.shiftCode ?? prevVal?.shiftCodeLast ?? null
+          const canMerge = !!prevVal?.clockIn && (!prevVal?.clockOut || (currShiftCode && prevShiftCode && currShiftCode === prevShiftCode))
+
+          if (canMerge && prevKey) {
+            const prevOutMs = prevVal?.clockOut ? Date.parse(prevVal.clockOut) : Number.NEGATIVE_INFINITY
+            if (!prevVal.clockOut || currOutMs >= prevOutMs) {
+              prevVal.clockOut = currVal.clockOut
+              prevVal.clockOutLat = currVal.clockOutLat
+              prevVal.clockOutLng = currVal.clockOutLng
+              prevVal.clockOutAccuracy = currVal.clockOutAccuracy
+            }
             if (currVal.earlyReason != null) prevVal.earlyReason = currVal.earlyReason
             if (!prevVal.shiftCode && currVal.shiftCode) prevVal.shiftCode = currVal.shiftCode
             delete currGrouped[st]
