@@ -258,7 +258,11 @@ async function fetchReport() {
           const ins = groupLogs.filter(g => g.type === 'clock-in').sort((a, b) => (a.timestampMs ?? Infinity) - (b.timestampMs ?? Infinity))
           const outs = groupLogs.filter(g => g.type === 'clock-out').sort((a, b) => (a.timestampMs ?? -Infinity) - (b.timestampMs ?? -Infinity))
           const clockIn = ins[0] ?? null
-          const clockOut = outs.length ? outs[outs.length - 1] : null
+          let clockOut = outs.length ? outs[outs.length - 1] : null
+          if (clockIn?.timestampMs != null && clockOut?.timestampMs != null && clockOut.timestampMs < clockIn.timestampMs) {
+            const validOut = [...outs].reverse().find(o => o?.timestampMs != null && o.timestampMs >= clockIn.timestampMs)
+            clockOut = validOut ?? null
+          }
 
           const chosenShiftCode = clockIn?.shiftCode ?? clockOut?.shiftCode ?? null
 

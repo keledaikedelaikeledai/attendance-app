@@ -2,6 +2,7 @@ import process from 'node:process'
 import { and, between, eq } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
+import { reconcileCrossdayOrphanClockOut, selectShiftClockBounds } from '~~/server/utils/attendance-reconcile'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -253,37 +254,10 @@ export default defineEventHandler(async (event) => {
   }
 
   // Reconcile crossday orphan clock-out logs:
-  // If day D has clock-out-only entries for a shiftType and day D-1 has an open clock-in
-  // for the same shiftType, move those clock-out entries to day D-1 so one logical shift
-  // is represented consistently.
-  const orderedDates = Array.from(logsByDate.keys()).sort((a, b) => a.localeCompare(b))
-  for (let i = 1; i < orderedDates.length; i++) {
-    const prevDate = orderedDates[i - 1]
-    const currDate = orderedDates[i]
-    if (!prevDate || !currDate) continue
-    const prevLogs = logsByDate.get(prevDate) as any[] | undefined
-    const currLogs = logsByDate.get(currDate) as any[] | undefined
-    if (!prevLogs || !currLogs?.length) continue
-
-    const outTypes = new Set(currLogs.filter(l => l?.type === 'clock-out').map(l => l?.shiftType || 'unknown'))
-    for (const st of outTypes) {
-      const currHasIn = currLogs.some(l => l?.type === 'clock-in' && ((l?.shiftType || 'unknown') === st))
-      if (currHasIn) continue
-
-      const currOuts = currLogs.filter(l => l?.type === 'clock-out' && ((l?.shiftType || 'unknown') === st))
-      if (!currOuts.length) continue
-
-      const prevHasIn = prevLogs.some(l => l?.type === 'clock-in' && ((l?.shiftType || 'unknown') === st))
-      const prevHasOut = prevLogs.some(l => l?.type === 'clock-out' && ((l?.shiftType || 'unknown') === st))
-      if (!prevHasIn || prevHasOut) continue
-
-      for (const outLog of currOuts) {
-        prevLogs.push(outLog)
-      }
-      const remaining = currLogs.filter(l => !(l?.type === 'clock-out' && ((l?.shiftType || 'unknown') === st)))
-      logsByDate.set(currDate, remaining)
-    }
-  }
+  // If day D has clock-out-only entries for a shiftType and day D-1 has a matching
+  // clock-in without a corresponding clock-out for that shift key (shiftType + shiftCode),
+  // move those clock-out entries to day D-1 so one logical shift is represented consistently.
+  reconcileCrossdayOrphanClockOut(logsByDate as any)
 
   // Build per-day summaries to return to the frontend (for AttendanceCard rendering)
   const daySummaries: any[] = []
@@ -311,28 +285,6 @@ export default defineEventHandler(async (event) => {
     totalHarianDays += harianWorked
     totalBantuanDays += bantuanWorked
     totalWorkingDays += harianWorked + bantuanWorked
-
-    // For lateness/early leave: compute per shiftType using earliest clock-in for that type and latest clock-out for that type (or any clock-out)
-    for (const st of typesWorked) {
-      const ciList = (ciByType.get(st) || []).sort((a: any, b: any) => normalizeTimestampRaw(a.timestamp) - normalizeTimestampRaw(b.timestamp))
-      const coList = (coByType.get(st) || []).sort((a: any, b: any) => normalizeTimestampRaw(b.timestamp) - normalizeTimestampRaw(a.timestamp))
-      const clockIn = ciList[0]
-      const clockOut = coList[0]
-      const def = (clockIn && clockIn.shiftCode) ? shiftMap.get(clockIn.shiftCode) : undefined
-      if (def && clockIn) {
-        const { startDate: sStart, endDate: sEnd } = computeShiftSpanFromDate(date, def.start, def.end)
-        const cin = new Date(normalizeTimestampRaw(clockIn.timestamp))
-        if (cin > sStart) {
-          // per-shift totals are accumulated later from daySummaries
-        }
-        if (clockOut) {
-          const cout = new Date(normalizeTimestampRaw(clockOut.timestamp))
-          if (cout < sEnd) {
-            // per-shift totals are accumulated later from daySummaries
-          }
-        }
-      }
-    }
 
     // prepare full mapped logs for this date
     const mappedLogs = (dayLogs as any[]).map((l) => {
@@ -363,10 +315,7 @@ export default defineEventHandler(async (event) => {
       const groupLogs = mappedLogs.filter(l => (l.shiftType || 'unknown') === st)
       if (!groupLogs.length) continue
 
-      const ins = groupLogs.filter(g => g.type === 'clock-in').sort((a, b) => (a.timestampMs ?? Number.POSITIVE_INFINITY) - (b.timestampMs ?? Number.POSITIVE_INFINITY))
-      const outs = groupLogs.filter(g => g.type === 'clock-out').sort((a, b) => (a.timestampMs ?? Number.POSITIVE_INFINITY) - (b.timestampMs ?? Number.POSITIVE_INFINITY))
-      const clockIn = ins[0] ?? null
-      const clockOut = outs.length ? outs[outs.length - 1] : null
+      const { clockIn, clockOut } = selectShiftClockBounds(groupLogs)
 
       // prefer shiftCode from clockIn, then clockOut, else null
       const chosenShiftCode = clockIn?.shiftCode ?? clockOut?.shiftCode ?? null
