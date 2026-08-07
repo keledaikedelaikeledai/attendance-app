@@ -2,6 +2,7 @@ import process from 'node:process'
 import { eq } from 'drizzle-orm'
 import { createError } from 'h3'
 import { geoFence } from '~~/server/database/schemas'
+import { trackServerEvent } from '../../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../../utils/db'
 
 function isAllowedAdmin(email?: string | null) {
@@ -28,5 +29,10 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
   await db.delete(geoFence).where(eq(geoFence.id, id))
+
+  const log = useLogger()
+  log.info({ id }, 'Geofence deleted')
+  trackServerEvent('admin.geofence.delete', { id })
+
   return { ok: true }
 })

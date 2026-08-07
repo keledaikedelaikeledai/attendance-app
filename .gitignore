@@ -26,3 +26,6 @@ logs
 .wrangler
 sqlite.db
 ecosystem.config.cjs
+# Sentry Config File
+.env.sentry-build-plugin
+.mimocode

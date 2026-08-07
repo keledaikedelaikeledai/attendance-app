@@ -1,10 +1,11 @@
+import { sql } from 'drizzle-orm'
 import { createError } from 'h3'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async () => {
   try {
     const db = useDb()
-    await db.$client.execute('select 1')
+    await db.execute(sql`select 1`)
     return {
       ok: true,
       status: 'healthy',

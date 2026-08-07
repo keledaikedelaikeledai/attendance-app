@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 import { createError, readBody } from 'h3'
 import { geoFence } from '~~/server/database/schemas'
+import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
 
 type GeofenceType = 'point' | 'polygon'
@@ -76,5 +77,10 @@ export default defineEventHandler(async (event) => {
   }
 
   await db.insert(geoFence).values(payload)
+
+  const log = useLogger()
+  log.info({ name, type, isActive, interactionMode }, 'Geofence created')
+  trackServerEvent('admin.geofence.create', { name, type })
+
   return { geofence: payload }
 })

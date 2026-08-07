@@ -24,6 +24,7 @@ const onSubmit = handleSubmit(async (values) => {
   }
   catch (err) {
     console.error('login error', err)
+    useErrorReporter().captureException(err, { context: 'login' })
   }
 })
 
@@ -84,7 +85,7 @@ definePageMeta({
                     :aria-label="showPassword ? 'Hide password' : 'Show password'"
                     :aria-pressed="showPassword"
                     aria-controls="login-password"
-                    @click="showPassword = !showPassword"
+                    @click="() => { showPassword = !showPassword }"
                   />
                 </template>
               </UInput>

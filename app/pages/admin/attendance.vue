@@ -1404,9 +1404,11 @@ async function exportXlsx() {
       description: 'The attendance data has been exported successfully.',
       color: 'success',
     })
+    useErrorReporter().trackEvent('admin.excel-export', { month: month.value })
   }
   catch (e) {
     console.error(e)
+    useErrorReporter().captureException(e, { context: 'admin-excel-export' })
     toast.add({
       title: 'Export Failed',
       description: (e instanceof Error) ? e.message : 'An unknown error occurred during export.',

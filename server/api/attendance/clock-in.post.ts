@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { addDaysYmd, isYmd, localDateTimeToUtcMs, localNowYmdFromOffset } from '~~/server/utils/local-date'
+import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -61,8 +62,9 @@ export default defineEventHandler(async (event) => {
       }
     }
   }
-  catch {
-    // ignore and use today's date
+  catch (err) {
+    const log = useLogger()
+    log.warn({ err, userId, date }, 'Cross-midnight date attribution failed, using today')
   }
 
   // upsert day (use targetDate so clock-ins attributed correctly)
@@ -106,6 +108,20 @@ export default defineEventHandler(async (event) => {
     geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
     createdAt: now,
     updatedAt: now,
+  })
+
+  const log = useLogger()
+  log.info({ userId, date: targetDate, shiftCode, shiftType, lat: coords?.latitude, lng: coords?.longitude }, 'Clock-in recorded')
+  trackServerEvent('attendance.clock-in', {
+    userId,
+    date: targetDate,
+    shiftCode,
+    shiftType,
+    lat: coords?.latitude,
+    lng: coords?.longitude,
+    accuracy: coords?.accuracy,
+    userAgent: event.node.req.headers['user-agent'],
+    timezoneOffset: tzOffset,
   })
 
   // return updated state

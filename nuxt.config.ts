@@ -18,6 +18,7 @@ export default defineNuxtConfig({
     '@vueuse/nuxt',
     '@nuxtjs/leaflet',
     '@nuxtjs/i18n',
+    './modules/error-reporting',
   ],
 
   ui: {
@@ -63,5 +64,15 @@ export default defineNuxtConfig({
     experimental: {
       openAPI: true,
     },
+  },
+
+  sentry: {
+    org: 'keledai',
+    project: 'javascript-nuxt',
+    authToken: process.env.SENTRY_AUTH_TOKEN,
+  },
+
+  sourcemap: {
+    client: 'hidden',
   },
 })
