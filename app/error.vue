@@ -1,12 +1,28 @@
 <script setup lang="ts">
 import type { NuxtError } from '#app'
-import { computed } from 'vue'
+import * as Sentry from '@sentry/nuxt'
+import { computed, onMounted } from 'vue'
 
 const props = defineProps<{ error: NuxtError }>()
 
 const code = computed(() => props.error?.statusCode || 500)
 const title = computed(() => props.error?.statusMessage || 'Something went wrong')
 const message = computed(() => (props.error as any)?.message || '')
+
+onMounted(() => {
+  if (props.error) {
+    Sentry.captureException(props.error, {
+      captureContext: {
+        contexts: {
+          nuxtError: {
+            statusCode: props.error.statusCode,
+            statusMessage: props.error.statusMessage,
+          },
+        },
+      },
+    })
+  }
+})
 
 function goHome() {
   clearError({ redirect: '/' })

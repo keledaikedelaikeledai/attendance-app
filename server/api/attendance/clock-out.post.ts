@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { addDaysYmd, isYmd, localDateTimeToUtcMs, localNowYmdFromOffset } from '~~/server/utils/local-date'
+import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -89,8 +90,9 @@ export default defineEventHandler(async (event) => {
       }
     }
   }
-  catch {
-    // fall back to default behaviour
+  catch (err) {
+    const log = useLogger()
+    log.warn({ err, userId, date }, 'Cross-midnight date attribution failed, using default')
   }
 
   await db.insert(attendanceLog).values({
@@ -110,6 +112,20 @@ export default defineEventHandler(async (event) => {
     geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
     createdAt: now,
     updatedAt: now,
+  })
+
+  const log = useLogger()
+  log.info({ userId, date: targetDate, shiftCode: shiftCodeToPersist, shiftType: shiftTypeToPersist, earlyReason, lat: coords?.latitude, lng: coords?.longitude }, 'Clock-out recorded')
+  trackServerEvent('attendance.clock-out', {
+    userId,
+    date: targetDate,
+    shiftCode: shiftCodeToPersist,
+    shiftType: shiftTypeToPersist,
+    lat: coords?.latitude,
+    lng: coords?.longitude,
+    earlyReason: earlyReason || null,
+    userAgent: event.node.req.headers['user-agent'],
+    timezoneOffset: tzOffset,
   })
 
   const logs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, targetDate))).orderBy(attendanceLog.timestamp)

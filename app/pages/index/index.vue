@@ -215,6 +215,7 @@ async function loadGeofence() {
   }
   catch (err: any) {
     geofenceError.value = err?.message || 'Failed to load geofence config'
+    useErrorReporter().captureException(err, { context: 'geofence-load' })
   }
   finally {
     geofenceLoading.value = false
@@ -289,6 +290,7 @@ async function requestLocationOnce() {
     }, (err) => {
       geoError.value = err.message
       locating.value = false
+      useErrorReporter().captureException(err, { context: 'geolocation' })
       resolve()
     }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 })
   })
@@ -646,7 +648,7 @@ onMounted(async () => {
           {{ geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.' }}
         </p>
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="primary" variant="solid" @click="geofenceBlocked = false">
+          <UButton color="primary" variant="solid" @click="() => { geofenceBlocked = false }">
             OK
           </UButton>
         </div>

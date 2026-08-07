@@ -238,7 +238,9 @@ async function clockIn(opts?: ClockInOptions) {
       }
     }
   }
-  catch {}
+  catch (err) {
+    useErrorReporter().captureException(err, { context: 'clock-in-duplicate-check' })
+  }
   if (opts?.shiftCode)
     selectedShiftCode.value = opts.shiftCode
   const now = new Date()

@@ -28,7 +28,9 @@ const onSubmit = handleSubmit(async (values) => {
     })
     await navigateTo('/', { external: true })
   }
-  catch {}
+  catch (err) {
+    useErrorReporter().captureException(err, { context: 'register' })
+  }
 })
 
 definePageMeta({
