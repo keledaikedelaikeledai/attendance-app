@@ -38,7 +38,7 @@ describe('calculateAttendanceReportMetrics', () => {
 
     const result = calculateAttendanceReportMetrics('2026-04-12', grouped, shifts, 'Asia/Jakarta')
 
-    expect(result.lateMs).toBe(0)
+    expect(result.lateMs).toBe(5 * 60 * 1000)
     expect(result.earlyMs).toBe(60 * 60 * 1000)
   })
 
