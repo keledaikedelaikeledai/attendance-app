@@ -1,4 +1,5 @@
 import type { ShiftCode, ShiftDef } from '~/types/shifts'
+import { createShiftWindow, formatBusinessDate, getCalendarDate, getZonedDateTime, parseShiftTime, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
 
 export interface AttendanceLog {
   id: string
@@ -19,6 +20,10 @@ export interface AttendanceLog {
 const shifts = ref<ShiftDef[]>([])
 const clientTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
+function businessDateForInstant(instant: Date, timeZone = clientTimeZone()) {
+  return formatBusinessDate(getCalendarDate(instant, timeZone))
+}
+
 async function loadShifts() {
   const rows = await $fetch<ShiftDef[]>('/api/shifts', { credentials: 'include', query: { ts: Date.now() } })
   shifts.value = rows || []
@@ -29,13 +34,13 @@ export function getShiftLabel(code?: ShiftCode | null) {
 }
 
 function pickClosestShiftFromShifts(now = new Date()) {
-  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const timeZone = clientTimeZone()
+  const zoned = getZonedDateTime(now, timeZone)
+  const nowMin = zoned.hour * 60 + zoned.minute
   let closest: { code: string, diff: number } | null = null
   for (const s of shifts.value ?? []) {
-    const [shStr, smStr] = s.start.split(':')
-    const sh = Number(shStr)
-    const sm = Number(smStr)
-    const startMin = sh * 60 + sm
+    const start = parseShiftTime(s.start)
+    const startMin = start.hour * 60 + start.minute
     let diff = Math.abs(startMin - nowMin)
     diff = Math.min(diff, 1440 - diff)
     if (!closest || diff < closest.diff) closest = { code: s.code, diff }
@@ -90,20 +95,15 @@ function shiftStartDate(clockInIso: string, code: ShiftCode | undefined) {
   if (!code) return null
   const def = shifts.value.find(s => s.code === code)
   if (!def) return null
-  const d = new Date(clockInIso)
-  const [shRaw, smRaw] = def.start.split(':')
-  const [ehRaw, emRaw] = def.end.split(':')
-  const sh = Number(shRaw), sm = Number(smRaw), eh = Number(ehRaw), em = Number(emRaw)
-  if (Number.isNaN(sh) || Number.isNaN(sm) || Number.isNaN(eh) || Number.isNaN(em)) return null
-  const startMin = sh * 60 + sm, endMin = eh * 60 + em
-  let year = d.getFullYear(), month = d.getMonth(), day = d.getDate()
-  const ciMin = d.getHours() * 60 + d.getMinutes()
-  if (startMin > endMin && ciMin < endMin) {
-    const prev = new Date(d)
-    prev.setDate(prev.getDate() - 1)
-    year = prev.getFullYear(); month = prev.getMonth(); day = prev.getDate()
+  try {
+    const timeZone = clientTimeZone()
+    const instant = new Date(clockInIso)
+    const businessDate = resolveBusinessDateFromInstant(instant, { start: def.start, end: def.end }, timeZone)
+    return createShiftWindow(businessDate, { start: def.start, end: def.end }, timeZone).start.toDate()
   }
-  return new Date(year, month, day, sh, sm, 0, 0)
+  catch {
+    return null
+  }
 }
 
 const lateByMs = computed(() => {
@@ -146,9 +146,10 @@ async function clockIn(opts?: ClockInOptions) {
   try {
     const shiftTypeToCheck = selectedShiftType.value
     if (shiftTypeToCheck) {
+      const today = businessDateForInstant(new Date())
       for (const l of logs.value) {
         if (l.type !== 'clock-in' || l.shiftType !== shiftTypeToCheck) continue
-        if (l.date === new Intl.DateTimeFormat('en-CA', { timeZone: clientTimeZone() }).format(new Date())) {
+        if (l.date === today) {
           try {
             const _t = (typeof useToast === 'function') ? useToast() : null
             if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
@@ -207,7 +208,7 @@ export function useAttendance() {
     clockIn, clockOut, resetDay, shifts, selectedShiftCode, selectedShiftType, setShift, ensureDefaultShift,
     isShiftActive: (shiftType?: 'harian' | 'bantuan' | undefined) => {
       if (!shiftType) return false
-      const today = new Intl.DateTimeFormat('en-CA', { timeZone: clientTimeZone() }).format(new Date())
+      const today = businessDateForInstant(new Date())
       return logs.value.some(l => l.type === 'clock-in' && l.shiftType === shiftType && l.date === today)
     },
     getShiftLabel, refresh,
