@@ -68,9 +68,7 @@ export default defineEventHandler(async (event) => {
       && log.type === 'clock-in'
       && (log.shiftType === requestedShiftType || (requestedShiftType === 'harian' && (log.shiftType === null || log.shiftType === undefined))),
     )
-    if (hasSameTypeShift) {
-      throw createError({ statusCode: 409, statusMessage: `A ${requestedShiftType} shift has already been recorded for this business date` })
-    }
+    if (hasSameTypeShift) throw createError({ statusCode: 409, statusMessage: `A ${requestedShiftType} shift has already been recorded for this business date` })
 
     const [existing] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
     if (!existing) {
@@ -84,6 +82,8 @@ export default defineEventHandler(async (event) => {
       id: randomUUID(), userId, date: targetDate, type: 'clock-in', timestamp: now,
       lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
       shiftType: requestedShiftType, shiftCode,
+      shiftStart: shiftDef?.start ?? null,
+      shiftEnd: shiftDef?.end ?? null,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
       geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
