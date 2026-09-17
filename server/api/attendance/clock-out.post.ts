@@ -66,6 +66,9 @@ export default defineEventHandler(async (event) => {
       id: randomUUID(), userId, date: targetDate, type: 'clock-out', timestamp: now,
       lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
       shiftCode: shiftCodeToPersist, shiftType: shiftTypeToPersist,
+      // Preserve the clock-in snapshot; the shift may have been edited while this session was open.
+      shiftStart: openClockIn.shiftStart ?? null,
+      shiftEnd: openClockIn.shiftEnd ?? null,
       earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : null,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
