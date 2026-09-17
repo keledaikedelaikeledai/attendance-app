@@ -40,6 +40,12 @@ describe('attendance date foundation', () => {
     expect(resolveBusinessDate(calendarDate, parseShiftTime('07:01'), overnightShift).toString()).toBe('2026-09-17')
   })
 
+  test('keeps a normal shift on the same business date', () => {
+    const calendarDate = parseDate('2026-09-17')
+    expect(resolveBusinessDate(calendarDate, parseShiftTime('06:59'), dayShift).toString()).toBe('2026-09-17')
+    expect(resolveBusinessDate(calendarDate, parseShiftTime('15:00'), dayShift).toString()).toBe('2026-09-17')
+  })
+
   test('builds an overnight window across calendar midnight', () => {
     const window = createShiftWindow(parseDate('2026-09-16'), overnightShift, 'Asia/Jakarta')
     expect(window.start.toString()).toContain('2026-09-16T22:00')
@@ -51,5 +57,11 @@ describe('attendance date foundation', () => {
     const instant = new Date('2026-09-16T17:30:00.000Z')
     expect(getCalendarDate(instant, 'Asia/Jakarta').toString()).toBe('2026-09-17')
     expect(resolveBusinessDateFromInstant(instant, overnightShift, 'Asia/Jakarta').toString()).toBe('2026-09-16')
+  })
+
+  test('uses the supplied IANA timezone rather than server timezone', () => {
+    const instant = new Date('2026-03-08T06:30:00.000Z')
+    expect(getCalendarDate(instant, 'America/New_York').toString()).toBe('2026-03-08')
+    expect(getCalendarDate(instant, 'Asia/Jakarta').toString()).toBe('2026-03-08')
   })
 })
