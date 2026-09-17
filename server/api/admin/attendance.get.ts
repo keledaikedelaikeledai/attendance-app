@@ -3,27 +3,22 @@ import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { attendanceLog, shift, user } from '~~/server/database/schemas'
 import { createShiftWindow, parseBusinessDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
+import { resolveHistoricalShiftTiming } from '../../utils/attendance-shift-history'
 import { normalizeTimestampRaw } from '../../utils/time'
 
-// GET /api/admin/attendance?month=2025-09
-// Returns: { month, days: [YYYY-MM-DD], rows: [{ userId, email, name, username, byDate: { [date]: { clockIn?: string, clockOut?: string, shiftCode?: string } } }] }
 function isAllowedAdmin(email?: string | null) {
   const raw = process.env.NUXT_ADMIN_EMAILS || ''
   const list = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-  if (!list.length)
-    return true
-  if (!email)
-    return false
+  if (!list.length) return true
+  if (!email) return false
   return list.includes(String(email).toLowerCase())
 }
 
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
-  if (!session?.user)
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  if (!isAllowedAdmin(session.user.email))
-    throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+  if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  if (!isAllowedAdmin(session.user.email)) throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
   const q = getQuery(event)
   const month = typeof q.month === 'string' && /^\d{4}-\d{2}$/.test(q.month) ? q.month : new Date().toISOString().slice(0, 7)
@@ -34,28 +29,15 @@ export default defineEventHandler(async (event) => {
   const endDate = end.toISOString().slice(0, 10)
 
   const db = useDb()
-
-  // Fetch all users excluding admins and banned users
   const users = await db
     .select({ id: user.id, email: user.email, name: user.name, username: user.username })
     .from(user)
-    .where(
-      and(
-        // Exclude role 'admin' (keep null or non-admin)
-        or(isNull(user.role), ne(user.role, 'admin')),
-        // Exclude banned=true (keep null or false)
-        or(isNull(user.banned), eq(user.banned, false)),
-      ),
-    )
+    .where(and(or(isNull(user.role), ne(user.role, 'admin')), or(isNull(user.banned), eq(user.banned, false))))
     .orderBy(asc(user.createdAt))
 
-  if (users.length === 0) {
-    return { month, days: [], rows: [] }
-  }
-
+  if (users.length === 0) return { month, days: [], rows: [] }
   const userIds = users.map(u => u.id)
 
-  // Fetch logs and pick earliest clock-in and latest clock-out per user/date
   const logs = await db
     .select({
       userId: attendanceLog.userId,
@@ -67,32 +49,29 @@ export default defineEventHandler(async (event) => {
       accuracy: attendanceLog.accuracy,
       shiftCode: attendanceLog.shiftCode,
       shiftType: attendanceLog.shiftType,
+      shiftStart: attendanceLog.shiftStart,
+      shiftEnd: attendanceLog.shiftEnd,
       earlyReason: (attendanceLog as any).earlyReason,
     })
     .from(attendanceLog)
     .where(and(inArray(attendanceLog.userId, userIds), gte(attendanceLog.date, startDate), lte(attendanceLog.date, endDate)))
     .orderBy(asc(attendanceLog.timestamp))
 
-  // Build calendar days for the month
   const allDays: string[] = []
-  for (let d = 1; d <= end.getUTCDate(); d++) {
-    const ds = `${month}-${String(d).padStart(2, '0')}`
-    allDays.push(ds)
-  }
+  for (let d = 1; d <= end.getUTCDate(); d++) allDays.push(`${month}-${String(d).padStart(2, '0')}`)
 
-  // Index logs by user/date and by shiftType so we can support multiple shifts per day
-  const byUserDate: Record<string, Record<string, {
-    entries: Array<{
-      type: 'clock-in' | 'clock-out'
-      timestamp: string | null
-      timestampMs: number | null
-      lat?: number | null
-      lng?: number | null
-      accuracy?: number | null
-      shiftCode?: string | null
-      shiftType?: string | null
-    }>
-  }>> = {}
+  const byUserDate: Record<string, Record<string, { entries: Array<{
+    type: 'clock-in' | 'clock-out'
+    timestamp: string | null
+    timestampMs: number | null
+    lat?: number | null
+    lng?: number | null
+    accuracy?: number | null
+    shiftCode?: string | null
+    shiftType?: string | null
+    shiftStart?: string | null
+    shiftEnd?: string | null
+  }> }>> = {}
   for (const l of logs) {
     const keyU = l.userId
     const keyD = l.date
@@ -108,27 +87,25 @@ export default defineEventHandler(async (event) => {
       accuracy: l.accuracy ?? null,
       shiftCode: (l as any).shiftCode ?? null,
       shiftType: (l as any).shiftType ?? null,
+      shiftStart: (l as any).shiftStart ?? null,
+      shiftEnd: (l as any).shiftEnd ?? null,
       earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
     } as any)
   }
 
-  // Load shift definitions for enrichment
   const shifts = await db.select().from(shift)
   const shiftMap = Object.fromEntries(shifts.map(s => [s.code, { code: s.code, label: s.label, start: s.start, end: s.end }])) as Record<string, { code: string, label: string, start: string, end: string }>
-
-  // Business timezone configuration (IANA tz). All shift boundaries are resolved in this timezone.
   const BUSINESS_TZ = process.env.BUSINESS_TZ || 'Asia/Jakarta'
 
   function getShiftBoundaryInstants(ds: string, sd: { start: string, end: string }) {
-    // The attendance log date is the session's business date. This is especially important
-    // for overnight sessions: a 22:00 -> 06:00 session recorded on Sep 17 remains anchored
-    // to the Sep 17 shift window even though its clock-out instant is on Sep 18.
     const businessDate = parseBusinessDate(ds)
     const shiftWindow = createShiftWindow(businessDate, sd, BUSINESS_TZ)
-    return {
-      start: shiftWindow.start.toDate(),
-      end: shiftWindow.end.toDate(),
-    }
+    return { start: shiftWindow.start.toDate(), end: shiftWindow.end.toDate() }
+  }
+
+  function getHistoricalShiftTiming(val: any) {
+    const currentTiming = val.shiftCode ? shiftMap[val.shiftCode] : undefined
+    return resolveHistoricalShiftTiming(val.shiftStart, val.shiftEnd, currentTiming)
   }
 
   function finalizeDayCell(ds: string, groupedByShiftType: Record<string, any>) {
@@ -143,7 +120,7 @@ export default defineEventHandler(async (event) => {
         countWorkingShifts++
         if (st === 'harian') harian++
         else if (st === 'bantuan') bantuan++
-        const sd = val.shiftCode ? shiftMap[val.shiftCode] : undefined
+        const sd = getHistoricalShiftTiming(val)
         if (sd) {
           const boundaries = getShiftBoundaryInstants(ds, sd)
           const ci = new Date(val.clockIn)
@@ -151,8 +128,8 @@ export default defineEventHandler(async (event) => {
           totalLateMs += Math.max(0, ci.getTime() - boundaries.start.getTime())
         }
       }
-      if (val.clockOut && val.shiftCode) {
-        const sd = shiftMap[val.shiftCode]
+      if (val.clockOut) {
+        const sd = getHistoricalShiftTiming(val)
         if (sd) {
           const boundaries = getShiftBoundaryInstants(ds, sd)
           const co = new Date(val.clockOut)
@@ -191,15 +168,11 @@ export default defineEventHandler(async (event) => {
     username: u.username,
     byDate: (() => {
       const byDate = Object.fromEntries(allDays.map((ds) => {
-        // We want to support multiple shift entries per day (harian + bantuan).
         const entries = (byUserDate[u.id]?.[ds]?.entries ?? []) as any[]
-        // For admin grid, compute aggregated values: count of distinct shiftTypes with a clock-in, earliest clock-in per shift, latest clock-out per shift
         const groupedByShiftType: Record<string, any> = {}
         for (const e of entries) {
-          // Legacy null shiftType records are Harian, matching attendance clock-in quota semantics.
           const st = e.shiftType || 'harian'
           groupedByShiftType[st] ||= {} as any
-          // keep earliest clock-in for "start of shift" calculations (existing behavior)
           if (e.type === 'clock-in') {
             if (e.timestamp && (!groupedByShiftType[st].clockIn || (e.timestampMs != null && e.timestampMs < Date.parse(groupedByShiftType[st].clockIn)))) {
               groupedByShiftType[st].clockIn = e.timestamp
@@ -207,14 +180,14 @@ export default defineEventHandler(async (event) => {
               groupedByShiftType[st].clockInLng = e.lng
               groupedByShiftType[st].clockInAccuracy = e.accuracy
               groupedByShiftType[st].shiftCode = e.shiftCode
+              groupedByShiftType[st].shiftStart = e.shiftStart
+              groupedByShiftType[st].shiftEnd = e.shiftEnd
             }
-            // also track the latest clock-in so callers can see the most recent activity
             if (e.timestamp && (!groupedByShiftType[st].clockInLast || (e.timestampMs != null && e.timestampMs > Date.parse(groupedByShiftType[st].clockInLast)))) {
               groupedByShiftType[st].clockInLast = e.timestamp
               groupedByShiftType[st].clockInLastLat = e.lat
               groupedByShiftType[st].clockInLastLng = e.lng
               groupedByShiftType[st].clockInLastAccuracy = e.accuracy
-              // keep the most recent shiftCode too (may be null)
               groupedByShiftType[st].shiftCodeLast = e.shiftCode
             }
           }
@@ -225,14 +198,13 @@ export default defineEventHandler(async (event) => {
               groupedByShiftType[st].clockOutLng = e.lng
               groupedByShiftType[st].clockOutAccuracy = e.accuracy
               groupedByShiftType[st].shiftCode = groupedByShiftType[st].shiftCode ?? e.shiftCode ?? null
-              // attach any early clock-out reason so admin UI/export can show it
+              groupedByShiftType[st].shiftStart = groupedByShiftType[st].shiftStart ?? e.shiftStart ?? null
+              groupedByShiftType[st].shiftEnd = groupedByShiftType[st].shiftEnd ?? e.shiftEnd ?? null
               groupedByShiftType[st].earlyReason = (e as any).earlyReason ?? (e as any).early_reason ?? null
             }
           }
         }
 
-        // Guard against invalid pairing caused by date-bucket anomalies.
-        // If selected clock-out is earlier than selected clock-in, keep clock-in open.
         for (const val of Object.values(groupedByShiftType)) {
           if (!val?.clockIn || !val?.clockOut) continue
           const cin = Date.parse(val.clockIn)
@@ -245,13 +217,9 @@ export default defineEventHandler(async (event) => {
             delete val.earlyReason
           }
         }
-
         return [ds, finalizeDayCell(ds, groupedByShiftType)]
       })) as Record<string, any>
 
-      // Reconcile crossday rows: if current day has clockOut-only for a shiftType and
-      // previous day has open clockIn for the same shiftType, merge that clockOut back
-      // to previous day so admin views/export show one logical overnight entry.
       for (let i = 1; i < allDays.length; i++) {
         const prevDs = allDays[i - 1]
         const currDs = allDays[i]
@@ -271,7 +239,6 @@ export default defineEventHandler(async (event) => {
 
           let prevKey: string | null = st
           let prevVal = prevGrouped[prevKey]
-
           if (!prevVal?.clockIn) {
             prevKey = null
             for (const [candidateKey, candidateVal] of Object.entries(prevGrouped)) {
@@ -286,7 +253,6 @@ export default defineEventHandler(async (event) => {
 
           const prevShiftCode = prevVal?.shiftCode ?? prevVal?.shiftCodeLast ?? null
           const canMerge = !!prevVal?.clockIn && (!prevVal?.clockOut || (currShiftCode && prevShiftCode && currShiftCode === prevShiftCode))
-
           if (canMerge && prevKey) {
             const prevOutMs = prevVal?.clockOut ? Date.parse(prevVal.clockOut) : Number.NEGATIVE_INFINITY
             if (!prevVal.clockOut || currOutMs >= prevOutMs) {
@@ -297,6 +263,8 @@ export default defineEventHandler(async (event) => {
             }
             if (currVal.earlyReason != null) prevVal.earlyReason = currVal.earlyReason
             if (!prevVal.shiftCode && currVal.shiftCode) prevVal.shiftCode = currVal.shiftCode
+            if (!prevVal.shiftStart && currVal.shiftStart) prevVal.shiftStart = currVal.shiftStart
+            if (!prevVal.shiftEnd && currVal.shiftEnd) prevVal.shiftEnd = currVal.shiftEnd
             delete currGrouped[st]
             changed = true
           }
