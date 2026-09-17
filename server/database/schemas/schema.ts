@@ -52,6 +52,9 @@ export const attendanceLog = pgTable(
     accuracy: doublePrecision('accuracy'),
     shiftType: text('shift_type'),
     shiftCode: text('shift_code'),
+    // Snapshot of the configured shift timing at clock-in for historical reporting.
+    shiftStart: text('shift_start'),
+    shiftEnd: text('shift_end'),
     // Optional short reason for early clock-out (max 200 chars enforced by application)
     earlyReason: text('early_reason'),
     // Optional comment when clocking in/out outside geofence (max 200 chars enforced by application)
