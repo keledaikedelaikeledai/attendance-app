@@ -62,7 +62,7 @@ export default defineEventHandler(async (event) => {
     const hasSameTypeShift = existingLogs.some(log =>
       log.date === targetDate
       && log.type === 'clock-in'
-      && (log.shiftType === requestedShiftType || (requestedShiftType === 'harian' && log.shiftType == null)),
+      && (log.shiftType === requestedShiftType || (requestedShiftType === 'harian' && (log.shiftType === null || log.shiftType === undefined))),
     )
     if (hasSameTypeShift) {
       throw createError({ statusCode: 409, statusMessage: `A ${requestedShiftType} shift has already been recorded for this business date` })
