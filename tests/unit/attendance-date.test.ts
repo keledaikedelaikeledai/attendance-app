@@ -59,9 +59,9 @@ describe('attendance date foundation', () => {
     expect(resolveBusinessDateFromInstant(instant, overnightShift, 'Asia/Jakarta').toString()).toBe('2026-09-16')
   })
 
-  test('uses the supplied IANA timezone rather than server timezone', () => {
-    const instant = new Date('2026-03-08T06:30:00.000Z')
-    expect(getCalendarDate(instant, 'America/New_York').toString()).toBe('2026-03-08')
+  test('uses the supplied IANA timezone for calendar boundaries', () => {
+    const instant = new Date('2026-03-08T04:30:00.000Z')
+    expect(getCalendarDate(instant, 'America/New_York').toString()).toBe('2026-03-07')
     expect(getCalendarDate(instant, 'Asia/Jakarta').toString()).toBe('2026-03-08')
   })
 })
