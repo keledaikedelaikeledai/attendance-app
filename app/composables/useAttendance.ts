@@ -58,15 +58,9 @@ async function refresh() {
   clockInTime.value = s.clockInTime
   clockOutTime.value = s.clockOutTime
   logs.value = (s.logs || []).map((l: any) => ({
-    id: l.id,
-    type: l.type,
-    timestamp: new Date(l.timestamp).toISOString(),
-    lat: l.lat ?? undefined,
-    lng: l.lng ?? undefined,
-    accuracy: l.accuracy ?? undefined,
-    shiftCode: l.shiftCode ?? undefined,
-    shiftType: l.shiftType ?? undefined,
-    date: l.date,
+    id: l.id, type: l.type, timestamp: new Date(l.timestamp).toISOString(),
+    lat: l.lat ?? undefined, lng: l.lng ?? undefined, accuracy: l.accuracy ?? undefined,
+    shiftCode: l.shiftCode ?? undefined, shiftType: l.shiftType ?? undefined, date: l.date,
     earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
     geofenceComment: (l as any).geofenceComment ?? (l as any).geofence_comment ?? null,
     geofenceId: (l as any).geofenceId ?? (l as any).geofence_id ?? null,
@@ -99,23 +93,15 @@ function shiftStartDate(clockInIso: string, code: ShiftCode | undefined) {
   const d = new Date(clockInIso)
   const [shRaw, smRaw] = def.start.split(':')
   const [ehRaw, emRaw] = def.end.split(':')
-  const sh = Number(shRaw)
-  const sm = Number(smRaw)
-  const eh = Number(ehRaw)
-  const em = Number(emRaw)
+  const sh = Number(shRaw), sm = Number(smRaw), eh = Number(ehRaw), em = Number(emRaw)
   if (Number.isNaN(sh) || Number.isNaN(sm) || Number.isNaN(eh) || Number.isNaN(em)) return null
-  const startMin = sh * 60 + sm
-  const endMin = eh * 60 + em
-  let year = d.getFullYear()
-  let month = d.getMonth()
-  let day = d.getDate()
+  const startMin = sh * 60 + sm, endMin = eh * 60 + em
+  let year = d.getFullYear(), month = d.getMonth(), day = d.getDate()
   const ciMin = d.getHours() * 60 + d.getMinutes()
   if (startMin > endMin && ciMin < endMin) {
     const prev = new Date(d)
     prev.setDate(prev.getDate() - 1)
-    year = prev.getFullYear()
-    month = prev.getMonth()
-    day = prev.getDate()
+    year = prev.getFullYear(); month = prev.getMonth(); day = prev.getDate()
   }
   return new Date(year, month, day, sh, sm, 0, 0)
 }
@@ -126,18 +112,14 @@ const lateByMs = computed(() => {
   if (!activeClockInShiftCode) return 0
   const start = shiftStartDate(clockInTime.value, activeClockInShiftCode)
   if (!start) return 0
-  const ci = new Date(clockInTime.value)
-  return Math.max(0, ci.getTime() - start.getTime())
+  return Math.max(0, new Date(clockInTime.value).getTime() - start.getTime())
 })
 
 const isLate = computed(() => lateByMs.value > 0)
-
 const lateByHuman = computed(() => {
   const ms = lateByMs.value
   if (!ms) return '0m'
-  const totalMinutes = Math.ceil(ms / 60000)
-  const h = Math.floor(totalMinutes / 60)
-  const m = totalMinutes % 60
+  const totalMinutes = Math.ceil(ms / 60000), h = Math.floor(totalMinutes / 60), m = totalMinutes % 60
   return h ? `${h}h ${m}m` : `${m}m`
 })
 
@@ -165,40 +147,32 @@ async function clockIn(opts?: ClockInOptions) {
     const shiftTypeToCheck = selectedShiftType.value
     if (shiftTypeToCheck) {
       for (const l of logs.value) {
-        if (l.type !== 'clock-in') continue
-        if (l.shiftType !== shiftTypeToCheck) continue
+        if (l.type !== 'clock-in' || l.shiftType !== shiftTypeToCheck) continue
         if (l.date === new Intl.DateTimeFormat('en-CA', { timeZone: clientTimeZone() }).format(new Date())) {
           try {
             const _t = (typeof useToast === 'function') ? useToast() : null
             if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
-          }
-          catch {}
+          } catch {}
           return
         }
       }
     }
-  }
-  catch (err) {
+  } catch (err) {
     useErrorReporter().captureException(err, { context: 'clock-in-duplicate-check' })
   }
   if (opts?.shiftCode) selectedShiftCode.value = opts.shiftCode
   const res = await $fetch<any>('/api/attendance/clock-in', {
     method: 'POST',
     body: {
-      shiftCode: selectedShiftCode.value,
-      shiftType: selectedShiftType.value,
-      timeZone: clientTimeZone(),
+      shiftCode: selectedShiftCode.value, shiftType: selectedShiftType.value, timeZone: clientTimeZone(),
       coords: opts?.coords ? { latitude: opts.coords.latitude, longitude: opts.coords.longitude, accuracy: opts.coords.accuracy } : undefined,
       geofenceComment: typeof opts?.geofenceComment === 'string' && opts.geofenceComment.length ? opts.geofenceComment.slice(0, 200) : undefined,
       geofenceId: typeof opts?.geofenceId === 'string' && opts?.geofenceId.length ? opts.geofenceId.slice(0, 64) : undefined,
       geofenceName: typeof opts?.geofenceName === 'string' && opts?.geofenceName.length ? opts.geofenceName.slice(0, 200) : undefined,
-    },
-    credentials: 'include',
+    }, credentials: 'include',
   })
   if (res) {
-    clockedIn.value = true
-    clockInTime.value = new Date().toISOString()
-    clockOutTime.value = undefined
+    clockedIn.value = true; clockInTime.value = new Date().toISOString(); clockOutTime.value = undefined
     selectedShiftCode.value = res.selectedShiftCode ?? selectedShiftCode.value
     selectedShiftType.value = res.shiftType ?? selectedShiftType.value
   }
@@ -211,25 +185,19 @@ async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | 
     method: 'POST',
     body: {
       coords: coords ? { latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy } : undefined,
-      shiftType: selectedShiftType.value,
-      shiftCode: selectedShiftCode.value,
-      timeZone: clientTimeZone(),
+      shiftType: selectedShiftType.value, shiftCode: selectedShiftCode.value, timeZone: clientTimeZone(),
       earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
       geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
-    },
-    credentials: 'include',
+    }, credentials: 'include',
   })
-  if (res) {
-    clockedIn.value = false
-    clockOutTime.value = new Date().toISOString()
-  }
+  if (res) { clockedIn.value = false; clockOutTime.value = new Date().toISOString() }
   await refresh()
 }
 
 async function resetDay() {
-  await $fetch('/api/attendance/reset', { method: 'POST', credentials: 'include' })
+  await $fetch('/api/attendance/reset', { method: 'POST', body: { timeZone: clientTimeZone() }, credentials: 'include' })
   await refresh()
 }
 
