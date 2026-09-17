@@ -54,9 +54,29 @@ export default defineEventHandler(async (event) => {
     }
     if (openClockIn) throw createError({ statusCode: 409, statusMessage: 'Attendance session is already open' })
 
+    // A business date may contain one completed Harian session and one completed
+    // Bantuan session, but never two sessions of the same type. Older logs with a
+    // null shiftType are treated as Harian for backward compatibility because
+    // Harian is the existing/default shift type.
+    const requestedShiftType = shiftType || 'harian'
+    const sameTypeClockIns = await tx.select({ id: attendanceLog.id })
+      .from(attendanceLog)
+      .where(and(
+        eq(attendanceLog.userId, userId),
+        eq(attendanceLog.date, targetDate),
+        eq(attendanceLog.type, 'clock-in'),
+        requestedShiftType === 'harian'
+          ? or(eq(attendanceLog.shiftType, 'harian'), sql`${attendanceLog.shiftType} IS NULL`)
+          : eq(attendanceLog.shiftType, requestedShiftType),
+      ))
+      .limit(1)
+    if (sameTypeClockIns.length) {
+      throw createError({ statusCode: 409, statusMessage: `A ${requestedShiftType} shift has already been recorded for this business date` })
+    }
+
     const [existing] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
     if (!existing) {
-      await tx.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: shiftCode, shiftType: shiftType || 'harian', createdAt: now, updatedAt: now })
+      await tx.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: shiftCode, shiftType: requestedShiftType, createdAt: now, updatedAt: now })
     }
     else if (shiftCode || shiftType) {
       await tx.update(attendanceDay).set({ ...(shiftCode ? { selectedShiftCode: shiftCode } : {}), ...(shiftType ? { shiftType } : {}), updatedAt: now }).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate)))
