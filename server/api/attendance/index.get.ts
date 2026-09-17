@@ -1,6 +1,8 @@
-import { and, desc, eq, gte, lte } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
 import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
+import { isYmd, localNowYmdFromOffset } from '~~/server/utils/local-date'
+import { formatBusinessDate, getCalendarDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -13,10 +15,28 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   const userId = session.user.id
 
-  const date = getQuery(event).date as string | undefined
-  const tzOffsetRaw = getQuery(event).tzOffset as string | undefined
-  const tzOffset = typeof tzOffsetRaw === 'string' && tzOffsetRaw !== '' ? Number(tzOffsetRaw) : undefined
-  const today = date || new Date().toISOString().slice(0, 10)
+  const query = getQuery(event)
+  const requestedDate = typeof query.date === 'string' ? query.date : undefined
+  const timeZone = typeof query.timeZone === 'string' ? query.timeZone : undefined
+  const tzOffsetRaw = typeof query.tzOffset === 'string' ? query.tzOffset : undefined
+  const parsedTzOffset = tzOffsetRaw !== undefined ? Number(tzOffsetRaw) : undefined
+  const tzOffset = typeof parsedTzOffset === 'number' && Number.isFinite(parsedTzOffset) ? parsedTzOffset : new Date().getTimezoneOffset()
+
+  let today: string
+  if (requestedDate && isYmd(requestedDate)) {
+    today = requestedDate
+  }
+  else if (timeZone) {
+    try {
+      today = formatBusinessDate(getCalendarDate(new Date(), timeZone))
+    }
+    catch {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid timeZone' })
+    }
+  }
+  else {
+    today = localNowYmdFromOffset(new Date(), tzOffset)
+  }
 
   const db = useDb()
   const [day] = await db
@@ -25,51 +45,24 @@ export default defineEventHandler(async (event) => {
     .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, today)))
     .limit(1)
 
-  let logs: any[] = []
-  if (date && typeof tzOffset === 'number' && !Number.isNaN(tzOffset)) {
-    // Interpret the provided date as the client's local date. Compute UTC range
-    // for that local day using the provided tzOffset (minutes, same as Date.getTimezoneOffset()).
-    const [yy, mm, dd] = date.split('-').map(Number)
-    const startUtcMs = Date.UTC(yy, mm - 1, dd, 0, 0, 0) + tzOffset * 60000
-    const endUtcMs = startUtcMs + 24 * 60 * 60 * 1000 - 1
-    const startUtc = new Date(startUtcMs)
-    const endUtc = new Date(endUtcMs)
-    // Timestamp values in DB may be stored in seconds or ms. Normalize in-memory by fetching by date range
-    // (fall back to date equality when timestamp numeric comparisons are unreliable for cross-db stores).
-    try {
-      logs = await db
-        .select()
-        .from(attendanceLog)
-        .where(and(eq(attendanceLog.userId, userId), gte(attendanceLog.timestamp, startUtc), lte(attendanceLog.timestamp, endUtc)))
-        .orderBy(desc(attendanceLog.timestamp))
-    }
-    catch {
-      // Some DB drivers reject comparing numeric column to Date objects; fall back to date equality
-      logs = await db
-        .select()
-        .from(attendanceLog)
-        .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, today)))
-        .orderBy(desc(attendanceLog.timestamp))
-    }
-  }
-  else {
-    logs = await db
-      .select()
-      .from(attendanceLog)
-      .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, today)))
-      .orderBy(desc(attendanceLog.timestamp))
-  }
+  // `attendanceLog.date` is the authoritative attendance/business date.
+  // Do not reconstruct a day from timestamps: an overnight event may have a
+  // timestamp on the following calendar date while still belonging to today.
+  let logs = await db
+    .select()
+    .from(attendanceLog)
+    .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, today)))
+    .orderBy(desc(attendanceLog.timestamp))
 
-  // derive state from today's logs first
+  // Derive state from the requested business date first.
   let stateDay: any = day
   let stateLogs: Log[] = logs as Log[]
   let clockIn = stateLogs.find((l: Log) => l.type === 'clock-in')
   let clockOut = stateLogs.find((l: Log) => l.type === 'clock-out' && (!clockIn || normalizeTimestampRaw(l.timestamp) > normalizeTimestampRaw(clockIn.timestamp)))
 
-  // Fallback for cross-day / stale-open sessions:
-  // If today's slice has no active session, inspect recent logs globally and find
-  // the latest unmatched clock-in (no later clock-out). This makes button state
-  // robust across midnight and even after scheduled shift end until explicit clock-out.
+  // If today's business-date slice has no active session, inspect recent logs
+  // for the latest unmatched clock-in. This keeps an overnight session active
+  // after calendar midnight without changing its business date.
   if (!clockIn || clockOut) {
     try {
       const recentLogs = await db
@@ -83,16 +76,12 @@ export default defineEventHandler(async (event) => {
         const asc = [...recentLogs].sort((a, b) => normalizeTimestampRaw(a.timestamp) - normalizeTimestampRaw(b.timestamp)) as Log[]
         let openClockIn: Log | null = null
         for (const l of asc) {
-          if (l.type === 'clock-in') {
-            openClockIn = l
-          }
-          else if (l.type === 'clock-out' && openClockIn && normalizeTimestampRaw(l.timestamp) >= normalizeTimestampRaw(openClockIn.timestamp)) {
-            openClockIn = null
-          }
+          if (l.type === 'clock-in') openClockIn = l
+          else if (l.type === 'clock-out' && openClockIn && normalizeTimestampRaw(l.timestamp) >= normalizeTimestampRaw(openClockIn.timestamp)) openClockIn = null
         }
 
         if (openClockIn) {
-          const openDate = (openClockIn as any).date as string | undefined
+          const openDate = openClockIn.date
           let openDateLogs: Log[] = []
           if (openDate) {
             openDateLogs = await db
@@ -113,14 +102,11 @@ export default defineEventHandler(async (event) => {
       }
     }
     catch {
-      // keep today's state on fallback errors
+      // Keep the requested business-date state if fallback lookup fails.
     }
   }
 
   const hasActiveSession = Boolean(clockIn && !clockOut)
-  // While clocked in, the shift attached to the open clock-in log is source of truth.
-  // attendance_day.selectedShiftCode may be changed later by UI selection and should not
-  // override an already-open session's shift.
   const resolvedSelectedShiftCode = hasActiveSession
     ? (((clockIn as any)?.shiftCode ?? stateDay?.selectedShiftCode) ?? null)
     : (stateDay?.selectedShiftCode ?? ((clockIn as any)?.shiftCode ?? null))

@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
 # Multi-stage Bun-based Dockerfile optimized for PaaS (Dokku/Dokploy)
-# Build stage: installs dependencies and builds the Nuxt/Nitro output
-ARG BUN_BASE_IMAGE=oven/bun:latest
+# Build and runtime use the same pinned Bun release so CI and production stay aligned.
+ARG BUN_BASE_IMAGE=oven/bun:1.4.2-slim
 FROM ${BUN_BASE_IMAGE} AS builder
 WORKDIR /app
 
@@ -25,14 +25,13 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy manifest files first for cached layer installs
-
 COPY package.json bun.lock* package-lock.json* ./
 
 # Use BuildKit cache for Bun to speed up installs (when supported by builder)
 RUN --mount=type=cache,id=bun-cache,target=/root/.bun \
   bun install || (echo 'bun install failed, retrying...' >&2 && bun install)
 
-# Copy source and build app
+# Copy source and build app with the Bun Nitro preset
 COPY . .
 RUN bun run build -- --preset bun
 
@@ -68,18 +67,11 @@ COPY --from=builder --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=builder --chown=1000:1000 /app/server/database/migrations ./server/database/migrations
 COPY --from=builder --chown=1000:1000 /app/server/database/schemas ./server/database/schemas
 
-# Copy optional entrypoint (keeps behavior consistent if present)
-# (removed using docker-entrypoint.sh; migrations are not run from the image)
-
-# Expose the PORT (Dokku/Dokploy will set $PORT at runtime)
 EXPOSE ${PORT}
-
-# Switch to non-root numeric UID (no passwd entry required in minimal images)
 USER 1000
 
-# Healthcheck (optional): ensures server file exists
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD [ -f ./.output/server/index.mjs ] || exit 1
 
-# Command: run the Nitro server with Bun. PaaS platforms typically set $PORT.
+# Run the Nitro server directly with Bun.
 CMD ["/bin/sh", "-lc", "bun ./.output/server/index.mjs --port ${PORT:-3000} --host ${HOST:-0.0.0.0}"]

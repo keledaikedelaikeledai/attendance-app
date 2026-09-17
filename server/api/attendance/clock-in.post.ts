@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
-import { addDaysYmd, isYmd, localDateTimeToUtcMs, localNowYmdFromOffset } from '~~/server/utils/local-date'
+import { addDaysYmd, isYmd, localNowYmdFromOffset } from '~~/server/utils/local-date'
+import { formatBusinessDate, getCalendarDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
 
@@ -13,7 +14,17 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, shiftType, coords, date: clientDate, tzOffset: bodyTzOffset, geofenceComment, geofenceId, geofenceName } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', coords?: { latitude?: number, longitude?: number, accuracy?: number }, date?: string, tzOffset?: number | string, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
+  const { shiftCode, shiftType, coords, date: clientDate, timeZone: bodyTimeZone, tzOffset: bodyTzOffset, geofenceComment, geofenceId, geofenceName } = body as {
+    shiftCode?: string
+    shiftType?: 'harian' | 'bantuan'
+    coords?: { latitude?: number, longitude?: number, accuracy?: number }
+    date?: string
+    timeZone?: string
+    tzOffset?: number | string
+    geofenceComment?: string
+    geofenceId?: string
+    geofenceName?: string
+  }
 
   const db = useDb()
   const userId = session.user.id
@@ -22,12 +33,23 @@ export default defineEventHandler(async (event) => {
   const tzOffset = typeof parsedTzOffset === 'number' && Number.isFinite(parsedTzOffset)
     ? parsedTzOffset
     : now.getTimezoneOffset()
-  // Prefer client-provided local date when available to avoid server/UTC calendar drift
-  const date = isYmd(clientDate) ? clientDate : localNowYmdFromOffset(now, tzOffset)
 
-  // If the user's selected shift for the previous day crosses midnight and
-  // the current clock-in happens after midnight but before that shift's end,
-  // attribute the clock-in to the previous date so the shift remains grouped.
+  let date: string
+  if (bodyTimeZone) {
+    try {
+      date = formatBusinessDate(getCalendarDate(now, bodyTimeZone))
+    }
+    catch {
+      throw createError({ statusCode: 400, statusMessage: 'Invalid timeZone' })
+    }
+  }
+  else {
+    date = isYmd(clientDate) ? clientDate : localNowYmdFromOffset(now, tzOffset)
+  }
+
+  // If the user's selected shift for the previous business date crosses midnight
+  // and the current instant is still inside that shift window, keep the clock-in
+  // attached to the previous business date.
   let targetDate = date
   try {
     const prevDateStr = addDaysYmd(date, -1)
@@ -38,9 +60,14 @@ export default defineEventHandler(async (event) => {
       const latestCi = [...prevLogs].reverse().find((l: any) => l.type === 'clock-in')
       prevShiftCode = latestCi ? ((latestCi as any).shiftCode ?? null) : null
     }
+
     if (prevShiftCode) {
       const [sd] = await db.select().from(shift).where(eq(shift.code, prevShiftCode)).limit(1)
-      if (sd) {
+      if (sd && bodyTimeZone) {
+        const resolved = resolveBusinessDateFromInstant(now, { start: sd.start, end: sd.end }, bodyTimeZone)
+        targetDate = formatBusinessDate(resolved)
+      }
+      else if (sd) {
         const partsStart = (sd.start || '').split(':')
         const partsEnd = (sd.end || '').split(':')
         const sh = Number(partsStart[0])
@@ -51,12 +78,9 @@ export default defineEventHandler(async (event) => {
           const startMin = sh * 60 + sm
           const endMin = eh * 60 + em
           if (startMin > endMin) {
-            // crossing midnight, compute end anchored to prev date + 1
-            const endDateYmd = addDaysYmd(prevDateStr, 1)
-            const endMsUtc = localDateTimeToUtcMs(endDateYmd, eh, em, tzOffset)
-            if (now.getTime() <= endMsUtc) {
-              targetDate = prevDateStr
-            }
+            const clientLocal = new Date(now.getTime() - tzOffset * 60000)
+            const localMin = clientLocal.getUTCHours() * 60 + clientLocal.getUTCMinutes()
+            if (localMin <= endMin) targetDate = prevDateStr
           }
         }
       }
@@ -67,7 +91,6 @@ export default defineEventHandler(async (event) => {
     log.warn({ err, userId, date }, 'Cross-midnight date attribution failed, using today')
   }
 
-  // upsert day (use targetDate so clock-ins attributed correctly)
   const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
   if (!existing) {
     await db.insert(attendanceDay).values({
@@ -91,7 +114,6 @@ export default defineEventHandler(async (event) => {
       .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate)))
   }
 
-  // insert log
   await db.insert(attendanceLog).values({
     id: randomUUID(),
     userId,
@@ -122,13 +144,14 @@ export default defineEventHandler(async (event) => {
     accuracy: coords?.accuracy,
     userAgent: event.node.req.headers['user-agent'],
     timezoneOffset: tzOffset,
+    timeZone: bodyTimeZone || null,
   })
 
-  // return updated state
-  const [day] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date))).limit(1)
-  const logs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, date))).orderBy(attendanceLog.timestamp)
+  const [day] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
+  const logs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, targetDate))).orderBy(attendanceLog.timestamp)
   return {
-    date,
+    date: targetDate,
+    requestedDate: date,
     selectedShiftCode: day?.selectedShiftCode ?? null,
     shiftType: (day as any)?.shiftType ?? null,
     logs,

@@ -3,7 +3,7 @@ import type { ShiftCode, ShiftDef } from '~/types/shifts'
 export interface AttendanceLog {
   id: string
   type: 'clock-in' | 'clock-out'
-  timestamp: string // ISO
+  timestamp: string
   date?: string
   lat?: number
   lng?: number
@@ -16,7 +16,6 @@ export interface AttendanceLog {
   geofenceName?: string | null
 }
 
-// Shifts are loaded from DB via API
 const shifts = ref<ShiftDef[]>([])
 
 async function loadShifts() {
@@ -51,16 +50,13 @@ const selectedShiftCode = ref<ShiftCode | undefined>()
 const selectedShiftType = ref<'harian' | 'bantuan' | undefined>()
 
 async function refresh() {
-  // compute client's local date in YYYY-MM-DD to ask server for the correct day
   const now = new Date()
   const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const tzOffset = now.getTimezoneOffset() // minutes (same as Date.getTimezoneOffset())
+  const tzOffset = now.getTimezoneOffset()
   const s = await $fetch<any>('/api/attendance', { method: 'GET', credentials: 'include', query: { ts: Date.now(), date: localDate, tzOffset } })
   if (!s)
     return
-  if (!shifts.value.length) {
-    await loadShifts()
-  }
+  if (!shifts.value.length) await loadShifts()
   clockedIn.value = !!s.clockedIn
   clockInTime.value = s.clockInTime
   clockOutTime.value = s.clockOutTime
@@ -73,7 +69,6 @@ async function refresh() {
     accuracy: l.accuracy ?? undefined,
     shiftCode: l.shiftCode ?? undefined,
     shiftType: l.shiftType ?? undefined,
-    // preserve server-provided date if present, else compute from timestamp (local date)
     date: l.date ?? (() => {
       try {
         const dd = new Date(l.timestamp)
@@ -89,29 +84,19 @@ async function refresh() {
     geofenceName: (l as any).geofenceName ?? (l as any).geofence_name ?? null,
   }))
   const latestClockIn = logs.value.find(l => l.type === 'clock-in')
-  selectedShiftCode.value = s.clockedIn
-    ? (latestClockIn?.shiftCode ?? s.selectedShiftCode ?? undefined)
-    : (s.selectedShiftCode ?? undefined)
-  selectedShiftType.value = s.clockedIn
-    ? (latestClockIn?.shiftType ?? s.shiftType ?? undefined)
-    : (s.shiftType ?? undefined)
+  selectedShiftCode.value = s.clockedIn ? (latestClockIn?.shiftCode ?? s.selectedShiftCode ?? undefined) : (s.selectedShiftCode ?? undefined)
+  selectedShiftType.value = s.clockedIn ? (latestClockIn?.shiftType ?? s.shiftType ?? undefined) : (s.shiftType ?? undefined)
 }
 
 const durationMs = computed(() => {
-  if (!clockInTime.value)
-    return 0
-  const end = clockedIn.value
-    ? Date.now()
-    : (clockOutTime.value
-        ? Date.parse(clockOutTime.value)
-        : Date.now())
+  if (!clockInTime.value) return 0
+  const end = clockedIn.value ? Date.now() : (clockOutTime.value ? Date.parse(clockOutTime.value) : Date.now())
   return end - Date.parse(clockInTime.value)
 })
 
 const durationHuman = computed(() => {
   const ms = durationMs.value
-  if (!ms)
-    return '0m'
+  if (!ms) return '0m'
   const totalMinutes = Math.floor(ms / 60000)
   const h = Math.floor(totalMinutes / 60)
   const m = totalMinutes % 60
@@ -119,11 +104,9 @@ const durationHuman = computed(() => {
 })
 
 function shiftStartDate(clockInIso: string, code: ShiftCode | undefined) {
-  if (!code)
-    return null
+  if (!code) return null
   const def = shifts.value.find(s => s.code === code)
-  if (!def)
-    return null
+  if (!def) return null
   const d = new Date(clockInIso)
   const [shRaw, smRaw] = def.start.split(':')
   const [ehRaw, emRaw] = def.end.split(':')
@@ -131,19 +114,14 @@ function shiftStartDate(clockInIso: string, code: ShiftCode | undefined) {
   const sm = Number(smRaw)
   const eh = Number(ehRaw)
   const em = Number(emRaw)
-  if (Number.isNaN(sh) || Number.isNaN(sm) || Number.isNaN(eh) || Number.isNaN(em))
-    return null
+  if (Number.isNaN(sh) || Number.isNaN(sm) || Number.isNaN(eh) || Number.isNaN(em)) return null
   const startMin = sh * 60 + sm
   const endMin = eh * 60 + em
-  // default start is same calendar day as clockIn
   let year = d.getFullYear()
   let month = d.getMonth()
   let day = d.getDate()
-  // If shift crosses midnight (start > end) and clock-in time is before end time (after midnight),
-  // then the shift actually started the previous calendar day
   const ciMin = d.getHours() * 60 + d.getMinutes()
-  const crossesMidnight = startMin > endMin
-  if (crossesMidnight && ciMin < endMin) {
+  if (startMin > endMin && ciMin < endMin) {
     const prev = new Date(d)
     prev.setDate(prev.getDate() - 1)
     year = prev.getFullYear()
@@ -154,16 +132,11 @@ function shiftStartDate(clockInIso: string, code: ShiftCode | undefined) {
 }
 
 const lateByMs = computed(() => {
-  if (!clockInTime.value)
-    return 0
-  const activeClockInShiftCode = (clockedIn.value
-    ? logs.value.find(l => l.type === 'clock-in')?.shiftCode
-    : undefined) ?? selectedShiftCode.value
-  if (!activeClockInShiftCode)
-    return 0
+  if (!clockInTime.value) return 0
+  const activeClockInShiftCode = (clockedIn.value ? logs.value.find(l => l.type === 'clock-in')?.shiftCode : undefined) ?? selectedShiftCode.value
+  if (!activeClockInShiftCode) return 0
   const start = shiftStartDate(clockInTime.value, activeClockInShiftCode)
-  if (!start)
-    return 0
+  if (!start) return 0
   const ci = new Date(clockInTime.value)
   return Math.max(0, ci.getTime() - start.getTime())
 })
@@ -172,8 +145,7 @@ const isLate = computed(() => lateByMs.value > 0)
 
 const lateByHuman = computed(() => {
   const ms = lateByMs.value
-  if (!ms)
-    return '0m'
+  if (!ms) return '0m'
   const totalMinutes = Math.ceil(ms / 60000)
   const h = Math.floor(totalMinutes / 60)
   const m = totalMinutes % 60
@@ -189,28 +161,19 @@ async function setShift(code: ShiftCode | undefined, type?: 'harian' | 'bantuan'
   await refresh()
 }
 
-// Ensure a sensible default shift is chosen based on current time
 async function ensureDefaultShift() {
-  if (clockedIn.value) {
-    return
-  }
-  if (!shifts.value.length) {
-    await loadShifts()
-  }
+  if (clockedIn.value) return
+  if (!shifts.value.length) await loadShifts()
   if (!selectedShiftCode.value) {
     const def = pickClosestShiftFromShifts(new Date())
     if (def) await setShift(def, 'harian')
   }
-  if (!selectedShiftType.value) {
-    selectedShiftType.value = 'harian'
-  }
+  if (!selectedShiftType.value) selectedShiftType.value = 'harian'
 }
 
 interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCode | undefined, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
 async function clockIn(opts?: ClockInOptions) {
-  if (clockedIn.value)
-    return
-  // Prevent multiple clock-ins for the same shiftType on the same local day.
+  if (clockedIn.value) return
   try {
     const now = new Date()
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -219,30 +182,21 @@ async function clockIn(opts?: ClockInOptions) {
       for (const l of logs.value) {
         if (l.type !== 'clock-in') continue
         if (l.shiftType !== shiftTypeToCheck) continue
-        try {
-          const dd = new Date(l.timestamp as any)
-          const ldate = `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`
-          if (ldate === today) {
-            try {
-              try {
-                const _t = (typeof useToast === 'function') ? useToast() : null
-                if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
-              }
-              catch {}
-            }
-            catch {}
-            return
+        if (l.date === today) {
+          try {
+            const _t = (typeof useToast === 'function') ? useToast() : null
+            if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
           }
+          catch {}
+          return
         }
-        catch {}
       }
     }
   }
   catch (err) {
     useErrorReporter().captureException(err, { context: 'clock-in-duplicate-check' })
   }
-  if (opts?.shiftCode)
-    selectedShiftCode.value = opts.shiftCode
+  if (opts?.shiftCode) selectedShiftCode.value = opts.shiftCode
   const now = new Date()
   const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const tzOffset = now.getTimezoneOffset()
@@ -253,26 +207,13 @@ async function clockIn(opts?: ClockInOptions) {
       shiftType: selectedShiftType.value,
       date: localDate,
       tzOffset,
-      coords: opts?.coords
-        ? {
-            latitude: opts.coords.latitude,
-            longitude: opts.coords.longitude,
-            accuracy: opts.coords.accuracy,
-          }
-        : undefined,
-      geofenceComment: typeof opts?.geofenceComment === 'string' && opts.geofenceComment.length
-        ? opts.geofenceComment.slice(0, 200)
-        : undefined,
-      geofenceId: typeof opts?.geofenceId === 'string' && opts.geofenceId.length
-        ? opts.geofenceId.slice(0, 64)
-        : undefined,
-      geofenceName: typeof opts?.geofenceName === 'string' && opts.geofenceName.length
-        ? opts.geofenceName.slice(0, 200)
-        : undefined,
+      coords: opts?.coords ? { latitude: opts.coords.latitude, longitude: opts.coords.longitude, accuracy: opts.coords.accuracy } : undefined,
+      geofenceComment: typeof opts?.geofenceComment === 'string' && opts.geofenceComment.length ? opts.geofenceComment.slice(0, 200) : undefined,
+      geofenceId: typeof opts?.geofenceId === 'string' && opts.geofenceId.length ? opts.geofenceId.slice(0, 64) : undefined,
+      geofenceName: typeof opts?.geofenceName === 'string' && opts.geofenceName.length ? opts.geofenceName.slice(0, 200) : undefined,
     },
     credentials: 'include',
   })
-  // optimistic update based on response
   if (res) {
     clockedIn.value = true
     const nowIso = new Date().toISOString()
@@ -285,36 +226,23 @@ async function clockIn(opts?: ClockInOptions) {
 }
 
 async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | null, geofenceComment?: string | null, geofenceId?: string | null, geofenceName?: string | null) {
-  if (!clockedIn.value)
-    return
+  if (!clockedIn.value) return
   const now = new Date()
   const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const tzOffset = now.getTimezoneOffset()
   const res = await $fetch<any>('/api/attendance/clock-out', {
     method: 'POST',
-    body: coords
-      ? {
-          coords: {
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            accuracy: coords.accuracy,
-          },
-          shiftType: selectedShiftType.value,
-          date: localDate,
-          tzOffset,
-          earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
-          geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
-          geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
-          geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
-        }
-      : {
-          shiftType: selectedShiftType.value,
-          date: localDate,
-          tzOffset,
-          geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
-          geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
-          geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
-        },
+    body: {
+      coords: coords ? { latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy } : undefined,
+      shiftType: selectedShiftType.value,
+      shiftCode: selectedShiftCode.value,
+      date: localDate,
+      tzOffset,
+      earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
+      geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
+      geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
+      geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
+    },
     credentials: 'include',
   })
   if (res) {
@@ -349,23 +277,15 @@ export function useAttendance() {
     selectedShiftType,
     setShift,
     ensureDefaultShift,
-    // returns true if the given shiftType currently has an active (unclosed) clock-in today
     isShiftActive: (shiftType?: 'harian' | 'bantuan' | undefined) => {
       if (!shiftType) return false
-      // One shift per day policy: if user already has a clock-in for this shiftType today,
-      // consider the shift type 'active' (i.e. not allowed to clock-in again).
       try {
         const now = new Date()
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
         for (const l of logs.value) {
           if (l.type !== 'clock-in') continue
           if (l.shiftType !== shiftType) continue
-          try {
-            const dd = new Date(l.timestamp as any)
-            const ldate = `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`
-            if (ldate === today) return true
-          }
-          catch {}
+          if (l.date === today) return true
         }
       }
       catch {}
