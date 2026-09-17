@@ -78,9 +78,8 @@ export default defineEventHandler(async (event) => {
           const startMin = sh * 60 + sm
           const endMin = eh * 60 + em
           if (startMin > endMin) {
-            const localHour = Math.floor((now.getTime() - (now.getTimezoneOffset() * 60000)) / 3600000) % 24
-            const localMinute = Math.floor((now.getTime() - (now.getTimezoneOffset() * 60000)) / 60000) % 60
-            const localMin = localHour * 60 + localMinute
+            const clientLocal = new Date(now.getTime() - tzOffset * 60000)
+            const localMin = clientLocal.getUTCHours() * 60 + clientLocal.getUTCMinutes()
             if (localMin <= endMin) targetDate = prevDateStr
           }
         }
