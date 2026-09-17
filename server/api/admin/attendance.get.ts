@@ -3,27 +3,22 @@ import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { attendanceLog, shift, user } from '~~/server/database/schemas'
 import { createShiftWindow, parseBusinessDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
+import { resolveHistoricalShiftTiming } from '../../utils/attendance-shift-history'
 import { normalizeTimestampRaw } from '../../utils/time'
 
-// GET /api/admin/attendance?month=2025-09
-// Returns: { month, days: [YYYY-MM-DD], rows: [{ userId, email, name, username, byDate: { [date]: { clockIn?: string, clockOut?: string, shiftCode?: string } } }] }
 function isAllowedAdmin(email?: string | null) {
   const raw = process.env.NUXT_ADMIN_EMAILS || ''
   const list = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-  if (!list.length)
-    return true
-  if (!email)
-    return false
+  if (!list.length) return true
+  if (!email) return false
   return list.includes(String(email).toLowerCase())
 }
 
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
-  if (!session?.user)
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  if (!isAllowedAdmin(session.user.email))
-    throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+  if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  if (!isAllowedAdmin(session.user.email)) throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
   const q = getQuery(event)
   const month = typeof q.month === 'string' && /^\d{4}-\d{2}$/.test(q.month) ? q.month : new Date().toISOString().slice(0, 7)
@@ -34,21 +29,13 @@ export default defineEventHandler(async (event) => {
   const endDate = end.toISOString().slice(0, 10)
 
   const db = useDb()
-
   const users = await db
     .select({ id: user.id, email: user.email, name: user.name, username: user.username })
     .from(user)
-    .where(
-      and(
-        or(isNull(user.role), ne(user.role, 'admin')),
-        or(isNull(user.banned), eq(user.banned, false)),
-      ),
-    )
+    .where(and(or(isNull(user.role), ne(user.role, 'admin')), or(isNull(user.banned), eq(user.banned, false))))
     .orderBy(asc(user.createdAt))
 
-  if (users.length === 0)
-    return { month, days: [], rows: [] }
-
+  if (users.length === 0) return { month, days: [], rows: [] }
   const userIds = users.map(u => u.id)
 
   const logs = await db
@@ -71,25 +58,20 @@ export default defineEventHandler(async (event) => {
     .orderBy(asc(attendanceLog.timestamp))
 
   const allDays: string[] = []
-  for (let d = 1; d <= end.getUTCDate(); d++) {
-    const ds = `${month}-${String(d).padStart(2, '0')}`
-    allDays.push(ds)
-  }
+  for (let d = 1; d <= end.getUTCDate(); d++) allDays.push(`${month}-${String(d).padStart(2, '0')}`)
 
-  const byUserDate: Record<string, Record<string, {
-    entries: Array<{
-      type: 'clock-in' | 'clock-out'
-      timestamp: string | null
-      timestampMs: number | null
-      lat?: number | null
-      lng?: number | null
-      accuracy?: number | null
-      shiftCode?: string | null
-      shiftType?: string | null
-      shiftStart?: string | null
-      shiftEnd?: string | null
-    }>
-  }>> = {}
+  const byUserDate: Record<string, Record<string, { entries: Array<{
+    type: 'clock-in' | 'clock-out'
+    timestamp: string | null
+    timestampMs: number | null
+    lat?: number | null
+    lng?: number | null
+    accuracy?: number | null
+    shiftCode?: string | null
+    shiftType?: string | null
+    shiftStart?: string | null
+    shiftEnd?: string | null
+  }> }>> = {}
   for (const l of logs) {
     const keyU = l.userId
     const keyD = l.date
@@ -113,7 +95,6 @@ export default defineEventHandler(async (event) => {
 
   const shifts = await db.select().from(shift)
   const shiftMap = Object.fromEntries(shifts.map(s => [s.code, { code: s.code, label: s.label, start: s.start, end: s.end }])) as Record<string, { code: string, label: string, start: string, end: string }>
-
   const BUSINESS_TZ = process.env.BUSINESS_TZ || 'Asia/Jakarta'
 
   function getShiftBoundaryInstants(ds: string, sd: { start: string, end: string }) {
@@ -123,14 +104,8 @@ export default defineEventHandler(async (event) => {
   }
 
   function getHistoricalShiftTiming(val: any) {
-    if (typeof val.shiftStart === 'string' && typeof val.shiftEnd === 'string') {
-      return { start: val.shiftStart, end: val.shiftEnd }
-    }
-    if (val.shiftCode) {
-      const sd = shiftMap[val.shiftCode]
-      if (sd) return { start: sd.start, end: sd.end }
-    }
-    return undefined
+    const currentTiming = val.shiftCode ? shiftMap[val.shiftCode] : undefined
+    return resolveHistoricalShiftTiming(val.shiftStart, val.shiftEnd, currentTiming)
   }
 
   function finalizeDayCell(ds: string, groupedByShiftType: Record<string, any>) {
@@ -242,7 +217,6 @@ export default defineEventHandler(async (event) => {
             delete val.earlyReason
           }
         }
-
         return [ds, finalizeDayCell(ds, groupedByShiftType)]
       })) as Record<string, any>
 
@@ -265,7 +239,6 @@ export default defineEventHandler(async (event) => {
 
           let prevKey: string | null = st
           let prevVal = prevGrouped[prevKey]
-
           if (!prevVal?.clockIn) {
             prevKey = null
             for (const [candidateKey, candidateVal] of Object.entries(prevGrouped)) {
@@ -280,7 +253,6 @@ export default defineEventHandler(async (event) => {
 
           const prevShiftCode = prevVal?.shiftCode ?? prevVal?.shiftCodeLast ?? null
           const canMerge = !!prevVal?.clockIn && (!prevVal?.clockOut || (currShiftCode && prevShiftCode && currShiftCode === prevShiftCode))
-
           if (canMerge && prevKey) {
             const prevOutMs = prevVal?.clockOut ? Date.parse(prevVal.clockOut) : Number.NEGATIVE_INFINITY
             if (!prevVal.clockOut || currOutMs >= prevOutMs) {
