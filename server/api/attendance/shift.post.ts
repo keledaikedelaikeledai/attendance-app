@@ -1,39 +1,28 @@
 import { and, eq } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay } from '~~/server/database/schemas'
-import { isYmd } from '~~/server/utils/local-date'
 import { formatBusinessDate, getCalendarDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
-  if (!session?.user)
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, date, shiftType, timeZone } = body as { shiftCode: string, date?: string, shiftType?: 'harian' | 'bantuan', timeZone?: string }
-  if (!shiftCode)
-    throw createError({ statusCode: 400, statusMessage: 'shiftCode required' })
+  const { shiftCode, shiftType, timeZone } = body as { shiftCode: string, shiftType?: 'harian' | 'bantuan', timeZone?: string }
+  if (!shiftCode) throw createError({ statusCode: 400, statusMessage: 'shiftCode required' })
+  if (!timeZone) throw createError({ statusCode: 400, statusMessage: 'timeZone required' })
 
   const db = useDb()
   const userId = session.user.id
   const now = new Date()
-
   let theDate: string
-  if (date && isYmd(date)) {
-    theDate = date
+  try {
+    theDate = formatBusinessDate(getCalendarDate(now, timeZone))
   }
-  else if (timeZone) {
-    try {
-      theDate = formatBusinessDate(getCalendarDate(now, timeZone))
-    }
-    catch {
-      throw createError({ statusCode: 400, statusMessage: 'Invalid timeZone' })
-    }
-  }
-  else {
-    theDate = formatBusinessDate(getCalendarDate(now, 'UTC'))
+  catch {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid timeZone' })
   }
 
   const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate))).limit(1)
@@ -44,6 +33,6 @@ export default defineEventHandler(async (event) => {
     await db.update(attendanceDay).set({ selectedShiftCode: shiftCode, ...(shiftType ? { shiftType } : {}), updatedAt: now }).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate)))
   }
 
-  const [day2] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate))).limit(1)
-  return { date: theDate, selectedShiftCode: day2?.selectedShiftCode ?? null, shiftType: (day2 as any)?.shiftType ?? null }
+  const [day] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate))).limit(1)
+  return { date: theDate, selectedShiftCode: day?.selectedShiftCode ?? null, shiftType: (day as any)?.shiftType ?? null }
 })
