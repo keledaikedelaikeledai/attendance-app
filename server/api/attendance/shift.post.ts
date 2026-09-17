@@ -31,8 +31,9 @@ export default defineEventHandler(async (event) => {
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`)
 
-    const [shiftDef] = await tx.select({ code: shift.code }).from(shift).where(eq(shift.code, shiftCode)).limit(1)
+    const [shiftDef] = await tx.select({ code: shift.code, active: shift.active }).from(shift).where(eq(shift.code, shiftCode)).limit(1)
     if (!shiftDef) throw createError({ statusCode: 400, statusMessage: 'Invalid shiftCode' })
+    if (!shiftDef.active) throw createError({ statusCode: 400, statusMessage: 'Shift is inactive' })
 
     const [existing] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate))).limit(1)
     if (!existing) {
