@@ -1,6 +1,7 @@
 import process from 'node:process'
 import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { attendanceLog, shift, user } from '~~/server/database/schemas'
+import { createShiftWindow, parseBusinessDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -115,31 +116,19 @@ export default defineEventHandler(async (event) => {
   const shifts = await db.select().from(shift)
   const shiftMap = Object.fromEntries(shifts.map(s => [s.code, { code: s.code, label: s.label, start: s.start, end: s.end }])) as Record<string, { code: string, label: string, start: string, end: string }>
 
-  // Business timezone configuration (IANA tz). We will compute anchor instants in this tz.
+  // Business timezone configuration (IANA tz). All shift boundaries are resolved in this timezone.
   const BUSINESS_TZ = process.env.BUSINESS_TZ || 'Asia/Jakarta'
 
-  // Helper: compute the UTC instant (Date) for a local YYYY-MM-DD + HH:MM in the given tz
-  // We avoid heavy dependencies by using Date.toLocaleString with timeZone to derive the offset.
-  function localDateTimeToUtcIso(dateYmd: string, hh: number, mm: number, tz: string) {
-    // Create a string in the form 'YYYY-MM-DDTHH:MM:00' (no timezone)
-    const localStr = `${dateYmd}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`
-    // Use Intl to format that local wall time as if in tz -> get the corresponding UTC epoch by parsing
-    // Build a Date by interpreting the wall-time as if it were in the target tz by asking for the same wall time
-    // represented in the target tz and then converting to a UTC-based ISO via Date.
-    // Approach: create a Date from the wall time in the target tz by using Date.parse on the result of
-    // toLocaleString with timeZone producing an equivalent representation anchored to the timezone.
-    // parts is locale string in that tz; we can construct a Date from the wall time components by using
-    // the Intl API to get the offset: create Date object of the same wall time but in the tz by computing
-    // the difference between UTC and that tz at that moment.
-    // Simpler: use Date.UTC on the components and then correct by computing the offset between the same
-    // wall time interpreted in the tz and in UTC.
-    const wall = new Date(localStr)
-    // Determine offset by formatting the same moment in both UTC and target tz and measuring difference
-    const tzString = new Date(wall.toLocaleString('en-US', { timeZone: tz }))
-    const offsetMs = wall.getTime() - tzString.getTime()
-    // The true UTC instant for the wall time in tz is wall.getTime() + offsetMs
-    const instant = new Date(wall.getTime() + offsetMs)
-    return instant.toISOString()
+  function getShiftBoundaryInstants(ds: string, sd: { start: string, end: string }) {
+    // The attendance log date is the session's business date. This is especially important
+    // for overnight sessions: a 22:00 -> 06:00 session recorded on Sep 17 remains anchored
+    // to the Sep 17 shift window even though its clock-out instant is on Sep 18.
+    const businessDate = parseBusinessDate(ds)
+    const shiftWindow = createShiftWindow(businessDate, sd, BUSINESS_TZ)
+    return {
+      start: shiftWindow.start.toDate(),
+      end: shiftWindow.end.toDate(),
+    }
   }
 
   function finalizeDayCell(ds: string, groupedByShiftType: Record<string, any>) {
@@ -156,83 +145,20 @@ export default defineEventHandler(async (event) => {
         else if (st === 'bantuan') bantuan++
         const sd = val.shiftCode ? shiftMap[val.shiftCode] : undefined
         if (sd) {
+          const boundaries = getShiftBoundaryInstants(ds, sd)
           const ci = new Date(val.clockIn)
-          const partsStart = (sd.start || '').split(':')
-          const partsEnd = (sd.end || '').split(':')
-          const sh = Number(partsStart[0])
-          const sm = Number(partsStart[1])
-          const eh = Number(partsEnd[0])
-          const em = Number(partsEnd[1])
-          if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
-            const startMin = sh * 60 + sm
-            const endMin = eh * 60 + em
-            // anchor schedule to the attendance day `ds` (YYYY-MM-DD) to avoid timezone/date shifts
-            const [yy, mm2, dd2] = ds.split('-').map(Number)
-            let y = yy
-            let m = mm2 - 1
-            let d = dd2
-            // If shift crosses midnight and the clock-in minute is before endMin, it likely belongs to the next-day portion
-            const ciMin = ci.getHours() * 60 + ci.getMinutes()
-            if (startMin > endMin && ciMin < endMin) {
-              // treat startDate as previous day
-              const prev = new Date(y, m, d)
-              prev.setDate(prev.getDate() - 1)
-              y = prev.getFullYear()
-              m = prev.getMonth()
-              d = prev.getDate()
-            }
-            // compute anchor instant in business timezone and compare using UTC ms
-            const anchorDate = new Date(y, m, d)
-            const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
-            const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
-            groupedByShiftType[st].shiftStartIso = startIso
-            totalLateMs += Math.max(0, ci.getTime() - Date.parse(startIso))
-          }
+          groupedByShiftType[st].shiftStartIso = boundaries.start.toISOString()
+          totalLateMs += Math.max(0, ci.getTime() - boundaries.start.getTime())
         }
       }
       if (val.clockOut && val.shiftCode) {
         const sd = shiftMap[val.shiftCode]
         if (sd) {
+          const boundaries = getShiftBoundaryInstants(ds, sd)
           const co = new Date(val.clockOut)
-          const partsStart = (sd.start || '').split(':')
-          const partsEnd = (sd.end || '').split(':')
-          const sh = Number(partsStart[0])
-          const sm = Number(partsStart[1])
-          const eh = Number(partsEnd[0])
-          const em = Number(partsEnd[1])
-          if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
-            const startMin = sh * 60 + sm
-            const endMin = eh * 60 + em
-            // anchor schedule to the attendance day `ds` (YYYY-MM-DD)
-            const [yy, mm2, dd2] = ds.split('-').map(Number)
-            let y = yy
-            let m = mm2 - 1
-            let d = dd2
-            const crosses = startMin > endMin
-            // If shift crosses midnight and clockOut time is before endMin, it belongs to the next-day portion
-            if (crosses && (co.getHours() * 60 + co.getMinutes()) < endMin) {
-              const prev = new Date(y, m, d)
-              prev.setDate(prev.getDate() - 1)
-              y = prev.getFullYear()
-              m = prev.getMonth()
-              d = prev.getDate()
-            }
-            const anchorDate = new Date(y, m, d)
-            const anchorYmd = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`
-            // compute start and end instants in business timezone
-            const startIso = localDateTimeToUtcIso(anchorYmd, sh, sm, BUSINESS_TZ)
-            // if shift crosses midnight, end is next day
-            let endAnchorYmd = anchorYmd
-            if (startMin > endMin) {
-              const next = new Date(anchorDate)
-              next.setDate(next.getDate() + 1)
-              endAnchorYmd = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`
-            }
-            const endIso = localDateTimeToUtcIso(endAnchorYmd, eh, em, BUSINESS_TZ)
-            groupedByShiftType[st].shiftStartIso = startIso
-            groupedByShiftType[st].shiftEndIso = endIso
-            totalEarlyMs += Math.max(0, Date.parse(endIso) - co.getTime())
-          }
+          groupedByShiftType[st].shiftStartIso = boundaries.start.toISOString()
+          groupedByShiftType[st].shiftEndIso = boundaries.end.toISOString()
+          totalEarlyMs += Math.max(0, boundaries.end.getTime() - co.getTime())
         }
       }
     }
@@ -270,7 +196,8 @@ export default defineEventHandler(async (event) => {
         // For admin grid, compute aggregated values: count of distinct shiftTypes with a clock-in, earliest clock-in per shift, latest clock-out per shift
         const groupedByShiftType: Record<string, any> = {}
         for (const e of entries) {
-          const st = e.shiftType || 'unknown'
+          // Legacy null shiftType records are Harian, matching attendance clock-in quota semantics.
+          const st = e.shiftType || 'harian'
           groupedByShiftType[st] ||= {} as any
           // keep earliest clock-in for "start of shift" calculations (existing behavior)
           if (e.type === 'clock-in') {
