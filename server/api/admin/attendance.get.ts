@@ -1,7 +1,7 @@
 import process from 'node:process'
 import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { attendanceLog, shift, user } from '~~/server/database/schemas'
-import { createShiftWindow, getZonedDateTime, parseBusinessDate } from '~~/shared/utils/attendance-date'
+import { createShiftWindow, parseBusinessDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -119,32 +119,12 @@ export default defineEventHandler(async (event) => {
   // Business timezone configuration (IANA tz). All shift boundaries are resolved in this timezone.
   const BUSINESS_TZ = process.env.BUSINESS_TZ || 'Asia/Jakarta'
 
-  function getShiftBoundaryInstants(ds: string, sd: { start: string, end: string }, clockIn: string | null, clockOut: string | null) {
+  function getShiftBoundaryInstants(ds: string, sd: { start: string, end: string }) {
+    // The attendance log date is the session's business date. This is especially important
+    // for overnight sessions: a 22:00 -> 06:00 session recorded on Sep 17 remains anchored
+    // to the Sep 17 shift window even though its clock-out instant is on Sep 18.
     const businessDate = parseBusinessDate(ds)
     const shiftWindow = createShiftWindow(businessDate, sd, BUSINESS_TZ)
-    const clockInZoned = clockIn ? getZonedDateTime(new Date(clockIn), BUSINESS_TZ) : null
-    const clockOutZoned = clockOut ? getZonedDateTime(new Date(clockOut), BUSINESS_TZ) : null
-
-    // The attendance date is authoritative. For legacy/malformed date buckets that contain
-    // the post-midnight part of an overnight shift, move the schedule anchor back one day.
-    const endHour = Number(sd.end.slice(0, 2))
-    const endMinute = Number(sd.end.slice(3, 5))
-    const endMin = endHour * 60 + endMinute
-    const startHour = Number(sd.start.slice(0, 2))
-    const startMinute = Number(sd.start.slice(3, 5))
-    const startMin = startHour * 60 + startMinute
-    const overnight = startMin > endMin
-    const reference = clockOutZoned || clockInZoned
-    const referenceMin = reference ? reference.hour * 60 + reference.minute : null
-
-    if (overnight && referenceMin != null && referenceMin < endMin) {
-      const previousWindow = createShiftWindow(businessDate.subtract({ days: 1 }), sd, BUSINESS_TZ)
-      return {
-        start: previousWindow.start.toDate(),
-        end: previousWindow.end.toDate(),
-      }
-    }
-
     return {
       start: shiftWindow.start.toDate(),
       end: shiftWindow.end.toDate(),
@@ -165,7 +145,7 @@ export default defineEventHandler(async (event) => {
         else if (st === 'bantuan') bantuan++
         const sd = val.shiftCode ? shiftMap[val.shiftCode] : undefined
         if (sd) {
-          const boundaries = getShiftBoundaryInstants(ds, sd, val.clockIn, val.clockOut ?? null)
+          const boundaries = getShiftBoundaryInstants(ds, sd)
           const ci = new Date(val.clockIn)
           groupedByShiftType[st].shiftStartIso = boundaries.start.toISOString()
           totalLateMs += Math.max(0, ci.getTime() - boundaries.start.getTime())
@@ -174,7 +154,7 @@ export default defineEventHandler(async (event) => {
       if (val.clockOut && val.shiftCode) {
         const sd = shiftMap[val.shiftCode]
         if (sd) {
-          const boundaries = getShiftBoundaryInstants(ds, sd, val.clockIn ?? null, val.clockOut)
+          const boundaries = getShiftBoundaryInstants(ds, sd)
           const co = new Date(val.clockOut)
           groupedByShiftType[st].shiftStartIso = boundaries.start.toISOString()
           groupedByShiftType[st].shiftEndIso = boundaries.end.toISOString()
