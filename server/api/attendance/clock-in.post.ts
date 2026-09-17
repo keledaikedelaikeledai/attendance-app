@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
-import { formatBusinessDate, getCalendarDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
+import { addBusinessDays, formatBusinessDate, getCalendarDate, parseBusinessDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
 
@@ -38,9 +38,10 @@ export default defineEventHandler(async (event) => {
   const targetDate = shiftDef
     ? formatBusinessDate(resolveBusinessDateFromInstant(now, { start: shiftDef.start, end: shiftDef.end }, bodyTimeZone))
     : calendarDate
+  const previousDate = formatBusinessDate(addBusinessDays(parseBusinessDate(targetDate), -1))
 
   const existingLogs = await db.select().from(attendanceLog)
-    .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, targetDate)))
+    .where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, targetDate), eq(attendanceLog.date, previousDate))))
     .orderBy(attendanceLog.timestamp)
   let openClockIn: typeof existingLogs[number] | undefined
   for (const log of existingLogs) {
