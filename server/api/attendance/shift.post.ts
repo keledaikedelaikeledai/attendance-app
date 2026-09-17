@@ -3,7 +3,6 @@ import { createError, readBody } from 'h3'
 import { attendanceDay } from '~~/server/database/schemas'
 import { isYmd } from '~~/server/utils/local-date'
 import { formatBusinessDate, getCalendarDate } from '~~/shared/utils/attendance-date'
-import { attendanceDay } from '~~/server/database/schemas'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
