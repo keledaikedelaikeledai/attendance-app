@@ -54,9 +54,23 @@ export default defineEventHandler(async (event) => {
     }
     if (openClockIn) throw createError({ statusCode: 409, statusMessage: 'Attendance session is already open' })
 
+    // A business date may contain one completed Harian session and one completed
+    // Bantuan session, but never two sessions of the same type. Older logs with a
+    // null shiftType are treated as Harian for backward compatibility because
+    // Harian is the existing/default shift type.
+    const requestedShiftType = shiftType || 'harian'
+    const hasSameTypeShift = existingLogs.some(log =>
+      log.date === targetDate
+      && log.type === 'clock-in'
+      && (log.shiftType === requestedShiftType || (requestedShiftType === 'harian' && (log.shiftType === null || log.shiftType === undefined))),
+    )
+    if (hasSameTypeShift) {
+      throw createError({ statusCode: 409, statusMessage: `A ${requestedShiftType} shift has already been recorded for this business date` })
+    }
+
     const [existing] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
     if (!existing) {
-      await tx.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: shiftCode, shiftType: shiftType || 'harian', createdAt: now, updatedAt: now })
+      await tx.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: shiftCode, shiftType: requestedShiftType, createdAt: now, updatedAt: now })
     }
     else if (shiftCode || shiftType) {
       await tx.update(attendanceDay).set({ ...(shiftCode ? { selectedShiftCode: shiftCode } : {}), ...(shiftType ? { shiftType } : {}), updatedAt: now }).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate)))
@@ -65,7 +79,7 @@ export default defineEventHandler(async (event) => {
     await tx.insert(attendanceLog).values({
       id: randomUUID(), userId, date: targetDate, type: 'clock-in', timestamp: now,
       lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
-      shiftType: shiftType ?? null, shiftCode,
+      shiftType: requestedShiftType, shiftCode,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
       geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
