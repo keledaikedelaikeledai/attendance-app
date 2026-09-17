@@ -22,45 +22,26 @@ export default defineEventHandler(async (event) => {
   const tzOffset = typeof parsedTzOffset === 'number' && Number.isFinite(parsedTzOffset)
     ? parsedTzOffset
     : now.getTimezoneOffset()
-  // Prefer client-provided local date when available to avoid server/UTC calendar drift
   const date = isYmd(clientDate) ? clientDate : localNowYmdFromOffset(now, tzOffset)
 
-  // ensure day exists
-  const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date))).limit(1)
-  if (!existing) {
-    await db.insert(attendanceDay).values({ id: randomUUID(), userId, date, createdAt: now, updatedAt: now })
-  }
-
-  // Determine shift metadata to persist on the clock-out log.
-  // Keep a fallback chain so reconciliation can still pair this with its clock-in.
-  const dayRow = existing || (await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date))).limit(1))[0]
-  let shiftTypeToPersist: 'harian' | 'bantuan' | null = (bodyShiftType ?? (dayRow as any)?.shiftType) ?? null
-  let shiftCodeToPersist: string | null = (bodyShiftCode ?? (dayRow as any)?.selectedShiftCode ?? null)
-
-  // Detect crossing-midnight scenario: if a previous day's selected shift crosses midnight
-  // and there's a clock-in on that previous date, and the current timestamp falls before
-  // that shift's end (i.e. after midnight but still part of previous shift), persist the
-  // clock-out under the previous date so the shift is attributed correctly.
+  // Resolve the business date before creating/updating attendanceDay so an
+  // overnight clock-out never leaves an empty record for the following date.
   let targetDate = date
+  let prevShiftCode: string | null = null
+  let prevShiftType: 'harian' | 'bantuan' | null = null
   try {
     const prevDateStr = addDaysYmd(date, -1)
-
-    // Check for a clock-in on the previous date
     const prevLogs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, prevDateStr)))
     const hasPrevClockIn = prevLogs.some((l: any) => l.type === 'clock-in')
     if (hasPrevClockIn) {
-      // Prefer the selected shift code for the previous day if present, else use the clock-in's shiftCode
       const [prevDayRow] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, prevDateStr))).limit(1)
-      let prevShiftCode: string | null = (prevDayRow as any)?.selectedShiftCode ?? null
-      let prevShiftType: 'harian' | 'bantuan' | null = ((prevDayRow as any)?.shiftType ?? null) as any
-      if (!prevShiftCode) {
+      prevShiftCode = (prevDayRow as any)?.selectedShiftCode ?? null
+      prevShiftType = ((prevDayRow as any)?.shiftType ?? null) as any
+      if (!prevShiftCode || !prevShiftType) {
         const firstCi = [...prevLogs].reverse().find((l: any) => l.type === 'clock-in')
-        prevShiftCode = firstCi ? (firstCi as any).shiftCode ?? null : null
-        if (!prevShiftType) prevShiftType = firstCi ? ((firstCi as any).shiftType ?? null) : null
+        if (!prevShiftCode) prevShiftCode = firstCi ? ((firstCi as any).shiftCode ?? null) : null
+        if (!prevShiftType) prevShiftType = firstCi ? (((firstCi as any).shiftType ?? null) as any) : null
       }
-
-      if (!shiftCodeToPersist) shiftCodeToPersist = prevShiftCode
-      if (!shiftTypeToPersist) shiftTypeToPersist = prevShiftType
 
       if (prevShiftCode) {
         const [sd] = await db.select().from(shift).where(eq(shift.code, prevShiftCode)).limit(1)
@@ -75,15 +56,9 @@ export default defineEventHandler(async (event) => {
             const startMin = sh * 60 + sm
             const endMin = eh * 60 + em
             if (startMin > endMin) {
-              // shift crosses midnight: compute end anchored to previous date + 1
               const endDateYmd = addDaysYmd(prevDateStr, 1)
               const endMsUtc = localDateTimeToUtcMs(endDateYmd, eh, em, tzOffset)
-              if (now.getTime() <= endMsUtc) {
-                // attribute this clock-out to the previous date
-                targetDate = prevDateStr
-                if (!shiftCodeToPersist) shiftCodeToPersist = prevShiftCode
-                if (!shiftTypeToPersist) shiftTypeToPersist = prevShiftType
-              }
+              if (now.getTime() <= endMsUtc) targetDate = prevDateStr
             }
           }
         }
@@ -94,6 +69,15 @@ export default defineEventHandler(async (event) => {
     const log = useLogger()
     log.warn({ err, userId, date }, 'Cross-midnight date attribution failed, using default')
   }
+
+  const [dayRow] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
+  if (!dayRow) {
+    await db.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: bodyShiftCode ?? prevShiftCode, shiftType: bodyShiftType ?? prevShiftType ?? undefined, createdAt: now, updatedAt: now })
+  }
+
+  const day = dayRow || (await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1))[0]
+  let shiftTypeToPersist: 'harian' | 'bantuan' | null = (bodyShiftType ?? (day as any)?.shiftType) ?? null
+  let shiftCodeToPersist: string | null = (bodyShiftCode ?? (day as any)?.selectedShiftCode ?? prevShiftCode) ?? null
 
   await db.insert(attendanceLog).values({
     id: randomUUID(),

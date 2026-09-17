@@ -51,7 +51,6 @@ export default defineEventHandler(async (event) => {
           const startMin = sh * 60 + sm
           const endMin = eh * 60 + em
           if (startMin > endMin) {
-            // crossing midnight, compute end anchored to prev date + 1
             const endDateYmd = addDaysYmd(prevDateStr, 1)
             const endMsUtc = localDateTimeToUtcMs(endDateYmd, eh, em, tzOffset)
             if (now.getTime() <= endMsUtc) {
@@ -67,7 +66,7 @@ export default defineEventHandler(async (event) => {
     log.warn({ err, userId, date }, 'Cross-midnight date attribution failed, using today')
   }
 
-  // upsert day (use targetDate so clock-ins attributed correctly)
+  // Upsert the attendance day using the business date actually assigned above.
   const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
   if (!existing) {
     await db.insert(attendanceDay).values({
@@ -91,7 +90,6 @@ export default defineEventHandler(async (event) => {
       .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate)))
   }
 
-  // insert log
   await db.insert(attendanceLog).values({
     id: randomUUID(),
     userId,
@@ -124,11 +122,12 @@ export default defineEventHandler(async (event) => {
     timezoneOffset: tzOffset,
   })
 
-  // return updated state
-  const [day] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, date))).limit(1)
-  const logs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, date))).orderBy(attendanceLog.timestamp)
+  // Return the state for the business date actually used for this clock-in.
+  const [day] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
+  const logs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, targetDate))).orderBy(attendanceLog.timestamp)
   return {
-    date,
+    date: targetDate,
+    requestedDate: date,
     selectedShiftCode: day?.selectedShiftCode ?? null,
     shiftType: (day as any)?.shiftType ?? null,
     logs,
