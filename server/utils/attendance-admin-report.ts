@@ -1,4 +1,4 @@
-import { createShiftWindow, parseBusinessDate } from '~~/shared/utils/attendance-date'
+import { createShiftWindow, parseBusinessDate } from '../../shared/utils/attendance-date'
 import { resolveHistoricalShiftTiming } from './attendance-shift-history'
 
 export type AttendanceAdminShiftTiming = {
