@@ -36,29 +36,37 @@ export const attendanceDay = pgTable(
   }),
 )
 
-export const attendanceLog = pgTable('attendance_log', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  // Local calendar date from client in YYYY-MM-DD
-  date: text('date').notNull(),
-  type: varchar('type', { length: 16 }).notNull(), // 'clock-in' | 'clock-out'
-  timestamp: timestamp('timestamp', { mode: 'date' }).notNull(),
-  lat: doublePrecision('lat'),
-  lng: doublePrecision('lng'),
-  accuracy: doublePrecision('accuracy'),
-  shiftType: text('shift_type'),
-  shiftCode: text('shift_code'),
-  // Optional short reason for early clock-out (max 200 chars enforced by application)
-  earlyReason: text('early_reason'),
-  // Optional comment when clocking in/out outside geofence (max 200 chars enforced by application)
-  geofenceComment: text('geofence_comment'),
-  geofenceId: text('geofence_id'),
-  geofenceName: text('geofence_name'),
-  createdAt: timestamp('created_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
-  updatedAt: timestamp('updated_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
-})
+export const attendanceLog = pgTable(
+  'attendance_log',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    // Local calendar date from client in YYYY-MM-DD
+    date: text('date').notNull(),
+    type: varchar('type', { length: 16 }).notNull(), // 'clock-in' | 'clock-out'
+    timestamp: timestamp('timestamp', { mode: 'date' }).notNull(),
+    lat: doublePrecision('lat'),
+    lng: doublePrecision('lng'),
+    accuracy: doublePrecision('accuracy'),
+    shiftType: text('shift_type'),
+    shiftCode: text('shift_code'),
+    // Optional short reason for early clock-out (max 200 chars enforced by application)
+    earlyReason: text('early_reason'),
+    // Optional comment when clocking in/out outside geofence (max 200 chars enforced by application)
+    geofenceComment: text('geofence_comment'),
+    geofenceId: text('geofence_id'),
+    geofenceName: text('geofence_name'),
+    createdAt: timestamp('created_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).$defaultFn(() => new Date()).notNull(),
+  },
+  table => ({
+    typeCheck: check('attendance_log_type_check', sql`${table.type} IN ('clock-in','clock-out')`),
+    dateFormatCheck: check('attendance_log_date_format_check', sql`${table.date} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'`),
+    shiftTypeCheck: check('attendance_log_shift_type_check', sql`${table.shiftType} IS NULL OR ${table.shiftType} IN ('harian','bantuan')`),
+  }),
+)
 
 // Geofence configuration (multiple rows)
 export const geoFence = pgTable(
