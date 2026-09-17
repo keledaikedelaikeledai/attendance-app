@@ -4,6 +4,7 @@ import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { addBusinessDays, formatBusinessDate, getCalendarDate, parseBusinessDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
+import { validateAttendanceShiftDefinition, validateAttendanceShiftType } from '../../utils/attendance-shift-validation'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -22,6 +23,7 @@ export default defineEventHandler(async (event) => {
     geofenceName?: string
   }
   if (!bodyTimeZone) throw createError({ statusCode: 400, statusMessage: 'timeZone required' })
+  validateAttendanceShiftType(shiftType)
 
   const db = useDb()
   const userId = session.user.id
@@ -39,6 +41,8 @@ export default defineEventHandler(async (event) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`)
 
     const shiftDef = shiftCode ? (await tx.select().from(shift).where(eq(shift.code, shiftCode)).limit(1))[0] : undefined
+    validateAttendanceShiftDefinition(shiftCode, shiftDef)
+
     const targetDate = shiftDef
       ? formatBusinessDate(resolveBusinessDateFromInstant(now, { start: shiftDef.start, end: shiftDef.end }, bodyTimeZone))
       : calendarDate

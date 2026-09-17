@@ -2,6 +2,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, shift } from '~~/server/database/schemas'
 import { formatBusinessDate, getCalendarDate } from '~~/shared/utils/attendance-date'
+import { validateAttendanceShiftDefinition, validateAttendanceShiftType } from '../../utils/attendance-shift-validation'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
@@ -13,9 +14,7 @@ export default defineEventHandler(async (event) => {
   const { shiftCode, shiftType, timeZone } = body as { shiftCode?: string, shiftType?: 'harian' | 'bantuan', timeZone?: string }
   if (!shiftCode) throw createError({ statusCode: 400, statusMessage: 'shiftCode required' })
   if (!timeZone) throw createError({ statusCode: 400, statusMessage: 'timeZone required' })
-  if (shiftType !== undefined && shiftType !== 'harian' && shiftType !== 'bantuan') {
-    throw createError({ statusCode: 400, statusMessage: 'Invalid shiftType' })
-  }
+  validateAttendanceShiftType(shiftType)
 
   const db = useDb()
   const userId = session.user.id
@@ -31,8 +30,8 @@ export default defineEventHandler(async (event) => {
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`)
 
-    const [shiftDef] = await tx.select({ code: shift.code }).from(shift).where(eq(shift.code, shiftCode)).limit(1)
-    if (!shiftDef) throw createError({ statusCode: 400, statusMessage: 'Invalid shiftCode' })
+    const [shiftDef] = await tx.select({ code: shift.code, active: shift.active }).from(shift).where(eq(shift.code, shiftCode)).limit(1)
+    validateAttendanceShiftDefinition(shiftCode, shiftDef)
 
     const [existing] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, theDate))).limit(1)
     if (!existing) {
