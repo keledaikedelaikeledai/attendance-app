@@ -59,18 +59,12 @@ export default defineEventHandler(async (event) => {
     // null shiftType are treated as Harian for backward compatibility because
     // Harian is the existing/default shift type.
     const requestedShiftType = shiftType || 'harian'
-    const sameTypeClockIns = await tx.select({ id: attendanceLog.id })
-      .from(attendanceLog)
-      .where(and(
-        eq(attendanceLog.userId, userId),
-        eq(attendanceLog.date, targetDate),
-        eq(attendanceLog.type, 'clock-in'),
-        requestedShiftType === 'harian'
-          ? or(eq(attendanceLog.shiftType, 'harian'), sql`${attendanceLog.shiftType} IS NULL`)
-          : eq(attendanceLog.shiftType, requestedShiftType),
-      ))
-      .limit(1)
-    if (sameTypeClockIns.length) {
+    const hasSameTypeShift = existingLogs.some(log =>
+      log.date === targetDate
+      && log.type === 'clock-in'
+      && (log.shiftType === requestedShiftType || (requestedShiftType === 'harian' && log.shiftType == null)),
+    )
+    if (hasSameTypeShift) {
       throw createError({ statusCode: 409, statusMessage: `A ${requestedShiftType} shift has already been recorded for this business date` })
     }
 
@@ -85,7 +79,7 @@ export default defineEventHandler(async (event) => {
     await tx.insert(attendanceLog).values({
       id: randomUUID(), userId, date: targetDate, type: 'clock-in', timestamp: now,
       lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
-      shiftType: shiftType ?? null, shiftCode,
+      shiftType: requestedShiftType, shiftCode,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
       geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
