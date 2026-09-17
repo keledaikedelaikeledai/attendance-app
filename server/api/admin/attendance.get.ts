@@ -1,9 +1,8 @@
 import process from 'node:process'
 import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { attendanceLog, shift, user } from '~~/server/database/schemas'
-import { createShiftWindow, parseBusinessDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
-import { resolveHistoricalShiftTiming } from '../../utils/attendance-shift-history'
+import { calculateAttendanceReportMetrics } from '../../utils/attendance-admin-report'
 import { normalizeTimestampRaw } from '../../utils/time'
 
 function isAllowedAdmin(email?: string | null) {
@@ -97,70 +96,6 @@ export default defineEventHandler(async (event) => {
   const shiftMap = Object.fromEntries(shifts.map(s => [s.code, { code: s.code, label: s.label, start: s.start, end: s.end }])) as Record<string, { code: string, label: string, start: string, end: string }>
   const BUSINESS_TZ = process.env.BUSINESS_TZ || 'Asia/Jakarta'
 
-  function getShiftBoundaryInstants(ds: string, sd: { start: string, end: string }) {
-    const businessDate = parseBusinessDate(ds)
-    const shiftWindow = createShiftWindow(businessDate, sd, BUSINESS_TZ)
-    return { start: shiftWindow.start.toDate(), end: shiftWindow.end.toDate() }
-  }
-
-  function getHistoricalShiftTiming(val: any) {
-    const currentTiming = val.shiftCode ? shiftMap[val.shiftCode] : undefined
-    return resolveHistoricalShiftTiming(val.shiftStart, val.shiftEnd, currentTiming)
-  }
-
-  function finalizeDayCell(ds: string, groupedByShiftType: Record<string, any>) {
-    let totalLateMs = 0
-    let totalEarlyMs = 0
-    let countWorkingShifts = 0
-    let harian = 0
-    let bantuan = 0
-
-    for (const [st, val] of Object.entries(groupedByShiftType)) {
-      if (val.clockIn) {
-        countWorkingShifts++
-        if (st === 'harian') harian++
-        else if (st === 'bantuan') bantuan++
-        const sd = getHistoricalShiftTiming(val)
-        if (sd) {
-          const boundaries = getShiftBoundaryInstants(ds, sd)
-          const ci = new Date(val.clockIn)
-          groupedByShiftType[st].shiftStartIso = boundaries.start.toISOString()
-          totalLateMs += Math.max(0, ci.getTime() - boundaries.start.getTime())
-        }
-      }
-      if (val.clockOut) {
-        const sd = getHistoricalShiftTiming(val)
-        if (sd) {
-          const boundaries = getShiftBoundaryInstants(ds, sd)
-          const co = new Date(val.clockOut)
-          groupedByShiftType[st].shiftStartIso = boundaries.start.toISOString()
-          groupedByShiftType[st].shiftEndIso = boundaries.end.toISOString()
-          totalEarlyMs += Math.max(0, boundaries.end.getTime() - co.getTime())
-        }
-      }
-    }
-
-    return {
-      grouped: groupedByShiftType,
-      clockIn: undefined,
-      clockOut: undefined,
-      clockInLat: undefined,
-      clockInLng: undefined,
-      clockInAccuracy: undefined,
-      clockOutLat: undefined,
-      clockOutLng: undefined,
-      clockOutAccuracy: undefined,
-      shiftCode: undefined,
-      shiftType: undefined,
-      shift: undefined,
-      lateMs: totalLateMs,
-      earlyMs: totalEarlyMs,
-      workingShifts: countWorkingShifts,
-      harian,
-      bantuan,
-    } as const
-  }
-
   const rows = users.map(u => ({
     userId: u.id,
     email: u.email,
@@ -217,7 +152,7 @@ export default defineEventHandler(async (event) => {
             delete val.earlyReason
           }
         }
-        return [ds, finalizeDayCell(ds, groupedByShiftType)]
+        return [ds, calculateAttendanceReportMetrics(ds, groupedByShiftType, shiftMap, BUSINESS_TZ)]
       })) as Record<string, any>
 
       for (let i = 1; i < allDays.length; i++) {
@@ -271,8 +206,8 @@ export default defineEventHandler(async (event) => {
         }
 
         if (changed) {
-          byDate[prevDs] = finalizeDayCell(prevDs, prevGrouped)
-          byDate[currDs] = finalizeDayCell(currDs, currGrouped)
+          byDate[prevDs] = calculateAttendanceReportMetrics(prevDs, prevGrouped, shiftMap, BUSINESS_TZ)
+          byDate[currDs] = calculateAttendanceReportMetrics(currDs, currGrouped, shiftMap, BUSINESS_TZ)
         }
       }
 
