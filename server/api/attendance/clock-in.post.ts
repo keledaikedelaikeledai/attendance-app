@@ -1,159 +1,78 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, or } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
-import { addDaysYmd, isYmd, localNowYmdFromOffset } from '~~/server/utils/local-date'
-import { formatBusinessDate, getCalendarDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
+import { addBusinessDays, formatBusinessDate, getCalendarDate, parseBusinessDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
 
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
-  if (!session?.user)
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, shiftType, coords, date: clientDate, timeZone: bodyTimeZone, tzOffset: bodyTzOffset, geofenceComment, geofenceId, geofenceName } = body as {
+  const { shiftCode, shiftType, coords, timeZone: bodyTimeZone, geofenceComment, geofenceId, geofenceName } = body as {
     shiftCode?: string
     shiftType?: 'harian' | 'bantuan'
     coords?: { latitude?: number, longitude?: number, accuracy?: number }
-    date?: string
     timeZone?: string
-    tzOffset?: number | string
     geofenceComment?: string
     geofenceId?: string
     geofenceName?: string
   }
+  if (!bodyTimeZone) throw createError({ statusCode: 400, statusMessage: 'timeZone required' })
 
   const db = useDb()
   const userId = session.user.id
   const now = new Date()
-  const parsedTzOffset = typeof bodyTzOffset === 'string' ? Number(bodyTzOffset) : bodyTzOffset
-  const tzOffset = typeof parsedTzOffset === 'number' && Number.isFinite(parsedTzOffset)
-    ? parsedTzOffset
-    : now.getTimezoneOffset()
-
-  let date: string
-  if (bodyTimeZone) {
-    try {
-      date = formatBusinessDate(getCalendarDate(now, bodyTimeZone))
-    }
-    catch {
-      throw createError({ statusCode: 400, statusMessage: 'Invalid timeZone' })
-    }
-  }
-  else {
-    date = isYmd(clientDate) ? clientDate : localNowYmdFromOffset(now, tzOffset)
-  }
-
-  // If the user's selected shift for the previous business date crosses midnight
-  // and the current instant is still inside that shift window, keep the clock-in
-  // attached to the previous business date.
-  let targetDate = date
+  let calendarDate: string
   try {
-    const prevDateStr = addDaysYmd(date, -1)
-    const [prevDayRow] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, prevDateStr))).limit(1)
-    let prevShiftCode = (prevDayRow as any)?.selectedShiftCode ?? null
-    if (!prevShiftCode) {
-      const prevLogs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, prevDateStr)))
-      const latestCi = [...prevLogs].reverse().find((l: any) => l.type === 'clock-in')
-      prevShiftCode = latestCi ? ((latestCi as any).shiftCode ?? null) : null
-    }
+    calendarDate = formatBusinessDate(getCalendarDate(now, bodyTimeZone))
+  }
+  catch {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid timeZone' })
+  }
 
-    if (prevShiftCode) {
-      const [sd] = await db.select().from(shift).where(eq(shift.code, prevShiftCode)).limit(1)
-      if (sd && bodyTimeZone) {
-        const resolved = resolveBusinessDateFromInstant(now, { start: sd.start, end: sd.end }, bodyTimeZone)
-        targetDate = formatBusinessDate(resolved)
-      }
-      else if (sd) {
-        const partsStart = (sd.start || '').split(':')
-        const partsEnd = (sd.end || '').split(':')
-        const sh = Number(partsStart[0])
-        const sm = Number(partsStart[1])
-        const eh = Number(partsEnd[0])
-        const em = Number(partsEnd[1])
-        if (![sh, sm, eh, em].some(n => Number.isNaN(n))) {
-          const startMin = sh * 60 + sm
-          const endMin = eh * 60 + em
-          if (startMin > endMin) {
-            const clientLocal = new Date(now.getTime() - tzOffset * 60000)
-            const localMin = clientLocal.getUTCHours() * 60 + clientLocal.getUTCMinutes()
-            if (localMin <= endMin) targetDate = prevDateStr
-          }
-        }
-      }
-    }
+  const shiftDef = shiftCode ? (await db.select().from(shift).where(eq(shift.code, shiftCode)).limit(1))[0] : undefined
+  const targetDate = shiftDef
+    ? formatBusinessDate(resolveBusinessDateFromInstant(now, { start: shiftDef.start, end: shiftDef.end }, bodyTimeZone))
+    : calendarDate
+  const previousDate = formatBusinessDate(addBusinessDays(parseBusinessDate(targetDate), -1))
+
+  const existingLogs = await db.select().from(attendanceLog)
+    .where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, targetDate), eq(attendanceLog.date, previousDate))))
+    .orderBy(attendanceLog.timestamp)
+  let openClockIn: typeof existingLogs[number] | undefined
+  for (const log of existingLogs) {
+    if (log.type === 'clock-in') openClockIn = log
+    else if (log.type === 'clock-out' && openClockIn) openClockIn = undefined
   }
-  catch (err) {
-    const log = useLogger()
-    log.warn({ err, userId, date }, 'Cross-midnight date attribution failed, using today')
-  }
+  if (openClockIn) throw createError({ statusCode: 409, statusMessage: 'Attendance session is already open' })
 
   const [existing] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
   if (!existing) {
-    await db.insert(attendanceDay).values({
-      id: randomUUID(),
-      userId,
-      date: targetDate,
-      selectedShiftCode: shiftCode,
-      shiftType: (shiftType as any) || 'harian',
-      createdAt: now,
-      updatedAt: now,
-    })
+    await db.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: shiftCode, shiftType: shiftType || 'harian', createdAt: now, updatedAt: now })
   }
   else if (shiftCode || shiftType) {
-    await db
-      .update(attendanceDay)
-      .set({
-        ...(shiftCode ? { selectedShiftCode: shiftCode } : {}),
-        ...(shiftType ? { shiftType: shiftType as any } : {}),
-        updatedAt: now,
-      })
-      .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate)))
+    await db.update(attendanceDay).set({ ...(shiftCode ? { selectedShiftCode: shiftCode } : {}), ...(shiftType ? { shiftType } : {}), updatedAt: now }).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate)))
   }
 
   await db.insert(attendanceLog).values({
-    id: randomUUID(),
-    userId,
-    date: targetDate,
-    type: 'clock-in',
-    timestamp: now,
-    lat: coords?.latitude,
-    lng: coords?.longitude,
-    accuracy: coords?.accuracy,
-    shiftType: shiftType ?? null,
-    shiftCode,
+    id: randomUUID(), userId, date: targetDate, type: 'clock-in', timestamp: now,
+    lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
+    shiftType: shiftType ?? null, shiftCode,
     geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
     geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
     geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: now, updatedAt: now,
   })
 
   const log = useLogger()
   log.info({ userId, date: targetDate, shiftCode, shiftType, lat: coords?.latitude, lng: coords?.longitude }, 'Clock-in recorded')
-  trackServerEvent('attendance.clock-in', {
-    userId,
-    date: targetDate,
-    shiftCode,
-    shiftType,
-    lat: coords?.latitude,
-    lng: coords?.longitude,
-    accuracy: coords?.accuracy,
-    userAgent: event.node.req.headers['user-agent'],
-    timezoneOffset: tzOffset,
-    timeZone: bodyTimeZone || null,
-  })
+  trackServerEvent('attendance.clock-in', { userId, date: targetDate, shiftCode, shiftType, lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy, userAgent: event.node.req.headers['user-agent'], timeZone: bodyTimeZone })
 
   const [day] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
   const logs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, targetDate))).orderBy(attendanceLog.timestamp)
-  return {
-    date: targetDate,
-    requestedDate: date,
-    selectedShiftCode: day?.selectedShiftCode ?? null,
-    shiftType: (day as any)?.shiftType ?? null,
-    logs,
-  }
+  return { date: targetDate, requestedDate: calendarDate, selectedShiftCode: day?.selectedShiftCode ?? null, shiftType: (day as any)?.shiftType ?? null, logs }
 })
