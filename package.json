@@ -9,6 +9,7 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
+    "test": "bun test",
     "k6:run": "k6 run performance/k6/default.js",
     "k6:cloud": "k6 cloud performance/k6/default.js",
     "seed:last-month": "node scripts/seed_last_month_attendance.js",
@@ -21,6 +22,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@internationalized/date": "^3.12.3",
     "@nuxt/fonts": "^0.11.4",
     "@nuxt/ui": "^4.0.1",
     "@nuxtjs/i18n": "10.1.1",
