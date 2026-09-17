@@ -17,6 +17,7 @@ export interface AttendanceLog {
 }
 
 const shifts = ref<ShiftDef[]>([])
+const clientTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
 async function loadShifts() {
   const rows = await $fetch<ShiftDef[]>('/api/shifts', { credentials: 'include', query: { ts: Date.now() } })
@@ -50,12 +51,8 @@ const selectedShiftCode = ref<ShiftCode | undefined>()
 const selectedShiftType = ref<'harian' | 'bantuan' | undefined>()
 
 async function refresh() {
-  const now = new Date()
-  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const tzOffset = now.getTimezoneOffset()
-  const s = await $fetch<any>('/api/attendance', { method: 'GET', credentials: 'include', query: { ts: Date.now(), date: localDate, tzOffset } })
-  if (!s)
-    return
+  const s = await $fetch<any>('/api/attendance', { method: 'GET', credentials: 'include', query: { ts: Date.now(), timeZone: clientTimeZone() } })
+  if (!s) return
   if (!shifts.value.length) await loadShifts()
   clockedIn.value = !!s.clockedIn
   clockInTime.value = s.clockInTime
@@ -69,15 +66,7 @@ async function refresh() {
     accuracy: l.accuracy ?? undefined,
     shiftCode: l.shiftCode ?? undefined,
     shiftType: l.shiftType ?? undefined,
-    date: l.date ?? (() => {
-      try {
-        const dd = new Date(l.timestamp)
-        return `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`
-      }
-      catch {
-        return undefined
-      }
-    })(),
+    date: l.date,
     earlyReason: (l as any).earlyReason ?? (l as any).early_reason ?? null,
     geofenceComment: (l as any).geofenceComment ?? (l as any).geofence_comment ?? null,
     geofenceId: (l as any).geofenceId ?? (l as any).geofence_id ?? null,
@@ -155,9 +144,7 @@ const lateByHuman = computed(() => {
 async function setShift(code: ShiftCode | undefined, type?: 'harian' | 'bantuan' | undefined) {
   selectedShiftCode.value = code
   if (type) selectedShiftType.value = type
-  const now = new Date()
-  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  await $fetch('/api/attendance/shift', { method: 'POST', body: { shiftCode: code, shiftType: type, date: localDate }, credentials: 'include' })
+  await $fetch('/api/attendance/shift', { method: 'POST', body: { shiftCode: code, shiftType: type, timeZone: clientTimeZone() }, credentials: 'include' })
   await refresh()
 }
 
@@ -175,14 +162,12 @@ interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCod
 async function clockIn(opts?: ClockInOptions) {
   if (clockedIn.value) return
   try {
-    const now = new Date()
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     const shiftTypeToCheck = selectedShiftType.value
     if (shiftTypeToCheck) {
       for (const l of logs.value) {
         if (l.type !== 'clock-in') continue
         if (l.shiftType !== shiftTypeToCheck) continue
-        if (l.date === today) {
+        if (l.date === new Intl.DateTimeFormat('en-CA', { timeZone: clientTimeZone() }).format(new Date())) {
           try {
             const _t = (typeof useToast === 'function') ? useToast() : null
             if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
@@ -197,27 +182,22 @@ async function clockIn(opts?: ClockInOptions) {
     useErrorReporter().captureException(err, { context: 'clock-in-duplicate-check' })
   }
   if (opts?.shiftCode) selectedShiftCode.value = opts.shiftCode
-  const now = new Date()
-  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const tzOffset = now.getTimezoneOffset()
   const res = await $fetch<any>('/api/attendance/clock-in', {
     method: 'POST',
     body: {
       shiftCode: selectedShiftCode.value,
       shiftType: selectedShiftType.value,
-      date: localDate,
-      tzOffset,
+      timeZone: clientTimeZone(),
       coords: opts?.coords ? { latitude: opts.coords.latitude, longitude: opts.coords.longitude, accuracy: opts.coords.accuracy } : undefined,
       geofenceComment: typeof opts?.geofenceComment === 'string' && opts.geofenceComment.length ? opts.geofenceComment.slice(0, 200) : undefined,
-      geofenceId: typeof opts?.geofenceId === 'string' && opts.geofenceId.length ? opts.geofenceId.slice(0, 64) : undefined,
-      geofenceName: typeof opts?.geofenceName === 'string' && opts.geofenceName.length ? opts.geofenceName.slice(0, 200) : undefined,
+      geofenceId: typeof opts?.geofenceId === 'string' && opts?.geofenceId.length ? opts.geofenceId.slice(0, 64) : undefined,
+      geofenceName: typeof opts?.geofenceName === 'string' && opts?.geofenceName.length ? opts.geofenceName.slice(0, 200) : undefined,
     },
     credentials: 'include',
   })
   if (res) {
     clockedIn.value = true
-    const nowIso = new Date().toISOString()
-    clockInTime.value = nowIso
+    clockInTime.value = new Date().toISOString()
     clockOutTime.value = undefined
     selectedShiftCode.value = res.selectedShiftCode ?? selectedShiftCode.value
     selectedShiftType.value = res.shiftType ?? selectedShiftType.value
@@ -227,17 +207,13 @@ async function clockIn(opts?: ClockInOptions) {
 
 async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | null, geofenceComment?: string | null, geofenceId?: string | null, geofenceName?: string | null) {
   if (!clockedIn.value) return
-  const now = new Date()
-  const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const tzOffset = now.getTimezoneOffset()
   const res = await $fetch<any>('/api/attendance/clock-out', {
     method: 'POST',
     body: {
       coords: coords ? { latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy } : undefined,
       shiftType: selectedShiftType.value,
       shiftCode: selectedShiftCode.value,
-      date: localDate,
-      tzOffset,
+      timeZone: clientTimeZone(),
       earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
@@ -247,8 +223,7 @@ async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | 
   })
   if (res) {
     clockedIn.value = false
-    const nowIso = new Date().toISOString()
-    clockOutTime.value = nowIso
+    clockOutTime.value = new Date().toISOString()
   }
   await refresh()
 }
@@ -260,38 +235,13 @@ async function resetDay() {
 
 export function useAttendance() {
   return {
-    clockedIn,
-    clockInTime,
-    clockOutTime,
-    logs,
-    durationMs,
-    durationHuman,
-    isLate,
-    lateByMs,
-    lateByHuman,
-    clockIn,
-    clockOut,
-    resetDay,
-    shifts,
-    selectedShiftCode,
-    selectedShiftType,
-    setShift,
-    ensureDefaultShift,
+    clockedIn, clockInTime, clockOutTime, logs, durationMs, durationHuman, isLate, lateByMs, lateByHuman,
+    clockIn, clockOut, resetDay, shifts, selectedShiftCode, selectedShiftType, setShift, ensureDefaultShift,
     isShiftActive: (shiftType?: 'harian' | 'bantuan' | undefined) => {
       if (!shiftType) return false
-      try {
-        const now = new Date()
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-        for (const l of logs.value) {
-          if (l.type !== 'clock-in') continue
-          if (l.shiftType !== shiftType) continue
-          if (l.date === today) return true
-        }
-      }
-      catch {}
-      return false
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: clientTimeZone() }).format(new Date())
+      return logs.value.some(l => l.type === 'clock-in' && l.shiftType === shiftType && l.date === today)
     },
-    getShiftLabel,
-    refresh,
+    getShiftLabel, refresh,
   }
 }
