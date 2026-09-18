@@ -49,12 +49,14 @@ Notes:
 - Drizzle is configured in `drizzle.config.ts` with dialect `postgresql`.
 - The server uses `pg` (node-postgres) in `server/utils/db.ts` and reads `DATABASE_URL`.
 
-3) Run migrations
+3) Database schema changes
+
+For a disposable/local database, Drizzle tooling is available:
 
 ```bash
-# Generate SQL from schema (optional)
+# Generate SQL from schema
 bun run db:generate
-# Apply schema changes
+# Push schema directly (local/disposable databases only)
 bun run db:push
 # Optional studio
 bun run db:studio
@@ -62,7 +64,7 @@ bun run db:studio
 
 Schemas live in `server/database/schemas/` and include Better Auth tables: `user`, `session`, `account`, `verification`, plus attendance tables.
 
-For Docker deployment, migrations are automatically applied on container startup.
+The existing production PostgreSQL database predates a complete Drizzle migration ledger. Do not run `db:push` or enable automatic `db:migrate` against it until the migration baseline has been reconciled. See `docs/POSTGRES_MIGRATION_BASELINE.md` and the read-only audit at `scripts/audit_postgres_baseline.sql`.
 
 4) Run the app
 
