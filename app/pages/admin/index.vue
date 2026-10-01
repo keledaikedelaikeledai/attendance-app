@@ -437,7 +437,9 @@ definePageMeta({
 
 <style scoped>
 .text-muted { color: var(--u-color-muted, #6b7280); }
-  .admin-presence-chart :deep(.apexcharts-bar-area .apexcharts-series.apexcharts-series-0 .apexcharts-bar-path) {
+  /* Target the bare <path> in the first series group. apexcharts 7 dropped the
+     `.apexcharts-bar-path` class this relied on, which left the rule dead. */
+  .admin-presence-chart :deep(.apexcharts-bar-area .apexcharts-series.apexcharts-series-0 path) {
     fill: var(--u-color-primary-500, #efb100) !important;
   }
 </style>

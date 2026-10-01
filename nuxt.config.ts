@@ -64,6 +64,14 @@ export default defineNuxtConfig({
     experimental: {
       openAPI: true,
     },
+    externals: {
+      // xtend is CommonJS with `"main": "immutable"` and no exports map, reached
+      // via postgres-interval (a drizzle-orm dependency). Sentry 11's build plugin
+      // makes Nitro externalize it, which emits an extensionless `xtend/mutable`
+      // ESM import and crashes the server at boot with ERR_MODULE_NOT_FOUND.
+      // Inlining lets the bundler resolve the CJS interop instead.
+      inline: ['xtend'],
+    },
   },
 
   sentry: {
