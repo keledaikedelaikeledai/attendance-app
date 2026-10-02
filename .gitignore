@@ -26,6 +26,12 @@ logs
 .wrangler
 sqlite.db
 ecosystem.config.cjs
+
+# Production DB dumps & audits — contain password hashes, session tokens and PII.
+# Keep these local; never commit them.
+*.dump
+*.sql.gz
+baseline-audit.txt
 # Sentry Config File
 .env.sentry-build-plugin
 .mimocode
