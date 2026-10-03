@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { toTypedSchema } from '@vee-validate/zod'
-import { computed, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { z } from 'zod'
 import { authClient } from '~/utils/auth'
@@ -8,8 +8,13 @@ import { authClient } from '~/utils/auth'
 const toast = useToast()
 const { t } = useI18n()
 
-const user = ref<any>(null)
-const loading = ref(true)
+// Fetch the session at the top level of setup. Calling useSession(useFetch)
+// inside onMounted raised NUXT_E3003: Nuxt cannot await a fetch once the
+// component has mounted. This matches layouts/admin.vue and the user middleware.
+const { data: session } = await authClient.useSession(useFetch)
+
+const user = computed(() => session.value ?? null)
+const loading = computed(() => !session.value)
 
 // i18n: language switcher (use a select on the profile page)
 const { locale, locales, setLocale } = useI18n()
@@ -42,12 +47,6 @@ const profileSelectedLocale = computed({
     catch {
     }
   },
-})
-
-onMounted(async () => {
-  const { data } = await authClient.useSession(useFetch)
-  user.value = data.value ?? null
-  loading.value = false
 })
 
 function onLogout() {
