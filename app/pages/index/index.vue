@@ -537,7 +537,7 @@ onMounted(async () => {
           :disabled="clockedIn"
           :placeholder="t('index.shift.placeholder')"
           label-key="label"
-          value-key="code"
+          value-key="value"
         />
       </SFormField>
       <SFormField :label="t('index.shiftType.label')" :hint="t('index.shiftType.help')" label-mode="static">
