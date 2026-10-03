@@ -476,7 +476,7 @@ onMounted(async () => {
           <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
             {{ t('index.labels.clockIn') }}
           </dt>
-          <dd class="mt-1 font-mono text-lg tabular-nums text-[var(--selaras-resolved-text-default)]">
+          <dd class="mt-1 font-mono text-base tabular-nums text-[var(--selaras-resolved-text-default)] sm:text-lg whitespace-nowrap">
             {{ formatTime(clockInTime) }}
           </dd>
         </div>
@@ -484,7 +484,7 @@ onMounted(async () => {
           <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
             {{ t('index.labels.clockOut') }}
           </dt>
-          <dd class="mt-1 font-mono text-lg tabular-nums text-[var(--selaras-resolved-text-default)]">
+          <dd class="mt-1 font-mono text-base tabular-nums text-[var(--selaras-resolved-text-default)] sm:text-lg whitespace-nowrap">
             {{ formatTime(clockOutTime) }}
           </dd>
         </div>
@@ -492,7 +492,7 @@ onMounted(async () => {
           <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
             {{ t('index.labels.duration') }}
           </dt>
-          <dd class="mt-1 font-mono text-lg tabular-nums text-[var(--selaras-resolved-text-default)]">
+          <dd class="mt-1 font-mono text-base tabular-nums text-[var(--selaras-resolved-text-default)] sm:text-lg whitespace-nowrap">
             {{ durationHuman }}
           </dd>
         </div>
