@@ -121,10 +121,14 @@ const onSubmit = handleSubmit(async (values) => {
          leads with the avatar and name rather than a label-value grid. -->
     <div class="flex items-center gap-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
       <div class="shrink-0">
+        <!-- SAvatar only ships sm, md and lg, so a size="xl" falls straight back
+             to md and renders no bigger. Ask for lg and override the box with a
+             class instead - SAvatar merges the consumer class into its base. -->
         <SAvatar
           v-if="!loading && (user?.user?.displayName || user?.user?.username)"
           :alt="user?.user?.displayName ?? user?.user?.username"
-          size="xl"
+          size="lg"
+          class="size-16 text-xl"
         >
           {{ initials }}
         </SAvatar>
@@ -250,7 +254,7 @@ const onSubmit = handleSubmit(async (values) => {
 
     <SButton
       color="danger"
-      variant="soft"
+      variant="solid"
       size="lg"
       icon="i-heroicons-arrow-right-on-rectangle"
       block
