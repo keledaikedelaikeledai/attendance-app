@@ -36,34 +36,30 @@ const items = computed(() => [
 
     <slot />
 
-    <!-- `side` defaults to "bottom" in Selaras, so the old
-         `direction="bottom"` is redundant. The root is a fragment/teleport, so
-         `md:hidden` goes on a wrapper inside the content slot. -->
-    <SDrawer
-      :handle="false"
-      :open="true"
-      :overlay="false"
-      :modal="false"
-    >
-      <template #content>
-        <div class="md:hidden">
-          <SContainer>
-            <SNavigationMenu
-              :items="items"
-              variant="pill"
-              class="w-full"
-              :ui="{ root: 'flex [&>div]:w-full', list: 'w-full', item: 'flex-1' }"
-            >
-              <template #item="{ item }">
-                <div class="w-full flex flex-col justify-center items-center">
-                  <SIcon :name="item.icon" class="w-5 h-5 mb-1" />
-                  {{ item.label }}
-                </div>
-              </template>
-            </SNavigationMenu>
-          </SContainer>
+    <!-- A permanent bottom bar, not a drawer. It used to be an SDrawer held open
+         with overlay and modal both off, which bought nothing: a drawer portal
+         resolves to the same z token as modal content (both are 50), so the bar
+         sat above the modal overlay at 40 and stayed visible while a dialog was
+         open. A plain fixed element puts it at z-30, under the overlay, and
+         keeps the bar out of the portal entirely. -->
+    <div class="fixed inset-x-0 bottom-0 z-30 md:hidden">
+      <SContainer class="py-2">
+        <div class="rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-1 shadow-[var(--selaras-resolved-shadow-md)]">
+          <SNavigationMenu
+            :items="items"
+            variant="pill"
+            class="w-full"
+            :ui="{ root: 'flex [&>div]:w-full', list: 'w-full', item: 'flex-1' }"
+          >
+            <template #item="{ item }">
+              <div class="w-full flex flex-col justify-center items-center py-1">
+                <SIcon :name="item.icon" class="w-5 h-5 mb-1" />
+                {{ item.label }}
+              </div>
+            </template>
+          </SNavigationMenu>
         </div>
-      </template>
-    </SDrawer>
+      </SContainer>
+    </div>
   </SContainer>
 </template>

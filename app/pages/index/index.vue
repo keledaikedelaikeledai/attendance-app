@@ -497,33 +497,6 @@ onMounted(async () => {
           </dd>
         </div>
       </dl>
-
-      <SButton
-        v-if="!clockedIn"
-        color="primary"
-        icon="i-heroicons-play"
-        :loading="locating"
-        :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
-        size="lg"
-        block
-        class="mt-5"
-        @click="() => handleClock('in')"
-      >
-        {{ t('index.buttons.clockIn') }}
-      </SButton>
-      <SButton
-        v-else
-        color="primary"
-        variant="solid"
-        icon="i-heroicons-stop"
-        :loading="locating"
-        size="lg"
-        block
-        class="mt-5"
-        @click="handleClock('out')"
-      >
-        {{ t('index.buttons.clockOut') }}
-      </SButton>
     </div>
 
     <!-- Shift selection. Secondary, because it only matters before clock-in. -->
@@ -554,8 +527,39 @@ onMounted(async () => {
       </SFormField>
     </div>
 
+    <!-- The action follows the shift selectors on purpose. Both selects gate it,
+         so placing it above them shows a disabled button before the employee
+         has been offered a choice. -->
+
+    <SButton
+      v-if="!clockedIn"
+      color="primary"
+      icon="i-heroicons-play"
+      :loading="locating"
+      :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
+      size="lg"
+      block
+      class="mt-5"
+      @click="() => handleClock('in')"
+    >
+      {{ t('index.buttons.clockIn') }}
+    </SButton>
+    <SButton
+      v-else
+      color="primary"
+      variant="solid"
+      icon="i-heroicons-stop"
+      :loading="locating"
+      size="lg"
+      block
+      class="mt-5"
+      @click="handleClock('out')"
+    >
+      {{ t('index.buttons.clockOut') }}
+    </SButton>
+
     <!-- Location. Supporting detail, so it sits last and stays quiet. -->
-    <div class="mt-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-canvas)] p-5">
+    <div class="mt-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-sm font-medium text-[var(--selaras-resolved-text-default)]">
           {{ t('index.location.title') }}
