@@ -525,38 +525,37 @@ onMounted(async () => {
           value-key="value"
         />
       </SFormField>
+
+      <!-- Inside the card, below the selectors. Both selects gate the action, so
+           it must follow them, and grouping the three keeps the whole clocking
+           decision in one place. -->
+      <SButton
+        v-if="!clockedIn"
+        color="primary"
+        icon="i-heroicons-play"
+        :loading="locating"
+        :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
+        size="lg"
+        block
+        class="mt-5"
+        @click="() => handleClock('in')"
+      >
+        {{ t('index.buttons.clockIn') }}
+      </SButton>
+      <SButton
+        v-else
+        color="primary"
+        variant="solid"
+        icon="i-heroicons-stop"
+        :loading="locating"
+        size="lg"
+        block
+        class="mt-5"
+        @click="handleClock('out')"
+      >
+        {{ t('index.buttons.clockOut') }}
+      </SButton>
     </div>
-
-    <!-- The action follows the shift selectors on purpose. Both selects gate it,
-         so placing it above them shows a disabled button before the employee
-         has been offered a choice. -->
-
-    <SButton
-      v-if="!clockedIn"
-      color="primary"
-      icon="i-heroicons-play"
-      :loading="locating"
-      :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
-      size="lg"
-      block
-      class="mt-5"
-      @click="() => handleClock('in')"
-    >
-      {{ t('index.buttons.clockIn') }}
-    </SButton>
-    <SButton
-      v-else
-      color="primary"
-      variant="solid"
-      icon="i-heroicons-stop"
-      :loading="locating"
-      size="lg"
-      block
-      class="mt-5"
-      @click="handleClock('out')"
-    >
-      {{ t('index.buttons.clockOut') }}
-    </SButton>
 
     <!-- Location. Supporting detail, so it sits last and stays quiet. -->
     <div class="mt-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
