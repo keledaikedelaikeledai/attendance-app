@@ -40,7 +40,7 @@ function shiftBadgeColor(code?: string | null) {
 <template>
   <div class="flex items-center justify-between gap-3 border rounded-md px-3 py-2 bg-gray-50 dark:bg-gray-800/40">
     <div class="flex items-center gap-3">
-      <UIcon :name="props.log.type === 'clock-in' ? 'i-heroicons-play' : 'i-heroicons-stop'" class="w-5 h-5" />
+      <SIcon :name="props.log.type === 'clock-in' ? 'i-heroicons-play' : 'i-heroicons-stop'" class="w-5 h-5" />
       <div>
         <p class="font-medium">
           {{ props.log.type === 'clock-in' ? 'Clock In' : 'Clock Out' }}
@@ -49,9 +49,9 @@ function shiftBadgeColor(code?: string | null) {
           {{ formatTime(props.log.timestamp) }}
         </p>
         <div class="flex items-center gap-2 mt-1">
-          <UBadge v-if="props.log.shiftCode" variant="subtle" :color="shiftBadgeColor(props.log.shiftCode)">
+          <SBadge v-if="props.log.shiftCode" variant="soft" :color="shiftBadgeColor(props.log.shiftCode)">
             {{ props.log.shiftCode }}
-          </UBadge>
+          </SBadge>
           <span v-if="props.log.lat != null && props.log.lng != null" class="text-xs text-gray-500">{{ props.log.lat.toFixed(3) }}, {{ props.log.lng.toFixed(3) }}</span>
         </div>
       </div>

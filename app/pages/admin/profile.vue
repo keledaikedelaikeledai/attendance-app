@@ -15,11 +15,11 @@ async function changeMyPassword() {
   const sess = session?.value
   if (!sess?.user?.id) return
   if (!newPassword.value || newPassword.value.length < 6) {
-    toast.add({ title: 'Password too short', description: 'Password must be at least 6 characters', color: 'error' })
+    toast.add({ title: 'Password too short', description: 'Password must be at least 6 characters', color: 'danger' })
     return
   }
   if (newPassword.value !== confirmPassword.value) {
-    toast.add({ title: 'Passwords do not match', color: 'error' })
+    toast.add({ title: 'Passwords do not match', color: 'danger' })
     return
   }
 
@@ -33,7 +33,7 @@ async function changeMyPassword() {
   }
   catch (err: any) {
     console.error('failed to change password', err)
-    toast.add({ title: 'Error', description: err?.message || 'Failed to update password', color: 'error' })
+    toast.add({ title: 'Error', description: err?.message || 'Failed to update password', color: 'danger' })
   }
   finally {
     isSubmitting.value = false
@@ -49,7 +49,7 @@ async function changeMyPassword() {
       </h2>
       <div class="bg-white dark:bg-neutral-800 p-4 rounded shadow-sm">
         <div class="flex items-center gap-4 mb-4">
-          <UAvatar :src="session?.user.image || undefined" :alt="session?.user.username || 'Avatar'" size="xl" />
+          <SAvatar :src="session?.user.image || undefined" :alt="session?.user.username || 'Avatar'" size="lg" />
           <div>
             <div class="text-lg font-medium">
               {{ session?.user.name }}
@@ -92,32 +92,32 @@ async function changeMyPassword() {
             Change password
           </h3>
           <div class="space-y-3">
-            <UFormField label="New password">
-              <UInput
+            <SFormField label="New password" label-mode="static">
+              <SInput
                 v-model="newPassword"
                 type="password"
                 placeholder="New password"
                 class="w-full"
               />
-            </UFormField>
+            </SFormField>
 
-            <UFormField label="Confirm password">
-              <UInput
+            <SFormField label="Confirm password" label-mode="static">
+              <SInput
                 v-model="confirmPassword"
                 type="password"
                 placeholder="Confirm password"
                 class="w-full"
               />
-            </UFormField>
+            </SFormField>
 
             <div class="flex items-center gap-2">
-              <UButton
+              <SButton
                 color="primary"
                 :loading="isSubmitting"
                 @click="changeMyPassword"
               >
                 Update password
-              </UButton>
+              </SButton>
             </div>
           </div>
         </div>

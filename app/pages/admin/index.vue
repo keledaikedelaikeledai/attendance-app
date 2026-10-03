@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { TableColumnDef } from '@sewadah/selaras/table'
 import { useWindowSize } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 // `computed`, `ref`, `onMounted`, etc. are auto-imported by Nuxt; do not import from 'vue' explicitly
@@ -49,10 +49,9 @@ onMounted(async () => {
       const style = getComputedStyle(document.documentElement)
       const foundRaw = (
         [
-          '--u-color-primary',
-          '--u-color-primary-500',
+          '--selaras-resolved-color-primary-fill',
+          '--selaras-color-primary-fill',
           '--color-primary-500',
-          '--u-primary',
         ].map(k => style.getPropertyValue(k)).find(v => v && v.trim()) || ''
       ).trim()
 
@@ -78,7 +77,7 @@ onMounted(async () => {
         // try to resolve a secondary tint for the 'bantuan' series from the theme
         try {
           const found2 = (
-            ['--u-color-primary-300', '--u-color-primary-200', '--color-primary-300']
+            ['--selaras-resolved-color-primary-subtle', '--selaras-color-primary-subtle', '--color-primary-300']
               .map(k => style.getPropertyValue(k))
               .find(v => v && v.trim()) || ''
           ).trim()
@@ -212,7 +211,7 @@ const recentRecap = computed(() => {
   })
 })
 
-const recentRecapColumns = computed<TableColumn<any>[]>(() => [
+const recentRecapColumns = computed<TableColumnDef<any>[]>(() => [
   { header: t('admin.index.name'), accessorKey: 'name', size: 220 },
   { header: t('admin.index.totalDays'), accessorKey: 'totalWorkingDays', size: 120 },
   { header: t('admin.index.harian'), accessorKey: 'harian', size: 100 },
@@ -296,7 +295,7 @@ function formatPercent(v: number) {
 
 // helpers imported from composable: ensureShifts, shiftsMap, normalizeCell, entryLateMs, entryEarlyMs, humanizeMinutes
 
-// month is changed via `v-model` on USelect; use `load()` when needed
+// month is changed via `v-model` on SSelect; use `load()` when needed
 
 const monthOptions = computed(() => {
   const arr: Array<{ label: string, value: string }> = []
@@ -322,61 +321,61 @@ definePageMeta({
     <template #navRight>
       <div class="flex items-center gap-3">
         <label class="text-sm text-muted">{{ t('admin.index.month') }}</label>
-        <USelect
+        <SSelect
           v-model="month"
           class="w-52"
           :items="monthOptions"
-          option-attribute="label"
-          value-attribute="value"
+          label-key="label"
+          value-key="value"
         />
-        <UButton
+        <SButton
           icon="i-heroicons-arrow-path"
           :loading="isLoading"
           class="hidden md:inline-flex"
           @click="refreshAll"
         >
           {{ t('admin.index.refresh') }}
-        </UButton>
+        </SButton>
       </div>
     </template>
 
     <div class="space-y-6 p-6">
       <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <UCard>
+        <SCard>
           <div class="text-sm text-muted">
             {{ t('admin.index.totalUsers') }}
           </div>
           <div class="text-xl font-semibold">
             {{ totalUsers }}
           </div>
-        </UCard>
-        <UCard>
+        </SCard>
+        <SCard>
           <div class="text-sm text-muted">
             {{ t('admin.index.daysInMonth') }}
           </div>
           <div class="text-xl font-semibold">
             {{ totalDays }}
           </div>
-        </UCard>
-        <UCard>
+        </SCard>
+        <SCard>
           <div class="text-sm text-muted">
             {{ t('admin.index.presencePercent') }}
           </div>
           <div class="text-xl font-semibold">
             {{ formatPercent(percentPresent) }}
           </div>
-        </UCard>
-        <UCard>
+        </SCard>
+        <SCard>
           <div class="text-sm text-muted">
             {{ t('admin.index.avgLatePerUser') }}
           </div>
           <div class="text-xl font-semibold">
             {{ averageLatePerUser }}
           </div>
-        </UCard>
+        </SCard>
       </div>
 
-      <UCard>
+      <SCard>
         <div class="mb-4">
           <strong>{{ t('admin.index.dailyPresence') }}</strong>
         </div>
@@ -402,44 +401,28 @@ definePageMeta({
             </div>
           </client-only>
         </div>
-      </UCard>
+      </SCard>
 
       <div class="space-y-4">
-        <UCard>
+        <SCard>
           <div class="mb-3">
             <strong>{{ t('admin.index.userRecap') }}</strong>
           </div>
-          <UTable :data="recentRecap" :columns="recentRecapColumns">
-            <template #name-cell="{ row }">
-              {{ row.original.name }}
-            </template>
-            <template #totalWorkingDays-cell="{ row }">
-              {{ row.original.totalWorkingDays }}
-            </template>
-            <template #harian-cell="{ row }">
-              {{ row.original.harian }}
-            </template>
-            <template #bantuan-cell="{ row }">
-              {{ row.original.bantuan }}
-            </template>
-            <template #lateHours-cell="{ row }">
-              {{ row.original.lateHours }}
-            </template>
-            <template #earlyHours-cell="{ row }">
-              {{ row.original.earlyHours }}
-            </template>
-          </UTable>
-        </UCard>
+          <!-- Cells render the raw field value, which is TanStack default. The
+               per-column size widths live in recentRecapColumns, so the :columns
+               escape hatch is kept rather than SColumn children (no width prop). -->
+          <STable :data="recentRecap" :columns="recentRecapColumns" />
+        </SCard>
       </div>
     </div>
   </PageWrapper>
 </template>
 
 <style scoped>
-.text-muted { color: var(--u-color-muted, #6b7280); }
+.text-muted { color: var(--selaras-resolved-text-muted, #6b7280); }
   /* Target the bare <path> in the first series group. apexcharts 7 dropped the
      `.apexcharts-bar-path` class this relied on, which left the rule dead. */
   .admin-presence-chart :deep(.apexcharts-bar-area .apexcharts-series.apexcharts-series-0 path) {
-    fill: var(--u-color-primary-500, #efb100) !important;
+    fill: var(--selaras-resolved-color-primary-fill, #efb100) !important;
   }
 </style>

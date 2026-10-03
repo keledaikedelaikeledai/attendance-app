@@ -12,11 +12,15 @@ export interface ConfirmationOptions {
 }
 
 export function useConfirmation() {
-  // useOverlay is auto-imported by Nuxt UI at runtime
-  const overlay = useOverlay()
+  // useModal is auto-imported by @sewadah/selaras. It needs an <SApp> above it
+  // in the tree to have a renderer to mount into.
+  const { open } = useModal()
 
   async function confirm(options: ConfirmationOptions) {
-    const created = overlay.create(LazyCommonConfirmation, {
+    // open() renders the component through SModal's content slot and resolves
+    // with whatever the component emits on `close` - `true` on confirm,
+    // `undefined` when dismissed via Escape or a backdrop click.
+    const result = await open<boolean>(LazyCommonConfirmation, {
       props: {
         icon: options.icon,
         title: options.title,
@@ -25,11 +29,12 @@ export function useConfirmation() {
         btnCancelText: options.btnCancelText,
         btnConfirmProps: options.btnConfirmProps,
         btnCancelProps: options.btnCancelProps,
+        iconClass: options.iconClass,
       },
-      destroyOnClose: true,
+      title: options.title,
+      description: options.description,
     })
 
-    const result = await created.open()
     return Boolean(result)
   }
 

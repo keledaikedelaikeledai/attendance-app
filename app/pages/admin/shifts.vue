@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+// SColumn/SColumnGroup ship as .js but the Selaras module's
+// addComponentsDir `extensions` is ['vue','ts'], so they are never
+// auto-registered. Without this import Vue resolves <SColumn> to a plain
+// string, builds an ELEMENT vnode, and calls the cell slot with no args.
+// Remove once @sewadah/selaras registers them itself.
+
+import type { DropdownItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -21,15 +27,6 @@ const confirmation = useConfirmation()
 const { data: _data, pending, refresh } = await useFetch<ShiftRow[]>('/api/admin/shifts', { credentials: 'include' })
 const data = computed(() => _data.value || [])
 
-const columns = computed<TableColumn<ShiftRow>[]>(() => [
-  { header: t('adminShifts.columns.code'), accessorKey: 'code', size: 120 },
-  { header: t('adminShifts.columns.label'), accessorKey: 'label', size: 300 },
-  { header: t('adminShifts.columns.start'), accessorKey: 'start', size: 100 },
-  { header: t('adminShifts.columns.end'), accessorKey: 'end', size: 100 },
-  { header: t('adminShifts.columns.active'), id: 'active', size: 100 },
-  { header: t('adminShifts.columns.order'), accessorKey: 'sortOrder', size: 80 },
-  { id: 'action', header: t('adminShifts.columns.action'), size: 10, maxSize: 10, meta: { class: { td: 'w-5' } } },
-])
 
 const modalOpen = ref(false)
 const editing = ref<ShiftRow | null>(null)
@@ -86,7 +83,7 @@ const onSubmit = handleSubmit(async () => {
   }
   catch (err: any) {
     console.error('shift save error', err)
-    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to save' }), color: 'error' })
+    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to save' }), color: 'danger' })
   }
 })
 
@@ -95,7 +92,7 @@ async function doDelete(s: ShiftRow) {
     icon: 'i-heroicons-trash',
     title: t('adminShifts.confirmations.delete.title'),
     description: t('adminShifts.confirmations.delete.description', { code: s.code }),
-    btnConfirmProps: { color: 'error' },
+    btnConfirmProps: { color: 'danger' },
   })
   if (!confirmed) return
 
@@ -105,11 +102,11 @@ async function doDelete(s: ShiftRow) {
     await refresh()
   }
   catch (err: any) {
-    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to delete' }), color: 'error' })
+    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to delete' }), color: 'danger' })
   }
 }
 
-function getDropdownActions(s: ShiftRow): DropdownMenuItem[] {
+function getDropdownActions(s: ShiftRow): DropdownItem[] {
   return [
     {
       label: t('adminShifts.actions.edit'),
@@ -123,7 +120,7 @@ function getDropdownActions(s: ShiftRow): DropdownMenuItem[] {
       label: t('adminShifts.actions.delete'),
       value: 'delete',
       icon: 'i-heroicons-trash',
-      color: 'error' as const,
+      destructive: true,
       async onSelect() {
         await doDelete(s)
       },
@@ -135,69 +132,80 @@ function getDropdownActions(s: ShiftRow): DropdownMenuItem[] {
 <template>
   <PageWrapper>
     <template #navRight>
-      <UButton color="primary" icon="i-heroicons-plus" @click="openAdd">
+      <SButton color="primary" icon="i-heroicons-plus" @click="openAdd">
         {{ t('adminShifts.add') }}
-      </UButton>
+      </SButton>
     </template>
 
-    <UTable :data="data || []" :columns="columns" :loading="pending === true">
-      <template #active-cell="{ row }">
-        <UBadge v-if="row.original.active" color="success">
-          {{ t('adminShifts.status.active') }}
-        </UBadge>
-        <UBadge v-else color="neutral" variant="outline">
-          {{ t('adminShifts.status.inactive') }}
-        </UBadge>
-      </template>
-      <template #action-cell="{ row }">
-        <UDropdownMenu
-          :items="getDropdownActions(row.original)"
-          :content="{ align: 'end' }"
-          :ui="{ content: 'w-40' }"
-        >
-          <UButton
-            icon="i-lucide-ellipsis-vertical"
-            color="neutral"
-            variant="ghost"
-            :aria-label="t('adminShifts.actionsLabel')"
-          />
-        </UDropdownMenu>
-      </template>
-    </UTable>
+      <STable :data="data || []" :loading="pending === true">
+        <SColumn field="code" :header="t('adminShifts.columns.code')" />
+        <SColumn field="label" :header="t('adminShifts.columns.label')" />
+        <SColumn field="start" :header="t('adminShifts.columns.start')" />
+        <SColumn field="end" :header="t('adminShifts.columns.end')" />
+        <SColumn field="active" :header="t('adminShifts.columns.active')">
+          <template #default="{ value }">
+            <SBadge v-if="value" color="success">
+              {{ t('adminShifts.status.active') }}
+            </SBadge>
+            <SBadge v-else color="neutral" variant="outline">
+              {{ t('adminShifts.status.inactive') }}
+            </SBadge>
+          </template>
+        </SColumn>
+        <SColumn field="sortOrder" :header="t('adminShifts.columns.order')" />
+        <!-- `code` is reused as the identity for the actions column; its value is
+             never rendered, the slot supplies the whole cell. -->
+        <SColumn field="code" :header="t('adminShifts.columns.action')">
+          <template #default="{ row }">
+            <SDropdown
+              :items="[getDropdownActions(row)]"
+              :positioning="{ align: 'end' }"
+              :ui="{ content: 'w-40' }"
+            >
+              <SButton
+                icon="i-lucide-ellipsis-vertical"
+                color="neutral"
+                variant="ghost"
+                :aria-label="t('adminShifts.actionsLabel')"
+              />
+            </SDropdown>
+          </template>
+        </SColumn>
+      </STable>
 
-    <UModal v-model:open="modalOpen" :title="editing ? t('adminShifts.modal.edit') : t('adminShifts.modal.add')">
+    <SModal v-model:open="modalOpen" :title="editing ? t('adminShifts.modal.edit') : t('adminShifts.modal.add')">
       <template #body>
         <form class="space-y-3" @submit.prevent="onSubmit">
-          <UFormField :label="t('adminShifts.form.code')">
-            <UInput v-model="code" :disabled="!!editing" :placeholder="t('adminShifts.form.codePlaceholder')" />
-          </UFormField>
-          <UFormField :label="t('adminShifts.form.label')">
-            <UInput v-model="label" :placeholder="t('adminShifts.form.labelPlaceholder')" />
-          </UFormField>
+          <SFormField :label="t('adminShifts.form.code')" label-mode="static">
+            <SInput v-model="code" :disabled="!!editing" :placeholder="t('adminShifts.form.codePlaceholder')" />
+          </SFormField>
+          <SFormField :label="t('adminShifts.form.label')" label-mode="static">
+            <SInput v-model="label" :placeholder="t('adminShifts.form.labelPlaceholder')" />
+          </SFormField>
           <div class="grid grid-cols-2 gap-2">
-            <UFormField :label="t('adminShifts.form.start')">
-              <UInput v-model="start" type="time" />
-            </UFormField>
-            <UFormField :label="t('adminShifts.form.end')">
-              <UInput v-model="end" type="time" />
-            </UFormField>
+            <SFormField :label="t('adminShifts.form.start')" label-mode="static">
+              <SInput v-model="start" type="time" />
+            </SFormField>
+            <SFormField :label="t('adminShifts.form.end')" label-mode="static">
+              <SInput v-model="end" type="time" />
+            </SFormField>
           </div>
-          <UFormField :label="t('adminShifts.form.active')">
-            <UCheckbox v-model="active" />
-          </UFormField>
-          <UFormField :label="t('adminShifts.form.sortOrder')">
-            <UInput v-model="sortOrder" type="number" />
-          </UFormField>
+          <SFormField :label="t('adminShifts.form.active')" label-mode="static">
+            <SCheckbox v-model="active" />
+          </SFormField>
+          <SFormField :label="t('adminShifts.form.sortOrder')" label-mode="static">
+            <SInput v-model="sortOrder" type="number" />
+          </SFormField>
         </form>
       </template>
       <template #footer>
-        <UButton variant="ghost" @click="modalOpen = false">
+        <SButton variant="ghost" @click="modalOpen = false">
           {{ t('adminShifts.modal.cancel') }}
-        </UButton>
-        <UButton :loading="isSubmitting" color="primary" @click="() => { void onSubmit() }">
+        </SButton>
+        <SButton :loading="isSubmitting" color="primary" @click="() => { void onSubmit() }">
           {{ t('adminShifts.modal.save') }}
-        </UButton>
+        </SButton>
       </template>
-    </UModal>
+    </SModal>
   </PageWrapper>
 </template>

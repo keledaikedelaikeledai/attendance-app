@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+// Selaras' SButton has no `to` handling of its own - a bare `to`
+// falls through to the <button> and does nothing. Route via NuxtLink instead.
+const NuxtLink = resolveComponent('NuxtLink')
+
+import type { NavigationMenuItem } from '@sewadah/selaras/types'
 
 const { menus, isCollapsed } = defineProps<{
   menus?: NavigationMenuItem[]
@@ -29,46 +33,45 @@ function onSignOut() {
         <div class="flex flex-col items-center justify-center mb-12">
           <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
         </div>
-        <UNavigationMenu
+        <SNavigationMenu
           orientation="vertical"
           :items="menus"
           class="data-[orientation=vertical]:w-full flex-1 overflow-y-auto"
         />
         <div class="flex flex-col pl-1 pr-2">
-          <USeparator />
-          <UTooltip
+          <SSeparator />
+          <STooltip
             :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }"
             :delay-duration="100"
-            :disable-closing-trigger="true"
           >
             <template #content>
-              <UButton
+              <SButton :as="NuxtLink"
                 icon="i-lucide-user-circle"
                 size="sm"
                 color="neutral"
-                variant="link"
+                variant="text"
                 class="w-full p-[10px]"
                 to="/admin/profile"
               >
                 Profile
-              </UButton>
-              <UButton
+              </SButton>
+              <SButton :as="NuxtLink"
                 icon="i-lucide-log-out"
                 size="sm"
                 color="neutral"
-                variant="link"
+                variant="text"
                 class="w-full p-[10px]"
                 @click="onSignOut"
               >
                 Sign Out
-              </UButton>
+              </SButton>
             </template>
             <div
               class="w-full flex items-center justify-between mt-2 pt-2 pb-2"
               :class="{ 'pl-2 pr-2': !isCollapsed }"
             >
               <div class="flex items-center">
-                <UAvatar
+                <SAvatar
                   :src="user?.user.image || undefined"
                   :alt="user?.user.username || 'User Avatar'"
                   size="lg"
@@ -81,12 +84,12 @@ function onSignOut() {
                   {{ user?.user.name }}
                 </span>
               </div>
-              <UIcon
+              <SIcon
                 v-if="!isCollapsed"
                 name="i-lucide-ellipsis-vertical"
               />
             </div>
-          </UTooltip>
+          </STooltip>
         </div>
       </div>
     </aside>

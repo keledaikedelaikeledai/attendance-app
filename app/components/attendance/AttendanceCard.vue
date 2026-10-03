@@ -78,7 +78,7 @@ function entriesForGroup(groupVal: any, st?: string) {
     <!-- <template #header>
       <div class="flex items-center justify-between gap-2">
         <div class="font-medium flex items-center gap-2 min-w-0 flex-1">
-          <UIcon
+          <SIcon
             v-if="daySuffix"
             :name="`arcticons:calendar-${daySuffix}`"
             class="text-neutral-950"
@@ -92,7 +92,7 @@ function entriesForGroup(groupVal: any, st?: string) {
     </template> -->
 
     <div v-if="!props.data || !hasAnyClockIn" class="flex h-full items-center justify-center py-6 text-gray-500 dark:text-gray-400 gap-2">
-      <UIcon name="i-heroicons-no-symbol" class="w-5 h-5" />
+      <SIcon name="i-heroicons-no-symbol" class="w-5 h-5" />
       <span>No record</span>
     </div>
 
@@ -101,9 +101,9 @@ function entriesForGroup(groupVal: any, st?: string) {
         <div v-for="(val, st) in props.data.grouped" :key="st" class="border border-neutral-300 rounded-md p-2 bg-white/50 dark:bg-gray-800/30">
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-2">
-              <UBadge variant="subtle" :color="shiftBadgeColor(val.shiftCode)">
+              <SBadge variant="soft" :color="shiftBadgeColor(val.shiftCode)">
                 {{ (st === 'harian' ? 'Shift Harian' : (st === 'bantuan' ? 'Shift Bantuan' : st)) }}
-              </UBadge>
+              </SBadge>
               <span class="text-xs text-gray-500">{{ val.shiftCode || '-' }}</span>
             </div>
             <div class="text-xs text-gray-500">
@@ -137,22 +137,22 @@ function entriesForGroup(groupVal: any, st?: string) {
           <div class="mt-3 pt-3 border-t border-neutral-200 text-sm">
             <div class="flex flex-col gap-2">
               <div v-for="(e, idx) in entriesForGroup(val, st)" :key="idx" class="flex items-center justify-between">
-                <UBadge
+                <SBadge
                   :color="(typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e)) > 0 ? 'error' : 'success'"
                   variant="solid"
-                  size="xs"
+                  size="sm"
                 >
                   {{ (typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e)) > 0 ? `Late · ${attendanceTime.humanizeMinutes(typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e))}` : 'On time' }}
-                </UBadge>
-                <UBadge
+                </SBadge>
+                <SBadge
                   v-if="(typeof e?.earlyMs === 'number' ? e.earlyMs : attendanceTime.computeEarlyMsForEntry(e)) > 0"
                   class="ml-2"
                   color="warning"
-                  variant="subtle"
-                  size="xs"
+                  variant="soft"
+                  size="sm"
                 >
                   Early · {{ attendanceTime.humanizeMinutes(typeof e?.earlyMs === 'number' ? e.earlyMs : attendanceTime.computeEarlyMsForEntry(e)) }}
-                </UBadge>
+                </SBadge>
               </div>
             </div>
           </div>
@@ -181,12 +181,12 @@ function entriesForGroup(groupVal: any, st?: string) {
               Shift
             </p>
             <div class="flex items-center gap-2 text-xs">
-              <UBadge variant="subtle" :color="shiftBadgeColor(props.data?.shift?.code || props.data?.shiftCode)">
+              <SBadge variant="soft" :color="shiftBadgeColor(props.data?.shift?.code || props.data?.shiftCode)">
                 {{ props.data?.shift?.label || props.data?.shiftCode || '-' }}
-              </UBadge>
-              <UBadge :color="props.data?.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="outline">
+              </SBadge>
+              <SBadge :color="props.data?.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="outline">
                 {{ shiftTypeLabel(props.data?.shiftType) }}
-              </UBadge>
+              </SBadge>
             </div>
           </div>
           <div class="space-y-1">
@@ -195,9 +195,9 @@ function entriesForGroup(groupVal: any, st?: string) {
             </p>
             <div v-if="props.data?.clockInLat != null && props.data?.clockInLng != null">
               <div class="flex items-center gap-2">
-                <UButton
+                <SButton
                   as="a"
-                  size="xs"
+                  size="sm"
                   variant="ghost"
                   icon="i-heroicons-map-pin"
                   :href="mapUrl(props.data?.clockInLat, props.data?.clockInLng)"
@@ -205,7 +205,7 @@ function entriesForGroup(groupVal: any, st?: string) {
                   rel="noopener noreferrer"
                 >
                   See on map
-                </UButton>
+                </SButton>
               </div>
             </div>
           </div>
@@ -215,9 +215,9 @@ function entriesForGroup(groupVal: any, st?: string) {
             </p>
             <div v-if="props.data?.clockOutLat != null && props.data?.clockOutLng != null">
               <div class="flex items-center gap-2">
-                <UButton
+                <SButton
                   as="a"
-                  size="xs"
+                  size="sm"
                   variant="ghost"
                   icon="i-heroicons-map-pin"
                   :href="mapUrl(props.data?.clockOutLat, props.data?.clockOutLng)"
@@ -225,7 +225,7 @@ function entriesForGroup(groupVal: any, st?: string) {
                   rel="noopener noreferrer"
                 >
                   See on map
-                </UButton>
+                </SButton>
               </div>
             </div>
           </div>

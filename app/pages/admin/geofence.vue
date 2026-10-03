@@ -269,7 +269,7 @@ async function saveGeofence() {
     }
   }
   catch (err: any) {
-    toast.add({ title: 'Failed to save geofence', description: err?.message || 'Unknown error', color: 'error' })
+    toast.add({ title: 'Failed to save geofence', description: err?.message || 'Unknown error', color: 'danger' })
   }
   finally {
     saving.value = false
@@ -301,7 +301,7 @@ async function deleteGeofence() {
       startCreate()
   }
   catch (err: any) {
-    toast.add({ title: 'Failed to delete geofence', description: err?.message || 'Unknown error', color: 'error' })
+    toast.add({ title: 'Failed to delete geofence', description: err?.message || 'Unknown error', color: 'danger' })
   }
   finally {
     saving.value = false
@@ -311,10 +311,10 @@ async function deleteGeofence() {
 
 <template>
   <div class="space-y-4">
-    <UPageHeader title="Geofences" description="Manage multiple geofences for clock-in/out enforcement." />
+    <SPageHeader title="Geofences" description="Manage multiple geofences for clock-in/out enforcement." />
 
     <div class="grid gap-4 lg:grid-cols-3">
-      <UCard class="lg:col-span-1">
+      <SCard class="lg:col-span-1">
         <template #header>
           <div class="flex items-center justify-between">
             <div>
@@ -325,9 +325,9 @@ async function deleteGeofence() {
                 Create, edit, or remove geofences.
               </p>
             </div>
-            <UButton size="xs" icon="i-heroicons-plus" @click="startCreate">
+            <SButton size="sm" icon="i-heroicons-plus" @click="startCreate">
               Add
-            </UButton>
+            </SButton>
           </div>
         </template>
 
@@ -347,39 +347,39 @@ async function deleteGeofence() {
                   {{ fence.name || 'Untitled geofence' }}
                 </p>
                 <div class="flex flex-wrap gap-1 mt-1 text-xs">
-                  <UBadge size="xs" variant="soft" :color="fence.type === 'polygon' ? 'warning' : 'primary'">
+                  <SBadge size="sm" variant="soft" :color="fence.type === 'polygon' ? 'warning' : 'primary'">
                     {{ fence.type }}
-                  </UBadge>
-                  <UBadge size="xs" variant="soft" :color="fence.isActive ? 'primary' : 'neutral'">
+                  </SBadge>
+                  <SBadge size="sm" variant="soft" :color="fence.isActive ? 'primary' : 'neutral'">
                     {{ fence.isActive ? 'active' : 'inactive' }}
-                  </UBadge>
-                  <UBadge size="xs" variant="soft" color="neutral">
+                  </SBadge>
+                  <SBadge size="sm" variant="soft" color="neutral">
                     {{ fence.interactionMode || 'disallow' }}
-                  </UBadge>
+                  </SBadge>
                 </div>
               </div>
             </div>
             <div class="flex flex-wrap gap-2">
-              <UButton size="xs" variant="soft" @click="applyGeofence(fence, 'view')">
+              <SButton size="sm" variant="soft" @click="applyGeofence(fence, 'view')">
                 View
-              </UButton>
-              <UButton size="xs" @click="applyGeofence(fence, 'edit')">
+              </SButton>
+              <SButton size="sm" @click="applyGeofence(fence, 'edit')">
                 Edit
-              </UButton>
-              <UButton
-                size="xs"
-                color="error"
+              </SButton>
+              <SButton
+                size="sm"
+                color="danger"
                 variant="ghost"
                 @click="confirmDelete(fence)"
               >
                 Delete
-              </UButton>
+              </SButton>
             </div>
           </div>
         </div>
-      </UCard>
+      </SCard>
 
-      <UCard class="lg:col-span-2">
+      <SCard class="lg:col-span-2">
         <template #header>
           <div class="flex items-center justify-between">
             <div>
@@ -391,32 +391,32 @@ async function deleteGeofence() {
               </p>
             </div>
             <div class="flex gap-2">
-              <UButton
+              <SButton
                 v-if="mode === 'view' && selectedId"
-                size="xs"
+                size="sm"
                 variant="soft"
                 @click="startEdit"
               >
                 Edit
-              </UButton>
-              <UButton
+              </SButton>
+              <SButton
                 v-if="mode !== 'view'"
-                size="xs"
+                size="sm"
                 variant="ghost"
                 color="neutral"
                 @click="cancelEdit"
               >
                 Cancel
-              </UButton>
-              <UButton
+              </SButton>
+              <SButton
                 v-if="mode !== 'view'"
-                size="xs"
+                size="sm"
                 :loading="saving"
                 icon="i-heroicons-cloud-arrow-up"
                 @click="saveGeofence"
               >
                 Save
-              </UButton>
+              </SButton>
             </div>
           </div>
         </template>
@@ -425,7 +425,7 @@ async function deleteGeofence() {
           <div class="space-y-4" :class="{ 'opacity-50 pointer-events-none': isLoading }">
             <div>
               <label class="block text-sm font-medium mb-1">Name</label>
-              <UInput v-model="name" placeholder="e.g. HQ geofence" :disabled="isReadOnly" />
+              <SInput v-model="name" placeholder="e.g. HQ geofence" :disabled="isReadOnly" />
             </div>
 
             <div class="flex items-center justify-between gap-3">
@@ -438,13 +438,13 @@ async function deleteGeofence() {
                 </p>
               </div>
               <ClientOnly>
-                <USwitch v-model="isActive" :loading="pending" :disabled="isReadOnly" />
+                <SSwitch v-model="isActive" :loading="pending" :disabled="isReadOnly" />
               </ClientOnly>
             </div>
 
             <div>
               <label class="block text-sm font-medium mb-1">Outside interaction</label>
-              <USelect
+              <SSelect
                 v-model="interactionPolicy"
                 :items="[
                   { label: 'Disallow', value: 'disallow' },
@@ -452,8 +452,8 @@ async function deleteGeofence() {
                   { label: 'Allow with comment', value: 'allow_with_comment' },
                 ]"
                 class="w-full"
-                option-attribute="label"
-                value-attribute="value"
+                label-key="label"
+                value-key="value"
                 :disabled="isReadOnly"
               />
               <p class="text-xs text-gray-500 mt-1">
@@ -465,7 +465,7 @@ async function deleteGeofence() {
               <p class="font-medium mb-1">
                 Geofence type
               </p>
-              <URadioGroup
+              <SRadioGroup
                 v-model="geofenceType"
                 name="geofence-type"
                 :items="geofenceItems"
@@ -478,24 +478,24 @@ async function deleteGeofence() {
                 Interaction mode
               </p>
               <div class="flex flex-wrap gap-2 text-xs text-gray-500">
-                <UButton
-                  size="xs"
+                <SButton
+                  size="sm"
                   :variant="interactionMode === 'move' ? 'solid' : 'soft'"
                   icon="i-heroicons-hand-raised"
                   :disabled="isReadOnly"
                   @click="interactionMode = 'move'"
                 >
                   Move map
-                </UButton>
-                <UButton
-                  size="xs"
+                </SButton>
+                <SButton
+                  size="sm"
                   :variant="interactionMode === 'add' ? 'solid' : 'soft'"
                   icon="i-heroicons-plus"
                   :disabled="isReadOnly"
                   @click="interactionMode = 'add'"
                 >
                   Add point/polygon
-                </UButton>
+                </SButton>
               </div>
               <p class="text-xs text-gray-500">
                 When in add mode, clicking the map will place the point or polygon vertices.
@@ -504,7 +504,7 @@ async function deleteGeofence() {
 
             <div v-if="isRadiusEditable">
               <label class="block text-sm font-medium mb-1">Allowed radius (meters)</label>
-              <UInput
+              <SInput
                 v-model.number="radiusMeters"
                 type="number"
                 min="0"
@@ -529,25 +529,25 @@ async function deleteGeofence() {
             <div v-else class="text-xs text-gray-500 space-y-2">
               <p>Click on the map to add polygon vertices. Minimum 3 points.</p>
               <div class="flex flex-wrap gap-2">
-                <UButton
-                  size="xs"
+                <SButton
+                  size="sm"
                   icon="i-heroicons-check"
                   :disabled="polygon.length < 3 || isReadOnly"
                   @click="finishPolygon"
                 >
                   Finish
-                </UButton>
-                <UButton
-                  size="xs"
+                </SButton>
+                <SButton
+                  size="sm"
                   variant="soft"
                   icon="i-heroicons-arrow-uturn-left"
                   :disabled="!polygon.length || isReadOnly"
                   @click="undoVertex"
                 >
                   Undo
-                </UButton>
-                <UButton
-                  size="xs"
+                </SButton>
+                <SButton
+                  size="sm"
                   variant="ghost"
                   color="neutral"
                   icon="i-heroicons-trash"
@@ -555,7 +555,7 @@ async function deleteGeofence() {
                   @click="clearPolygon"
                 >
                   Clear
-                </UButton>
+                </SButton>
               </div>
               <p class="text-xs text-gray-500">
                 Radius value is fixed to 0 while using polygons and becomes editable again when switching back to point.
@@ -601,28 +601,28 @@ async function deleteGeofence() {
             </ClientOnly>
           </div>
         </div>
-      </UCard>
+      </SCard>
     </div>
 
-    <UModal v-model:open="showDelete" title="Delete geofence?">
+    <SModal v-model:open="showDelete" title="Delete geofence?">
       <template #body>
         <p class="text-sm text-gray-600 dark:text-gray-300">
           This will permanently delete <strong>{{ deleteTarget?.name || 'this geofence' }}</strong>.
         </p>
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="neutral" variant="soft" @click="showDelete = false">
+          <SButton color="neutral" variant="soft" @click="showDelete = false">
             Cancel
-          </UButton>
-          <UButton
-            color="error"
+          </SButton>
+          <SButton
+            color="danger"
             icon="i-heroicons-trash"
             :loading="saving"
             @click="deleteGeofence"
           >
             Delete
-          </UButton>
+          </SButton>
         </div>
       </template>
-    </UModal>
+    </SModal>
   </div>
 </template>

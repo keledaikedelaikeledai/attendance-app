@@ -389,7 +389,7 @@ watch(selectedMonth, fetchReport)
     </div>
 
     <div v-if="summary && !loading" class="space-y-4 max-w-3xl mx-auto">
-      <UCard>
+      <SCard>
         <template #header>
           <div class="flex items-center justify-between">
             <span class="font-medium">{{ t('report.overview') }}</span>
@@ -439,7 +439,7 @@ watch(selectedMonth, fetchReport)
             </p>
           </div>
         </div>
-      </UCard>
+      </SCard>
 
       <div class="text-xs text-gray-500">
         {{ t('report.note') }}
@@ -481,15 +481,15 @@ watch(selectedMonth, fetchReport)
                           {{ t('report.shift') }}
                         </div>
                         <div class="mt-1 flex items-center gap-2">
-                          <UBadge v-if="shift.selectedShiftCode" :color="shiftBadgeColor(shift.selectedShiftCode)" variant="solid">
+                          <SBadge v-if="shift.selectedShiftCode" :color="shiftBadgeColor(shift.selectedShiftCode)" variant="solid">
                             {{ shift.selectedShiftCode }}
-                          </UBadge>
-                          <UBadge v-else variant="outline">
+                          </SBadge>
+                          <SBadge v-else variant="outline">
                             {{ shift.shiftType ?? t('report.unknown') }}
-                          </UBadge>
-                          <UBadge :color="shift.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="subtle" size="xs">
+                          </SBadge>
+                          <SBadge :color="shift.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="soft" size="sm">
                             {{ shift.shiftType ? (shift.shiftType === 'harian' ? t('report.harian') : t('report.bantuan')) : t('report.unknown') }}
-                          </UBadge>
+                          </SBadge>
                         </div>
                       </div>
 

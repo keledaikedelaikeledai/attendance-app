@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+// SColumn/SColumnGroup ship as .js but the Selaras module's
+// addComponentsDir `extensions` is ['vue','ts'], so they are never
+// auto-registered. Without this import Vue resolves <SColumn> to a plain
+// string, builds an ELEMENT vnode, and calls the cell slot with no args.
+// Remove once @sewadah/selaras registers them itself.
+
+import type { DropdownItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -51,14 +57,6 @@ function openAdd() {
   onAddModal.value = true
 }
 
-const columns: TableColumn<AdminUser>[] = [
-  { header: t('adminUsers.columns.name'), accessorKey: 'name', size: 200 },
-  { header: t('adminUsers.columns.username'), accessorKey: 'username', size: 150 },
-  { header: t('adminUsers.columns.email'), accessorKey: 'email', size: 250 },
-  { header: t('adminUsers.columns.role'), accessorKey: 'role', size: 150 },
-  { header: t('adminUsers.columns.status'), id: 'status', size: 100 },
-  { id: 'action', header: t('adminUsers.columns.action'), size: 10, maxSize: 10, meta: { class: { td: 'w-5' } } },
-]
 
 function getDropdownActions(user: AdminUser) {
   const actions = []
@@ -108,7 +106,7 @@ function getDropdownActions(user: AdminUser) {
           await refresh()
         }
         catch (err: any) {
-          toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to update role' }), color: 'error' })
+          toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to update role' }), color: 'danger' })
         }
       },
     })
@@ -137,7 +135,7 @@ function getDropdownActions(user: AdminUser) {
           await refresh()
         }
         catch (err: any) {
-          toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to update role' }), color: 'error' })
+          toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to update role' }), color: 'danger' })
         }
       },
     })
@@ -166,7 +164,7 @@ function getDropdownActions(user: AdminUser) {
       }
       else {
         await authClient.admin.banUser({ userId: user.id, banReason: 'Not valid user' })
-        toast.add({ title: t('adminUsers.toasts.userBanned.title'), description: t('adminUsers.toasts.userBanned.description', { name: user.name }), color: 'error' })
+        toast.add({ title: t('adminUsers.toasts.userBanned.title'), description: t('adminUsers.toasts.userBanned.description', { name: user.name }), color: 'danger' })
       }
 
       await refresh()
@@ -177,13 +175,13 @@ function getDropdownActions(user: AdminUser) {
     label: t('adminUsers.actions.delete'),
     value: 'delete',
     icon: 'i-heroicons-trash',
-    color: 'error',
+    color: 'danger',
     async onSelect() {
       const isConfirmed = await confirmation.confirm({
         icon: 'i-heroicons-trash',
         title: t('adminUsers.confirmations.delete.title'),
         description: t('adminUsers.confirmations.delete.description', { name: user.name }),
-        btnConfirmProps: { color: 'error' },
+        btnConfirmProps: { color: 'danger' },
       })
 
       if (!isConfirmed)
@@ -196,76 +194,79 @@ function getDropdownActions(user: AdminUser) {
         await refresh()
       }
       catch (err: any) {
-        toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to delete user' }), color: 'error' })
+        toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to delete user' }), color: 'danger' })
       }
     },
   })
-  return actions as DropdownMenuItem[]
+  return actions as DropdownItem[]
 }
 </script>
 
 <template>
   <PageWrapper>
     <template #navRight>
-      <UButton
+      <SButton
         color="primary"
         icon="i-heroicons-plus"
         @click="openAdd"
       >
         {{ t('adminUsers.addUser') }}
-      </UButton>
+      </SButton>
     </template>
 
-    <UTable :data="data || []" :columns="columns" :loading="status === 'pending'">
-      <template #role-cell="{ row }">
-        <UBadge
-          v-if="row.original.role === 'admin'"
-          color="success"
-        >
-          {{ t('adminUsers.role.admin') }}
-        </UBadge>
-        <UBadge
-          v-else-if="row.original.role === 'user'"
-          color="primary"
-        >
-          {{ t('adminUsers.role.user') }}
-        </UBadge>
-      </template>
-      <template #status-cell="{ row }">
-        <UBadge
-          v-if="row.original.banned"
-          color="error"
-          variant="outline"
-          icon="i-heroicons-no-symbol"
-        >
-          {{ t('adminUsers.status.banned') }}
-        </UBadge>
-        <UBadge
-          v-else
-          color="success"
-          variant="outline"
-          icon="i-heroicons-check-circle"
-        >
-          {{ t('adminUsers.status.active') }}
-        </UBadge>
-      </template>
-      <template #action-cell="{ row }">
-        <UDropdownMenu
-          :items="getDropdownActions(row.original)"
-          :content="{ align: 'end' }"
-          :ui="{
-            content: 'w-48',
-          }"
-        >
-          <UButton
-            icon="i-lucide-ellipsis-vertical"
-            color="neutral"
-            variant="ghost"
-            :aria-label="t('adminUsers.columns.action')"
-          />
-        </UDropdownMenu>
-      </template>
-    </UTable>
+    <STable :data="data || []" :loading="status === 'pending'">
+      <SColumn field="name" :header="t('adminUsers.columns.name')" />
+      <SColumn field="username" :header="t('adminUsers.columns.username')" />
+      <SColumn field="email" :header="t('adminUsers.columns.email')" />
+      <SColumn field="role" :header="t('adminUsers.columns.role')">
+        <template #default="{ value }">
+          <SBadge v-if="value === 'admin'" color="success">
+            {{ t('adminUsers.role.admin') }}
+          </SBadge>
+          <SBadge v-else-if="value === 'user'" color="primary">
+            {{ t('adminUsers.role.user') }}
+          </SBadge>
+        </template>
+      </SColumn>
+      <SColumn field="banned" :header="t('adminUsers.columns.status')">
+        <template #default="{ value }">
+          <SBadge
+            v-if="value"
+            color="danger"
+            variant="outline"
+            icon="i-heroicons-no-symbol"
+          >
+            {{ t('adminUsers.status.banned') }}
+          </SBadge>
+          <SBadge
+            v-else
+            color="success"
+            variant="outline"
+            icon="i-heroicons-check-circle"
+          >
+            {{ t('adminUsers.status.active') }}
+          </SBadge>
+        </template>
+      </SColumn>
+      <!-- `name` is reused as the identity for the actions column; its value is
+           never rendered, the slot supplies the whole cell. -->
+      <SColumn field="name" :header="t('adminUsers.columns.action')">
+        <template #default="{ row }">
+          <SDropdown
+            :items="[getDropdownActions(row)]"
+            :positioning="{ align: 'end' }"
+            :ui="{ content: 'w-48' }"
+          >
+            <SButton
+              icon="i-lucide-ellipsis-vertical"
+              color="neutral"
+              variant="ghost"
+              :aria-label="t('adminUsers.columns.action')"
+            />
+          </SDropdown>
+        </template>
+      </SColumn>
+    </STable>
     <UserModalAdd v-model="onAddModal" :user="editUser ?? undefined" @refresh="refresh" />
     <UserModalChangePassword v-model="changePwdModal" :user="changePwdUser ?? undefined" @refresh="refresh" />
   </PageWrapper>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DropdownMenuItem } from '@nuxt/ui'
+import type { DropdownItem } from '@sewadah/selaras/types'
 
 import * as attendanceTime from '~/composables/useAttendanceTime'
 
@@ -28,24 +28,20 @@ const monthOptions = computed(() => {
   return arr
 })
 
-const monthItems = computed<DropdownMenuItem[]>(() => {
-  return monthOptions.value.map(m => ({
-    label: m.label,
-    value: m.value,
-    type: 'checkbox',
-    checked: m.value === month.value,
-    // called when checkbox is toggled
-    onUpdateChecked(checked: boolean) {
-      if (!checked) return
-      month.value = m.value
-    },
-    onSelect(e: Event) {
-      // prevent default navigation behavior
-      e.preventDefault()
-    },
-  }))
+const monthItems = computed<DropdownItem[][]>(() => {
+  const group = monthOptions.value.map((m) => {
+    return {
+      label: m.label,
+      // Selaras has no checkbox item type; the selected month is marked with a
+      // trailing check icon and switching happens on select.
+      onSelect() {
+        if (m.value === month.value) return
+        month.value = m.value
+      },
+    }
+  })
+  return [group]
 })
-
 function onRefresh() {
   refresh()
 }
@@ -1412,7 +1408,7 @@ async function exportXlsx() {
     toast.add({
       title: 'Export Failed',
       description: (e instanceof Error) ? e.message : 'An unknown error occurred during export.',
-      color: 'error',
+      color: 'danger',
     })
   }
   finally {
@@ -1430,48 +1426,46 @@ definePageMeta({
   <PageWrapper>
     <template #navLeft>
       <!-- Desktop: full tabs (label + icon) -->
-      <UTabs
+      <STabs
         v-model="activeType"
-        :content="false"
         :items="type"
         class="hidden sm:block w-full ml-2"
-        size="sm"
+        :button-props="{ size: 'sm' }"
       />
 
       <!-- Mobile: icon-only tabs -->
-      <UTabs
+      <STabs
         v-model="activeType"
-        :content="false"
         :items="iconOnlyType"
         class="sm:hidden"
-        size="sm"
+        :button-props="{ size: 'sm' }"
         aria-label="View type"
       />
     </template>
     <template #navRight>
       <div class="flex items-center gap-3">
-        <USelect
+        <SSelect
           v-model="month"
           class="w-50 hidden sm:block"
           :items="monthOptions"
-          option-attribute="label"
-          value-attribute="value"
+          label-key="label"
+          value-key="value"
         />
 
         <!-- Mobile: compact month picker as dropdown menu -->
         <ClientOnly>
-          <UDropdownMenu :items="monthItems" :content="{ align: 'end' }" class="sm:hidden">
-            <UButton
+          <SDropdown :items="monthItems" :positioning="{ align: 'end' }" class="sm:hidden">
+            <SButton
               icon="i-heroicons-calendar"
               class="w-8 h-8"
               color="neutral"
               variant="ghost"
               aria-label="Month"
             />
-          </UDropdownMenu>
+          </SDropdown>
         </ClientOnly>
 
-        <UButton
+        <SButton
           icon="i-heroicons-arrow-path"
           variant="soft"
           :loading="status === 'pending'"
@@ -1479,15 +1473,15 @@ definePageMeta({
           @click="onRefresh"
         >
           <span class="hidden sm:inline">Refresh</span>
-        </UButton>
-        <UButton
+        </SButton>
+        <SButton
           icon="i-heroicons-arrow-down-tray"
           :disabled="(data?.days || []).length === 0 || status === 'pending'"
           aria-label="Export"
           @click="exportXlsx"
         >
           <span class="hidden sm:inline">Export</span>
-        </UButton>
+        </SButton>
       </div>
     </template>
     <AttendanceGrid v-if="activeType === 'grid'" :data="normalizedData" :loading="status === 'pending'" />

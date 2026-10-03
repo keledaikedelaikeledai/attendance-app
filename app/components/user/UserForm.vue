@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { USelect } from '#components'
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
+import { SSelect } from '#components'
 
 const props = defineProps<{
   initial?: {
@@ -19,12 +19,11 @@ const { value: email } = useField('email', toTypedSchema(z.string().min(1, 'Emai
 // Password should be optional for edit: keep validation but allow empty if editing (we'll handle omission in submit)
 const passwordSchema = props.initial ? z.string().min(0) : z.string().min(6, 'Password must be at least 6 characters')
 const { value: password } = useField('password', toTypedSchema(passwordSchema), { initialValue: '' })
-const { value: role } = useField('role', toTypedSchema(z.enum(['admin', 'user'])), { initialValue: props.initial?.role ?? 'user' })
+const ROLES = ['admin', 'user'] as const
 
-const roles = [
-  'admin',
-  'user',
-]
+const { value: role } = useField('role', toTypedSchema(z.enum(ROLES)), { initialValue: props.initial?.role ?? 'user' })
+
+const roles = ROLES
 
 const errors = useFormErrors()
 </script>
@@ -33,65 +32,65 @@ const errors = useFormErrors()
   <div>
     <form class="space-y-4">
       <div class="space-y-2">
-        <UFormField label="Username" :error="errors.username">
-          <UInput
+        <SFormField label="Username" :error="errors.username" label-mode="static">
+          <SInput
             v-model="username"
-            size="xl"
+            size="lg"
             type="text"
             placeholder="username"
             icon="i-heroicons-identification"
             autofocus
             class="w-full"
           />
-        </UFormField>
+        </SFormField>
       </div>
       <div class="space-y-2">
-        <UFormField label="Full Name" :error="errors.name">
-          <UInput
+        <SFormField label="Full Name" :error="errors.name" label-mode="static">
+          <SInput
             v-model="name"
-            size="xl"
+            size="lg"
             type="text"
             placeholder="Full Name"
             icon="i-heroicons-user"
             class="w-full"
           />
-        </UFormField>
+        </SFormField>
       </div>
       <div class="space-y-2">
-        <UFormField label="Email" :error="errors.email">
-          <UInput
+        <SFormField label="Email" :error="errors.email" label-mode="static">
+          <SInput
             v-model="email"
-            size="xl"
+            size="lg"
             type="email"
             placeholder="you@example.com"
             icon="i-heroicons-envelope"
             class="w-full"
           />
-        </UFormField>
+        </SFormField>
       </div>
       <!-- Hide password input in edit mode (initial provided). Password can be omitted to keep existing password. -->
       <div v-if="!props.initial" class="space-y-2">
-        <UFormField label="Password" :error="errors.password">
-          <UInput
+        <SFormField label="Password" :error="errors.password" label-mode="static">
+          <SInput
             v-model="password"
-            size="xl"
+            size="lg"
             type="password"
             placeholder="••••••••"
             icon="i-heroicons-lock-closed"
             class="w-full"
           />
-        </UFormField>
+        </SFormField>
       </div>
       <!-- Hide role select in edit mode -->
       <div v-if="!props.initial" class="space-y-2">
-        <UFormField label="Role" :error="errors.role">
-          <USelect
+        <SFormField label="Role" :error="errors.role" label-mode="static">
+          <SSelect
             v-model="role"
             :items="roles"
             class="w-full"
-            size="xl"
+            size="lg"
           />
-        </UFormField>
+        </SFormField>
       </div>
     </form>
   </div>

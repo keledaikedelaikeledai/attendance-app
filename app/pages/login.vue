@@ -1,4 +1,8 @@
 <script setup lang="ts">
+// Selaras' SButton has no `to` handling of its own - a bare `to`
+// falls through to the <button> and does nothing. Route via NuxtLink instead.
+const NuxtLink = resolveComponent('NuxtLink')
+
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { z } from 'zod'
@@ -36,14 +40,14 @@ definePageMeta({
 </script>
 
 <template>
-  <UContainer class="py-10 max-w-md mx-auto">
+  <SContainer class="py-10 max-w-md mx-auto">
     <div class="space-y-6">
       <div class="flex flex-row justify-center items-center mb-12 gap-2 pl-6">
         <img src="/logo-dpd.png" alt="App Logo" class="w-14 h-14 mt-2">
         <img src="/logo-protokol.webp" alt="App Logo" class="w-22 h-22">
       </div>
 
-      <UCard>
+      <SCard>
         <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="mx-auto w-[150px] h-auto mb-4">
 
         <p class="mx-auto text-center text-lg font-semibold mb-4 text-gray-500 dark:text-gray-400">
@@ -52,24 +56,24 @@ definePageMeta({
 
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div class="space-y-2">
-            <UFormField :label="t('auth.login.username')" :error="errors.username">
-              <UInput
+            <SFormField :label="t('auth.login.username')" :error="errors.username" label-mode="static">
+              <SInput
                 v-model="username"
-                size="xl"
+                size="lg"
                 type="text"
                 :placeholder="t('auth.login.usernamePlaceholder')"
                 icon="i-heroicons-envelope"
                 autofocus
                 class="w-full"
               />
-            </UFormField>
+            </SFormField>
           </div>
           <div class="space-y-2">
-            <UFormField :label="t('auth.login.password')" :error="errors.password">
-              <UInput
+            <SFormField :label="t('auth.login.password')" :error="errors.password" label-mode="static">
+              <SInput
                 id="login-password"
                 v-model="password"
-                size="xl"
+                size="lg"
                 :type="showPassword ? 'text' : 'password'"
                 :placeholder="t('auth.login.passwordPlaceholder')"
                 icon="i-heroicons-lock-closed"
@@ -77,9 +81,9 @@ definePageMeta({
                 :ui="{ trailing: 'pe-1' }"
               >
                 <template #trailing>
-                  <UButton
+                  <SButton :as="NuxtLink"
                     color="neutral"
-                    variant="link"
+                    variant="text"
                     size="sm"
                     :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
                     :aria-label="showPassword ? 'Hide password' : 'Show password'"
@@ -88,33 +92,33 @@ definePageMeta({
                     @click="() => { showPassword = !showPassword }"
                   />
                 </template>
-              </UInput>
-            </UFormField>
+              </SInput>
+            </SFormField>
           </div>
-          <UCheckbox v-model="remember" :label="t('auth.login.remember')" />
+          <SCheckbox v-model="remember" :label="t('auth.login.remember')" />
           <div class="pt-2">
-            <UButton
-              size="xl"
+            <SButton :as="NuxtLink"
+              size="lg"
               :loading="isSubmitting"
               block
               type="submit"
               icon="i-heroicons-arrow-right-end-on-rectangle"
             >
               {{ t('auth.login.submit') }}
-            </UButton>
+            </SButton>
           </div>
         </form>
-      </UCard>
+      </SCard>
       <div class="text-center">
-        <UButton
-          variant="link"
+        <SButton :as="NuxtLink"
+          variant="text"
           to="/forgot-password"
           color="neutral"
-          size="xs"
+          size="sm"
         >
           {{ t('auth.forgot.title') }}
-        </UButton>
+        </SButton>
       </div>
     </div>
-  </UContainer>
+  </SContainer>
 </template>

@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   },
 
   modules: [
-    '@nuxt/ui',
+    '@sewadah/selaras',
     '@nuxt/fonts',
     '@vee-validate/nuxt',
     '@vueuse/nuxt',
@@ -21,11 +21,6 @@ export default defineNuxtConfig({
     './modules/error-reporting',
   ],
 
-  ui: {
-    // enable color mode so the UI package can manage light/dark themes
-    // set to true to use the default color-mode behavior (you can later customize this)
-    colorMode: true,
-  },
 
   // Internationalization (i18n) - lazy loaded locales
   i18n: {

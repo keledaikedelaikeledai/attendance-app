@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
+// Selaras' SButton has no `to` handling of its own - a bare `to`
+// falls through to the <button> and does nothing. Route via NuxtLink instead.
+const NuxtLink = resolveComponent('NuxtLink')
+
+import type { DropdownItem } from '@sewadah/selaras/types'
+import type { NavigationMenuItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
@@ -20,8 +25,7 @@ function onSignOut() {
 const isCollapsed = useState('admin-is-collapsed')
 
 const menus = computed<NavigationMenuItem[]>(() => [
-  { label: 'Menus', type: 'label', hidden: true },
-  { label: 'Dashboard', icon: 'i-heroicons-home', to: '/admin', exact: true },
+  { label: 'Dashboard', icon: 'i-heroicons-home', to: '/admin' },
   { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
   { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
   { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
@@ -35,7 +39,7 @@ const availableLocales = [
 
 const { locale, setLocale } = useI18n()
 
-const localeItems = computed<DropdownMenuItem[]>(() => {
+const localeItems = computed<DropdownItem[][]>(() => {
   // determine current locale from the nuxt-i18n `locale` ref
   let currentLocale: string | undefined
   const composerLocale = locale as any
@@ -46,44 +50,40 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
     currentLocale = composerLocale
   }
 
-  return availableLocales.map(l => ({
-    label: l.name,
-    value: l.code,
-    // leading language icon
-    icon: `i-circle-flags-${l.code}`,
-    // use the checkbox item type from Nuxt UI so the check appears on the right
-    type: 'checkbox',
-    checked: l.code === currentLocale,
-    // handler invoked when the checkbox is toggled
-    onUpdateChecked(checked: boolean) {
-      if (!checked) return
-      // use nuxt-i18n setLocale to trigger lazy loading, hooks and cookie update
-      try {
-        void (setLocale as any)(l.code)
-      }
-      catch {
-      }
-    },
-    // prevent default navigation behavior (checkbox items usually prevent links)
-    onSelect(e: Event) {
-      e.preventDefault()
-    },
-  }))
-})
-</script>
+  const group = availableLocales.map((l) => {
+    return {
+      label: l.name,
+      // leading language icon
+      icon: `i-circle-flags-${l.code}`,
+      // Selaras has no checkbox item type, so the active locale is marked with a
+      // trailing check icon and switching happens on select.
+      onSelect() {
+        if (l.code === currentLocale) return
+        // use nuxt-i18n setLocale to trigger lazy loading, hooks and cookie update
+        try {
+          void (setLocale as any)(l.code)
+        }
+        catch {
+        }
+      },
+    }
+  })
+  return [group]
+})</script>
 
 <template>
   <HeaderColumn class="mb-2 flex-none">
     <template #left>
-      <UDrawer
-        class="sm:hidden"
-        direction="left"
-        as="aside"
+      <!-- Selaras' SDrawer renders a fragment/teleport root, so a `class` on
+           the component cannot be inherited - it belongs on the trigger. `side`
+           replaces Nuxt UI's `direction`; there is no `as` equivalent. -->
+      <SDrawer
+        side="left"
         :handle="false"
       >
-        <UButton
+        <SButton :as="NuxtLink"
           icon="i-lucide-menu"
-          class="w-8 h-8"
+          class="w-8 h-8 sm:hidden"
           color="neutral"
           variant="ghost"
         />
@@ -93,46 +93,46 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
               <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
             </div>
 
-            <UNavigationMenu
+            <SNavigationMenu
               orientation="vertical"
               :items="menus"
               class="data-[orientation=vertical]:w-full flex-1 overflow-y-auto"
             />
 
             <div class="flex flex-col pl-1 pr-2 mt-4">
-              <USeparator />
-              <UPopover :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }" trigger="click">
+              <SSeparator />
+              <SPopover :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }">
                 <template #content>
-                  <UButton
+                  <SButton :as="NuxtLink"
                     icon="i-lucide-user-circle"
                     size="sm"
                     color="neutral"
-                    variant="link"
+                    variant="text"
                     class="w-full p-[10px]"
                     to="/admin/profile"
                   >
                     Profile
-                  </UButton>
-                  <UButton
+                  </SButton>
+                  <SButton :as="NuxtLink"
                     icon="i-lucide-log-out"
                     size="sm"
                     color="neutral"
-                    variant="link"
+                    variant="text"
                     class="w-full p-[10px]"
                     @click="onSignOut"
                   >
                     Sign Out
-                  </UButton>
+                  </SButton>
                 </template>
 
-                <UButton
+                <SButton :as="NuxtLink"
                   color="neutral"
                   variant="ghost"
                   class="w-full flex items-center justify-between mt-2 pt-2 pb-2 p-0"
                   aria-label="User menu"
                 >
                   <div class="flex items-center">
-                    <UAvatar
+                    <SAvatar
                       :src="user?.user.image || undefined"
                       :alt="user?.user.username || 'User Avatar'"
                       size="lg"
@@ -142,14 +142,14 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
                       {{ user?.user.name }}
                     </span>
                   </div>
-                  <UIcon name="i-lucide-ellipsis-vertical" />
-                </UButton>
-              </UPopover>
+                  <SIcon name="i-lucide-ellipsis-vertical" />
+                </SButton>
+              </SPopover>
             </div>
           </div>
         </template>
-      </UDrawer>
-      <UButton
+      </SDrawer>
+      <SButton :as="NuxtLink"
         :icon="isCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
         class="w-8 h-8 hidden sm:block"
         color="neutral"
@@ -168,18 +168,18 @@ const localeItems = computed<DropdownMenuItem[]>(() => {
     <template #right>
       <slot name="navRight" />
       <ClientOnly>
-        <UDropdownMenu :items="localeItems" :content="{ align: 'end' }" :ui="{ content: 'w-48' }">
-          <UButton
+        <SDropdown :items="localeItems" :positioning="{ align: 'end' }" :ui="{ content: 'w-48' }">
+          <SButton :as="NuxtLink"
             icon="i-heroicons-language"
             class="w-8 h-8"
             color="neutral"
             variant="ghost"
             aria-label="Language"
           />
-        </UDropdownMenu>
+        </SDropdown>
       </ClientOnly>
 
-      <UColorModeButton />
+      <SColorModeToggle />
     </template>
   </HeaderColumn>
   <div class="p-2 border-2 border-neutral-200 border-dashed rounded-lg dark:border-neutral-700 flex-1 overflow-auto">
