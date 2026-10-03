@@ -324,7 +324,7 @@ async function ensurePermission() {
 async function handleClock(action: 'in' | 'out') {
   await requestLocationOnce()
   if (permissionStatus.value !== 'granted') {
-    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
+    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'danger' })
     return
   }
   if (geofenceLoading.value)
@@ -409,7 +409,7 @@ async function onConfirmClockOut() {
   showConfirmOut.value = false
   await requestLocationOnce()
   if (permissionStatus.value !== 'granted') {
-    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
+    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'danger' })
     return
   }
   if (geofenceLoading.value)
@@ -457,161 +457,201 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <UCard>
-      <div class="grid sm:grid-cols-2 gap-6">
-        <div class="space-y-5">
-          <div class="flex items-center gap-2">
-            <UBadge :color="clockedIn ? 'primary' : 'neutral'" variant="soft">
-              {{ clockedIn ? t('index.clockedIn') : t('index.notClockedIn') }}
-            </UBadge>
-            <UBadge v-if="clockedIn && isLate" color="error" variant="soft">
-              {{ t('index.lateBadge', { late: lateByHuman }) }}
-            </UBadge>
-          </div>
-          <div class="grid grid-cols-2 gap-2 text-sm">
-            <div class="space-y-1">
-              <p class="font-medium">
-                {{ t('index.labels.clockIn') }}
-              </p>
-              <p class="text-gray-600 dark:text-gray-400">
-                {{ formatTime(clockInTime) }}
-              </p>
-            </div>
-            <div class="space-y-1">
-              <p class="font-medium">
-                {{ t('index.labels.clockOut') }}
-              </p>
-              <p class="text-gray-600 dark:text-gray-400">
-                {{ formatTime(clockOutTime) }}
-              </p>
-            </div>
-            <div class="space-y-1 col-span-2">
-              <p class="font-medium">
-                {{ t('index.labels.duration') }}
-              </p>
-              <p class="text-gray-600 dark:text-gray-400">
-                {{ durationHuman }}
-              </p>
-            </div>
-          </div>
-
-          <div class="space-y-2">
-            <UFormField :label="t('index.shift.label')" :help="t('index.shift.help')">
-              <USelect
-                v-model="selectedShiftCode"
-                :items="shiftItems"
-                class="w-full"
-                :disabled="clockedIn"
-                :placeholder="t('index.shift.placeholder')"
-                option-attribute="label"
-                value-attribute="code"
-              />
-            </UFormField>
-            <UFormField :label="t('index.shiftType.label')" :help="t('index.shiftType.help')">
-              <USelect
-                v-model="selectedShiftType"
-                :items="[{ label: t('index.shiftType.items.harian'), value: 'harian' }, { label: t('index.shiftType.items.bantuan'), value: 'bantuan' }]"
-                class="w-full"
-                :disabled="clockedIn"
-                :placeholder="t('index.shiftType.placeholder')"
-                option-attribute="label"
-                value-attribute="value"
-              />
-            </UFormField>
-          </div>
-
-          <div class="flex flex-wrap gap-3">
-            <UButton
-              v-if="!clockedIn"
-              color="primary"
-              icon="i-heroicons-play"
-              :loading="locating"
-              :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
-              size="lg"
-              @click="() => handleClock('in')"
-            >
-              {{ t('index.buttons.clockIn') }}
-            </UButton>
-            <UButton
-              v-else
-              color="primary"
-              variant="solid"
-              icon="i-heroicons-stop"
-              :loading="locating"
-              size="lg"
-              @click="handleClock('out')"
-            >
-              {{ t('index.buttons.clockOut') }}
-            </UButton>
-          </div>
-        </div>
-        <div class="space-y-4">
-          <h2 class="font-medium flex items-center gap-2">
-            {{ t('index.location.title') }} <UBadge size="xs" :color="geoSupported ? 'primary' : 'neutral'">
-              {{ permissionStatus }}
-            </UBadge>
-          </h2>
-          <div class="text-sm space-y-1">
-            <p v-if="!geoSupported" class="text-red-500">
-              {{ t('index.location.unsupported') }}
-            </p>
-            <p v-else-if="geoError" class="text-red-500">
-              {{ geoError }}
-            </p>
-            <template v-else>
-              <p><span class="font-medium">Lat:</span> {{ coords.lat?.toFixed(6) || '-' }}</p>
-              <p><span class="font-medium">Lng:</span> {{ coords.lng?.toFixed(6) || '-' }}</p>
-              <p v-if="coords.accuracy">
-                <span class="font-medium">Accuracy:</span> ±{{ Math.round(coords.accuracy) }}m
-              </p>
-            </template>
-            <p v-if="geofenceError" class="text-xs text-red-500">
-              {{ geofenceError }}
-            </p>
-          </div>
-          <div>
-            <UButton
-              size="xs"
-              variant="soft"
-              icon="i-heroicons-map-pin"
-              :loading="locating"
-              @click="requestLocationOnce"
-            >
-              {{ t('index.buttons.refreshLocation') }}
-            </UButton>
-          </div>
-          <ClientOnly>
-            <div class="mt-4">
-              <div v-if="geoSupported">
-                <div v-if="hasLocation" class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
-                  <LMap
-                    style="height: 220px"
-                    :zoom="mapZoom"
-                    :center="mapCenter"
-                    :use-global-leaflet="false"
-                  >
-                    <LTileLayer
-                      :url="mapTileUrl"
-                      :attribution="mapAttribution"
-                    />
-                    <LMarker :lat-lng="mapCenter" />
-                  </LMap>
-                </div>
-                <div v-else class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('index.location.mapAllow') }}
-                </div>
-              </div>
-              <div v-else class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('index.location.mapUnavailable') }}
-              </div>
-            </div>
-          </ClientOnly>
-        </div>
+  <div class="mx-auto w-full max-w-xl">
+    <!-- Status + primary action. The action sits above the selectors so a
+         phone user never has to scroll to reach it (APP_BEHAVIOR 9.2). -->
+    <div class="rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
+      <div class="flex flex-wrap items-center gap-2">
+        <SBadge :color="clockedIn ? 'primary' : 'neutral'" variant="soft">
+          {{ clockedIn ? t('index.clockedIn') : t('index.notClockedIn') }}
+        </SBadge>
+        <SBadge v-if="clockedIn && isLate" color="danger" variant="soft">
+          {{ t('index.lateBadge', { late: lateByHuman }) }}
+        </SBadge>
       </div>
-    </UCard>
 
-    <UModal v-model:open="showConfirmOut" :title="t('index.modal.title')">
+      <!-- Times. Tabular figures stop the digits shifting as the seconds tick. -->
+      <dl class="mt-5 grid grid-cols-3 gap-3">
+        <div>
+          <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.labels.clockIn') }}
+          </dt>
+          <dd class="mt-1 font-mono text-lg tabular-nums text-[var(--selaras-resolved-text-default)]">
+            {{ formatTime(clockInTime) }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.labels.clockOut') }}
+          </dt>
+          <dd class="mt-1 font-mono text-lg tabular-nums text-[var(--selaras-resolved-text-default)]">
+            {{ formatTime(clockOutTime) }}
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.labels.duration') }}
+          </dt>
+          <dd class="mt-1 font-mono text-lg tabular-nums text-[var(--selaras-resolved-text-default)]">
+            {{ durationHuman }}
+          </dd>
+        </div>
+      </dl>
+
+      <SButton
+        v-if="!clockedIn"
+        color="primary"
+        icon="i-heroicons-play"
+        :loading="locating"
+        :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
+        size="lg"
+        block
+        class="mt-5"
+        @click="() => handleClock('in')"
+      >
+        {{ t('index.buttons.clockIn') }}
+      </SButton>
+      <SButton
+        v-else
+        color="primary"
+        variant="solid"
+        icon="i-heroicons-stop"
+        :loading="locating"
+        size="lg"
+        block
+        class="mt-5"
+        @click="handleClock('out')"
+      >
+        {{ t('index.buttons.clockOut') }}
+      </SButton>
+    </div>
+
+    <!-- Shift selection. Secondary, because it only matters before clock-in. -->
+    <div class="mt-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
+      <SFormField :label="t('index.shift.label')" :hint="t('index.shift.help')" label-mode="static">
+        <SSelect
+          v-model="selectedShiftCode"
+          :items="shiftItems"
+          class="w-full"
+          adaptive
+          :disabled="clockedIn"
+          :placeholder="t('index.shift.placeholder')"
+          label-key="label"
+          value-key="code"
+        />
+      </SFormField>
+      <SFormField :label="t('index.shiftType.label')" :hint="t('index.shiftType.help')" label-mode="static">
+        <SSelect
+          v-model="selectedShiftType"
+          :items="[{ label: t('index.shiftType.items.harian'), value: 'harian' }, { label: t('index.shiftType.items.bantuan'), value: 'bantuan' }]"
+          class="w-full"
+          adaptive
+          :disabled="clockedIn"
+          :placeholder="t('index.shiftType.placeholder')"
+          label-key="label"
+          value-key="value"
+        />
+      </SFormField>
+    </div>
+
+    <!-- Location. Supporting detail, so it sits last and stays quiet. -->
+    <div class="mt-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-canvas)] p-5">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-sm font-medium text-[var(--selaras-resolved-text-default)]">
+          {{ t('index.location.title') }}
+        </h2>
+        <SBadge size="sm" :color="geoSupported ? 'primary' : 'neutral'">
+          {{ permissionStatus }}
+        </SBadge>
+      </div>
+
+      <div class="mt-3 text-sm">
+        <p v-if="!geoSupported">
+          <span class="text-red-500">{{ t('index.location.unsupported') }}</span>
+        </p>
+        <p v-else-if="geoError">
+          <span class="text-red-500">{{ geoError }}</span>
+        </p>
+        <template v-else>
+          <dl class="grid grid-cols-3 gap-3">
+            <div>
+              <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                Lat
+              </dt>
+              <dd class="font-mono tabular-nums text-[var(--selaras-resolved-text-default)]">
+                {{ coords.lat?.toFixed(6) || '-' }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                Lng
+              </dt>
+              <dd class="font-mono tabular-nums text-[var(--selaras-resolved-text-default)]">
+                {{ coords.lng?.toFixed(6) || '-' }}
+              </dd>
+            </div>
+            <div v-if="coords.accuracy">
+              <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                Accuracy
+              </dt>
+              <dd class="font-mono tabular-nums text-[var(--selaras-resolved-text-default)]">
+                &plusmn;{{ Math.round(coords.accuracy) }}m
+              </dd>
+            </div>
+          </dl>
+        </template>
+        <p v-if="geofenceError" class="mt-2 text-xs text-red-500">
+          {{ geofenceError }}
+        </p>
+      </div>
+
+      <SButton
+        size="sm"
+        variant="soft"
+        icon="i-heroicons-map-pin"
+        :loading="locating"
+        class="mt-4"
+        @click="requestLocationOnce"
+      >
+        {{ t('index.buttons.refreshLocation') }}
+      </SButton>
+
+      <ClientOnly>
+        <div class="mt-4">
+          <div v-if="geoSupported">
+            <!-- Leaflet sets z-index 200-1000 on its panes, while Selaras'
+                 modal overlay sits at 40. Without an isolated stacking context
+                 the map paints over the scrim. `isolate` scopes those z-indexes
+                 to this box, so portalled overlays always win. -->
+            <div
+              v-if="hasLocation"
+              class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)] saturate-[.85]"
+            >
+              <LMap
+                style="height: 220px"
+                :zoom="mapZoom"
+                :center="mapCenter"
+                :use-global-leaflet="false"
+              >
+                <LTileLayer
+                  :url="mapTileUrl"
+                  :attribution="mapAttribution"
+                />
+                <LMarker :lat-lng="mapCenter" />
+              </LMap>
+            </div>
+            <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              {{ t('index.location.mapAllow') }}
+            </div>
+          </div>
+          <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.location.mapUnavailable') }}
+          </div>
+        </div>
+      </ClientOnly>
+    </div>
+
+    <SModal v-model:open="showConfirmOut" :title="t('index.modal.title')">
       <template #body>
         <p class="text-sm text-gray-600 dark:text-gray-300">
           {{ confirmOutMessage }}
@@ -632,30 +672,30 @@ onMounted(async () => {
         </div>
 
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="neutral" variant="soft" @click="onCancelClockOut">
+          <SButton color="neutral" variant="soft" @click="onCancelClockOut">
             {{ t('index.modal.cancel') }}
-          </UButton>
-          <UButton color="primary" icon="i-heroicons-check" @click="onConfirmClockOut">
+          </SButton>
+          <SButton color="primary" icon="i-heroicons-check" @click="onConfirmClockOut">
             {{ t('index.modal.confirmButton') }}
-          </UButton>
+          </SButton>
         </div>
       </template>
-    </UModal>
+    </SModal>
 
-    <UModal v-model:open="geofenceBlocked" title="Outside allowed area">
+    <SModal v-model:open="geofenceBlocked" title="Outside allowed area">
       <template #body>
         <p class="text-sm text-gray-600 dark:text-gray-300">
           {{ geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.' }}
         </p>
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="primary" variant="solid" @click="() => { geofenceBlocked = false }">
+          <SButton color="primary" variant="solid" @click="() => { geofenceBlocked = false }">
             OK
-          </UButton>
+          </SButton>
         </div>
       </template>
-    </UModal>
+    </SModal>
 
-    <UModal v-model:open="geofenceCommentModalOpen" title="Comment required">
+    <SModal v-model:open="geofenceCommentModalOpen" title="Comment required">
       <template #body>
         <p class="text-sm text-gray-600 dark:text-gray-300">
           {{ geofenceBlockedMessage || 'You are outside the allowed area. Please add a comment to continue.' }}
@@ -674,14 +714,14 @@ onMounted(async () => {
           </p>
         </div>
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="neutral" variant="soft" @click="cancelGeofenceComment">
+          <SButton color="neutral" variant="soft" @click="cancelGeofenceComment">
             Cancel
-          </UButton>
-          <UButton color="primary" icon="i-heroicons-check" @click="submitGeofenceComment">
+          </SButton>
+          <SButton color="primary" icon="i-heroicons-check" @click="submitGeofenceComment">
             Continue
-          </UButton>
+          </SButton>
         </div>
       </template>
-    </UModal>
+    </SModal>
   </div>
 </template>
