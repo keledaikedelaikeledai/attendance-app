@@ -1,11 +1,10 @@
 <script setup lang="ts">
+import type { DropdownItem, NavigationMenuItem } from '@sewadah/selaras/types'
+import { useI18n } from 'vue-i18n'
+
 // Selaras' SButton has no `to` handling of its own - a bare `to`
 // falls through to the <button> and does nothing. Route via NuxtLink instead.
 const NuxtLink = resolveComponent('NuxtLink')
-
-import type { DropdownItem } from '@sewadah/selaras/types'
-import type { NavigationMenuItem } from '@sewadah/selaras/types'
-import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 
@@ -69,7 +68,8 @@ const localeItems = computed<DropdownItem[][]>(() => {
     }
   })
   return [group]
-})</script>
+})
+</script>
 
 <template>
   <HeaderColumn class="mb-2 flex-none">
@@ -81,7 +81,8 @@ const localeItems = computed<DropdownItem[][]>(() => {
         side="left"
         :handle="false"
       >
-        <SButton :as="NuxtLink"
+        <SButton
+          :as="NuxtLink"
           icon="i-lucide-menu"
           class="w-8 h-8 sm:hidden"
           color="neutral"
@@ -103,7 +104,8 @@ const localeItems = computed<DropdownItem[][]>(() => {
               <SSeparator />
               <SPopover :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }">
                 <template #content>
-                  <SButton :as="NuxtLink"
+                  <SButton
+                    :as="NuxtLink"
                     icon="i-lucide-user-circle"
                     size="sm"
                     color="neutral"
@@ -113,7 +115,8 @@ const localeItems = computed<DropdownItem[][]>(() => {
                   >
                     Profile
                   </SButton>
-                  <SButton :as="NuxtLink"
+                  <SButton
+                    :as="NuxtLink"
                     icon="i-lucide-log-out"
                     size="sm"
                     color="neutral"
@@ -125,7 +128,8 @@ const localeItems = computed<DropdownItem[][]>(() => {
                   </SButton>
                 </template>
 
-                <SButton :as="NuxtLink"
+                <SButton
+                  :as="NuxtLink"
                   color="neutral"
                   variant="ghost"
                   class="w-full flex items-center justify-between mt-2 pt-2 pb-2 p-0"
@@ -149,7 +153,8 @@ const localeItems = computed<DropdownItem[][]>(() => {
           </div>
         </template>
       </SDrawer>
-      <SButton :as="NuxtLink"
+      <SButton
+        :as="NuxtLink"
         :icon="isCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
         class="w-8 h-8 hidden sm:block"
         color="neutral"
@@ -169,7 +174,8 @@ const localeItems = computed<DropdownItem[][]>(() => {
       <slot name="navRight" />
       <ClientOnly>
         <SDropdown :items="localeItems" :positioning="{ align: 'end' }" :ui="{ content: 'w-48' }">
-          <SButton :as="NuxtLink"
+          <SButton
+            :as="NuxtLink"
             icon="i-heroicons-language"
             class="w-8 h-8"
             color="neutral"

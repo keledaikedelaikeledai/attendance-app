@@ -1,14 +1,14 @@
 <script setup lang="ts">
-// Selaras' SButton has no `to` handling of its own - a bare `to`
-// falls through to the <button> and does nothing. Route via NuxtLink instead.
-const NuxtLink = resolveComponent('NuxtLink')
-
 import type { NavigationMenuItem } from '@sewadah/selaras/types'
 
 const { menus, isCollapsed } = defineProps<{
   menus?: NavigationMenuItem[]
   isCollapsed: boolean
 }>()
+
+// Selaras' SButton has no `to` handling of its own - a bare `to`
+// falls through to the <button> and does nothing. Route via NuxtLink instead.
+const NuxtLink = resolveComponent('NuxtLink')
 
 const { data: user } = await authClient.useSession(useFetch)
 
@@ -45,7 +45,8 @@ function onSignOut() {
             :delay-duration="100"
           >
             <template #content>
-              <SButton :as="NuxtLink"
+              <SButton
+                :as="NuxtLink"
                 icon="i-lucide-user-circle"
                 size="sm"
                 color="neutral"
@@ -55,7 +56,8 @@ function onSignOut() {
               >
                 Profile
               </SButton>
-              <SButton :as="NuxtLink"
+              <SButton
+                :as="NuxtLink"
                 icon="i-lucide-log-out"
                 size="sm"
                 color="neutral"

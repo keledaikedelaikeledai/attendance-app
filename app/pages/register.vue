@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { toTypedSchema } from '@vee-validate/zod'
+import { z } from 'zod'
+
 // Selaras' SButton has no `to` handling of its own - a bare `to`
 // falls through to the <button> and does nothing. Route via NuxtLink instead.
 const NuxtLink = resolveComponent('NuxtLink')
-
-import { toTypedSchema } from '@vee-validate/zod'
-import { z } from 'zod'
 
 const { handleSubmit, errors, isSubmitting } = useForm()
 
@@ -119,7 +119,8 @@ definePageMeta({
             </SFormField>
           </div>
           <div class="pt-2">
-            <SButton :as="NuxtLink"
+            <SButton
+              :as="NuxtLink"
               size="lg"
               :loading="isSubmitting"
               block
@@ -132,7 +133,8 @@ definePageMeta({
         </form>
       </SCard>
       <div class="text-center">
-        <SButton :as="NuxtLink"
+        <SButton
+          :as="NuxtLink"
           variant="text"
           to="/login"
           color="neutral"

@@ -1,12 +1,12 @@
 import { createShiftWindow, parseBusinessDate } from '../../shared/utils/attendance-date'
 import { resolveHistoricalShiftTiming } from './attendance-shift-history'
 
-export type AttendanceAdminShiftTiming = {
+export interface AttendanceAdminShiftTiming {
   start: string
   end: string
 }
 
-export type AttendanceAdminShiftValue = {
+export interface AttendanceAdminShiftValue {
   clockIn?: string
   clockOut?: string
   shiftCode?: string | null

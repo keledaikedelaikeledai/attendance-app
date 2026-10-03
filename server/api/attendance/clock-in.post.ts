@@ -48,9 +48,7 @@ export default defineEventHandler(async (event) => {
       : calendarDate
     const previousDate = formatBusinessDate(addBusinessDays(parseBusinessDate(targetDate), -1))
 
-    const existingLogs = await tx.select().from(attendanceLog)
-      .where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, targetDate), eq(attendanceLog.date, previousDate))))
-      .orderBy(attendanceLog.timestamp)
+    const existingLogs = await tx.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, targetDate), eq(attendanceLog.date, previousDate)))).orderBy(attendanceLog.timestamp)
     let openClockIn: typeof existingLogs[number] | undefined
     for (const log of existingLogs) {
       if (log.type === 'clock-in') openClockIn = log
@@ -79,15 +77,23 @@ export default defineEventHandler(async (event) => {
     }
 
     await tx.insert(attendanceLog).values({
-      id: randomUUID(), userId, date: targetDate, type: 'clock-in', timestamp: now,
-      lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
-      shiftType: requestedShiftType, shiftCode,
+      id: randomUUID(),
+      userId,
+      date: targetDate,
+      type: 'clock-in',
+      timestamp: now,
+      lat: coords?.latitude,
+      lng: coords?.longitude,
+      accuracy: coords?.accuracy,
+      shiftType: requestedShiftType,
+      shiftCode,
       shiftStart: shiftDef?.start ?? null,
       shiftEnd: shiftDef?.end ?? null,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
       geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
-      createdAt: now, updatedAt: now,
+      createdAt: now,
+      updatedAt: now,
     })
 
     const [day] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)

@@ -57,7 +57,6 @@ function openAdd() {
   onAddModal.value = true
 }
 
-
 function getDropdownActions(user: AdminUser) {
   const actions = []
   actions.push({

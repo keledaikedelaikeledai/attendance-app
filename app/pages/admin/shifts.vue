@@ -27,7 +27,6 @@ const confirmation = useConfirmation()
 const { data: _data, pending, refresh } = await useFetch<ShiftRow[]>('/api/admin/shifts', { credentials: 'include' })
 const data = computed(() => _data.value || [])
 
-
 const modalOpen = ref(false)
 const editing = ref<ShiftRow | null>(null)
 
@@ -137,41 +136,41 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
       </SButton>
     </template>
 
-      <STable :data="data || []" :loading="pending === true">
-        <SColumn field="code" :header="t('adminShifts.columns.code')" />
-        <SColumn field="label" :header="t('adminShifts.columns.label')" />
-        <SColumn field="start" :header="t('adminShifts.columns.start')" />
-        <SColumn field="end" :header="t('adminShifts.columns.end')" />
-        <SColumn field="active" :header="t('adminShifts.columns.active')">
-          <template #default="{ value }">
-            <SBadge v-if="value" color="success">
-              {{ t('adminShifts.status.active') }}
-            </SBadge>
-            <SBadge v-else color="neutral" variant="outline">
-              {{ t('adminShifts.status.inactive') }}
-            </SBadge>
-          </template>
-        </SColumn>
-        <SColumn field="sortOrder" :header="t('adminShifts.columns.order')" />
-        <!-- `code` is reused as the identity for the actions column; its value is
+    <STable :data="data || []" :loading="pending === true">
+      <SColumn field="code" :header="t('adminShifts.columns.code')" />
+      <SColumn field="label" :header="t('adminShifts.columns.label')" />
+      <SColumn field="start" :header="t('adminShifts.columns.start')" />
+      <SColumn field="end" :header="t('adminShifts.columns.end')" />
+      <SColumn field="active" :header="t('adminShifts.columns.active')">
+        <template #default="{ value }">
+          <SBadge v-if="value" color="success">
+            {{ t('adminShifts.status.active') }}
+          </SBadge>
+          <SBadge v-else color="neutral" variant="outline">
+            {{ t('adminShifts.status.inactive') }}
+          </SBadge>
+        </template>
+      </SColumn>
+      <SColumn field="sortOrder" :header="t('adminShifts.columns.order')" />
+      <!-- `code` is reused as the identity for the actions column; its value is
              never rendered, the slot supplies the whole cell. -->
-        <SColumn field="code" :header="t('adminShifts.columns.action')">
-          <template #default="{ row }">
-            <SDropdown
-              :items="[getDropdownActions(row)]"
-              :positioning="{ align: 'end' }"
-              :ui="{ content: 'w-40' }"
-            >
-              <SButton
-                icon="i-lucide-ellipsis-vertical"
-                color="neutral"
-                variant="ghost"
-                :aria-label="t('adminShifts.actionsLabel')"
-              />
-            </SDropdown>
-          </template>
-        </SColumn>
-      </STable>
+      <SColumn field="code" :header="t('adminShifts.columns.action')">
+        <template #default="{ row }">
+          <SDropdown
+            :items="[getDropdownActions(row)]"
+            :positioning="{ align: 'end' }"
+            :ui="{ content: 'w-40' }"
+          >
+            <SButton
+              icon="i-lucide-ellipsis-vertical"
+              color="neutral"
+              variant="ghost"
+              :aria-label="t('adminShifts.actionsLabel')"
+            />
+          </SDropdown>
+        </template>
+      </SColumn>
+    </STable>
 
     <SModal v-model:open="modalOpen" :title="editing ? t('adminShifts.modal.edit') : t('adminShifts.modal.add')">
       <template #body>

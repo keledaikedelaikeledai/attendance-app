@@ -70,7 +70,7 @@ export default defineEventHandler(async (event) => {
     type,
     centerLat: type === 'point' ? centerLat : null,
     centerLng: type === 'point' ? centerLng : null,
-    radiusMeters: radiusMeters != null ? radiusMeters : null,
+    radiusMeters: radiusMeters ?? null,
     polygon: type === 'polygon' ? polygon : null,
     createdAt: now,
     updatedAt: now,

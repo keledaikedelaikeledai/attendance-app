@@ -1,4 +1,4 @@
-export type AttendanceShiftTiming = {
+export interface AttendanceShiftTiming {
   start: string
   end: string
 }

@@ -41,9 +41,7 @@ export default defineEventHandler(async (event) => {
     // Serialize attendance mutations per user so concurrent clock-out/in requests see one state.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`)
 
-    const candidateLogs = await tx.select().from(attendanceLog)
-      .where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, currentDateText), eq(attendanceLog.date, previousDateText))))
-      .orderBy(attendanceLog.timestamp)
+    const candidateLogs = await tx.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, currentDateText), eq(attendanceLog.date, previousDateText)))).orderBy(attendanceLog.timestamp)
 
     let openClockIn: typeof candidateLogs[number] | undefined
     for (const log of candidateLogs) {
@@ -63,9 +61,16 @@ export default defineEventHandler(async (event) => {
     const shiftCodeToPersist: string | null = (openClockIn.shiftCode ?? bodyShiftCode ?? day?.selectedShiftCode) ?? null
 
     await tx.insert(attendanceLog).values({
-      id: randomUUID(), userId, date: targetDate, type: 'clock-out', timestamp: now,
-      lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
-      shiftCode: shiftCodeToPersist, shiftType: shiftTypeToPersist,
+      id: randomUUID(),
+      userId,
+      date: targetDate,
+      type: 'clock-out',
+      timestamp: now,
+      lat: coords?.latitude,
+      lng: coords?.longitude,
+      accuracy: coords?.accuracy,
+      shiftCode: shiftCodeToPersist,
+      shiftType: shiftTypeToPersist,
       // Preserve the clock-in snapshot; the shift may have been edited while this session was open.
       shiftStart: openClockIn.shiftStart ?? null,
       shiftEnd: openClockIn.shiftEnd ?? null,
@@ -73,7 +78,8 @@ export default defineEventHandler(async (event) => {
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
       geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
       geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
-      createdAt: now, updatedAt: now,
+      createdAt: now,
+      updatedAt: now,
     })
 
     const logs = await tx.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, targetDate))).orderBy(attendanceLog.timestamp)

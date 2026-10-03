@@ -21,7 +21,6 @@ export default defineNuxtConfig({
     './modules/error-reporting',
   ],
 
-
   // Internationalization (i18n) - lazy loaded locales
   i18n: {
     // default locale shown when no prefix is present

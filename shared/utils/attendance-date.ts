@@ -1,10 +1,12 @@
-import {
+import type {
   CalendarDate,
-  CalendarDateTime,
-  Time,
   ZonedDateTime,
+} from '@internationalized/date'
+import {
+  CalendarDateTime,
   fromDate,
   parseDate,
+  Time,
   toCalendarDate,
   toZoned,
 } from '@internationalized/date'
@@ -52,7 +54,7 @@ export function addBusinessDays(value: AttendanceDate, days: number): Attendance
 }
 
 export function getTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 }
 
 export function getZonedDateTime(date: Date, timeZone: string): AttendanceZonedDateTime {

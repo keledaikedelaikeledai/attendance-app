@@ -1,11 +1,11 @@
 <script setup lang="ts">
-// Selaras' SButton has no `to` handling of its own - a bare `to`
-// falls through to the <button> and does nothing. Route via NuxtLink instead.
-const NuxtLink = resolveComponent('NuxtLink')
-
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { z } from 'zod'
+
+// Selaras' SButton has no `to` handling of its own - a bare `to`
+// falls through to the <button> and does nothing. Route via NuxtLink instead.
+const NuxtLink = resolveComponent('NuxtLink')
 
 const { handleSubmit, errors, isSubmitting } = useForm()
 const { t } = useI18n()
@@ -81,7 +81,8 @@ definePageMeta({
                 :ui="{ trailing: 'pe-1' }"
               >
                 <template #trailing>
-                  <SButton :as="NuxtLink"
+                  <SButton
+                    :as="NuxtLink"
                     color="neutral"
                     variant="text"
                     size="sm"
@@ -97,7 +98,8 @@ definePageMeta({
           </div>
           <SCheckbox v-model="remember" :label="t('auth.login.remember')" />
           <div class="pt-2">
-            <SButton :as="NuxtLink"
+            <SButton
+              :as="NuxtLink"
               size="lg"
               :loading="isSubmitting"
               block
@@ -110,7 +112,8 @@ definePageMeta({
         </form>
       </SCard>
       <div class="text-center">
-        <SButton :as="NuxtLink"
+        <SButton
+          :as="NuxtLink"
           variant="text"
           to="/forgot-password"
           color="neutral"
