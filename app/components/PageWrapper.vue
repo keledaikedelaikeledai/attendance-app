@@ -1,34 +1,8 @@
 <script setup lang="ts">
-import type { DropdownItem, NavigationMenuItem } from '@sewadah/selaras/types'
+import type { DropdownItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
 
-// Selaras' SButton has no `to` handling of its own - a bare `to`
-// falls through to the <button> and does nothing. Route via NuxtLink instead.
-const NuxtLink = resolveComponent('NuxtLink')
-
 const route = useRoute()
-
-// get current user session for profile/avatar in mobile drawer
-const { data: user } = await authClient.useSession(useFetch)
-
-function onSignOut() {
-  authClient.signOut({
-    fetchOptions: {
-      onSuccess() {
-        navigateTo('/login', { external: true })
-      },
-    },
-  })
-}
-
-const isCollapsed = useState('admin-is-collapsed')
-
-const menus = computed<NavigationMenuItem[]>(() => [
-  { label: 'Dashboard', icon: 'i-heroicons-home', to: '/admin' },
-  { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
-  { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
-  { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
-])
 
 // locales available (kept in sync with nuxt.config i18n locales)
 const availableLocales = [
@@ -72,93 +46,26 @@ const localeItems = computed<DropdownItem[][]>(() => {
 </script>
 
 <template>
-  <HeaderColumn class="mb-2 flex-none">
+  <!-- The single admin header. Same elevated surface as the sidebar so the two
+       read as one chrome. The toggle is always visible: on desktop it
+       collapses the sidebar to a rail, on mobile it opens the sidebar drawer.
+       The mobile drawer, user popover and collapse state this component used
+       to own all live in the sidebar now, which covers them with a superset
+       (its nav includes Geofence). What remains here is the per-page action
+       row plus the global locale and theme controls.
+
+       Sticky: `main` in the admin layout is the only scroller (flex-1 +
+       overflow-y-auto inside a viewport-locked h-screen), so top-0 pins the
+       bar there. z-10 keeps it above the page content, which is static.
+       Rounded on all four corners: sticky sits flush against the top of
+       main's scrollport, so main's p-2 padding scrolls away and the bar meets
+       the panel edge. radius-md (0.5rem) also matches the rounded-lg dashed
+       box below, and drops it from radius-lg (1rem). -->
+  <HeaderColumn class="sticky top-0 z-10 mb-2 flex-none rounded-[var(--selaras-resolved-radius-md)] bg-[var(--selaras-resolved-surface-elevated)] px-3 py-2">
     <template #left>
-      <!-- Selaras' SDrawer renders a fragment/teleport root, so a `class` on
-           the component cannot be inherited - it belongs on the trigger. `side`
-           replaces Nuxt UI's `direction`; there is no `as` equivalent. -->
-      <SDrawer
-        side="left"
-        :handle="false"
-      >
-        <SButton
-          icon="i-lucide-menu"
-          class="w-8 h-8 sm:hidden"
-          color="neutral"
-          variant="ghost"
-        />
-        <template #content>
-          <div class="h-screen flex flex-col px-3 py-4 bg-zinc-100 dark:bg-neutral-800">
-            <div class="flex flex-col items-center justify-center mb-6">
-              <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
-            </div>
-
-            <SNavigationMenu
-              orientation="vertical"
-              :items="menus"
-              class="data-[orientation=vertical]:w-full flex-1 overflow-y-auto"
-            />
-
-            <div class="flex flex-col pl-1 pr-2 mt-4">
-              <SSeparator />
-              <SPopover :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }">
-                <template #content>
-                  <SButton
-                    :as="NuxtLink"
-                    icon="i-lucide-user-circle"
-                    size="sm"
-                    color="neutral"
-                    variant="text"
-                    class="w-full p-[10px]"
-                    to="/admin/profile"
-                  >
-                    Profile
-                  </SButton>
-                  <SButton
-                    icon="i-lucide-log-out"
-                    size="sm"
-                    color="neutral"
-                    variant="text"
-                    class="w-full p-[10px]"
-                    @click="onSignOut"
-                  >
-                    Sign Out
-                  </SButton>
-                </template>
-
-                <SButton
-                  color="neutral"
-                  variant="ghost"
-                  class="w-full flex items-center justify-between mt-2 pt-2 pb-2 p-0"
-                  aria-label="User menu"
-                >
-                  <div class="flex items-center">
-                    <SAvatar
-                      :src="user?.user.image || undefined"
-                      :alt="user?.user.username || 'User Avatar'"
-                      size="lg"
-                      class="border border-neutral-300 dark:border-neutral-700"
-                    />
-                    <span v-if="true" class="text-xs ml-2">
-                      {{ user?.user.name }}
-                    </span>
-                  </div>
-                  <SIcon name="i-lucide-ellipsis-vertical" />
-                </SButton>
-              </SPopover>
-            </div>
-          </div>
-        </template>
-      </SDrawer>
-      <SButton
-        :icon="isCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
-        class="w-8 h-8 hidden sm:block"
-        color="neutral"
-        variant="ghost"
-        @click="isCollapsed = !isCollapsed"
-      />
+      <SDashboardSidebarToggle class="w-8 h-8" />
       <title>{{ route.meta.pageTitle }}</title>
-      <h1 class="font-semibold hidden sm:block text-lg">
+      <h1 class="font-semibold text-lg">
         {{ route.meta.title }}
       </h1>
       <slot name="navLeft" />
