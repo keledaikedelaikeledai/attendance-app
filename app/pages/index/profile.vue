@@ -119,7 +119,7 @@ const onSubmit = handleSubmit(async (values) => {
   <div class="mx-auto w-full max-w-2xl space-y-4">
     <!-- Identity header. On a phone this is the first thing on screen, so it
          leads with the avatar and name rather than a label-value grid. -->
-    <div class="flex items-center gap-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
+    <SCard :ui="{ body: 'flex items-center gap-4 p-5' }">
       <div class="shrink-0">
         <!-- SAvatar only ships sm, md and lg, so a size="xl" falls straight back
              to md and renders no bigger. Ask for lg and override the box with a
@@ -157,11 +157,11 @@ const onSubmit = handleSubmit(async (values) => {
           </div>
         </template>
       </div>
-    </div>
+    </SCard>
 
     <!-- Settings. Each row states its own label, so the small grey caption
          above each value goes away. -->
-    <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
+    <SCard :ui="{ body: 'p-0 divide-y divide-[var(--selaras-resolved-border-muted)]' }">
       <div class="flex items-center justify-between gap-4 p-4">
         <div class="flex min-w-0 items-center gap-3">
           <SIcon name="i-heroicons-moon" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
@@ -173,8 +173,6 @@ const onSubmit = handleSubmit(async (values) => {
              states its own meaning, so it stands on its own here. -->
         <SColorModeSwitch />
       </div>
-
-      <div class="h-px bg-[var(--selaras-resolved-border-muted)]" />
 
       <div class="flex items-center justify-between gap-4 p-4">
         <div class="flex min-w-0 items-center gap-3">
@@ -193,19 +191,21 @@ const onSubmit = handleSubmit(async (values) => {
           adaptive
         />
       </div>
-    </div>
+    </SCard>
 
     <!-- Password. Field captions come from the form field, so nothing is
          repeated here. -->
-    <div class="rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
-      <div class="flex items-center gap-3 border-b border-[var(--selaras-resolved-border-muted)] p-4">
-        <SIcon name="i-heroicons-lock-closed" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
-        <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
-          {{ t('profile.changePassword') }}
-        </h2>
-      </div>
+    <SCard>
+      <template #header>
+        <div class="flex items-center gap-3">
+          <SIcon name="i-heroicons-lock-closed" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+          <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+            {{ t('profile.changePassword') }}
+          </h2>
+        </div>
+      </template>
 
-      <form class="space-y-4 p-4" @submit.prevent="onSubmit">
+      <form class="space-y-4" @submit.prevent="onSubmit">
         <SFormField :label="t('profile.currentPassword')" :error="errors.currentPassword" label-mode="static">
           <SInput
             v-model="currentPassword"
@@ -233,12 +233,7 @@ const onSubmit = handleSubmit(async (values) => {
           />
         </SFormField>
 
-        <label class="flex cursor-pointer items-start gap-3 rounded-[var(--selaras-resolved-radius-md)] bg-[var(--selaras-resolved-surface-elevated)] p-3">
-          <SSwitch v-model="revokeOtherSessions" class="mt-0.5" />
-          <span class="text-sm text-[var(--selaras-resolved-text-default)]">
-            {{ t('profile.revokeOtherSessions') }}
-          </span>
-        </label>
+        <SSwitch v-model="revokeOtherSessions" :label="t('profile.revokeOtherSessions')" />
 
         <SButton
           :loading="isSubmitting"
@@ -250,7 +245,7 @@ const onSubmit = handleSubmit(async (values) => {
           {{ t('profile.changePasswordButton') }}
         </SButton>
       </form>
-    </div>
+    </SCard>
 
     <SButton
       color="danger"

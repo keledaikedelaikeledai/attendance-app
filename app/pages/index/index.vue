@@ -459,18 +459,20 @@ onMounted(async () => {
 <template>
   <div class="mx-auto w-full max-w-xl space-y-4">
     <!-- Status. The page's hero, so it leads with the status and the figures. -->
-    <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
-      <div class="flex items-center gap-2 border-b border-[var(--selaras-resolved-border-muted)] p-4">
-        <SIcon name="i-heroicons-clock" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
-        <SBadge :color="clockedIn ? 'primary' : 'neutral'" variant="soft">
-          {{ clockedIn ? t('index.clockedIn') : t('index.notClockedIn') }}
-        </SBadge>
-        <SBadge v-if="clockedIn && isLate" color="danger" variant="soft">
-          {{ t('index.lateBadge', { late: lateByHuman }) }}
-        </SBadge>
-      </div>
+    <SCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <SIcon name="i-heroicons-clock" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+          <SBadge :color="clockedIn ? 'primary' : 'neutral'" variant="soft">
+            {{ clockedIn ? t('index.clockedIn') : t('index.notClockedIn') }}
+          </SBadge>
+          <SBadge v-if="clockedIn && isLate" color="danger" variant="soft">
+            {{ t('index.lateBadge', { late: lateByHuman }) }}
+          </SBadge>
+        </div>
+      </template>
 
-      <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)] p-4">
+      <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)]">
         <div class="pr-3">
           <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
             <SIcon name="i-heroicons-arrow-right-on-rectangle" class="size-3.5 shrink-0" />
@@ -499,19 +501,21 @@ onMounted(async () => {
           </dd>
         </div>
       </dl>
-    </div>
+    </SCard>
 
     <!-- Shift selection and the action, in one surface. The action follows the
          selectors because both selectors gate it. -->
-    <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
-      <div class="flex items-center gap-2 border-b border-[var(--selaras-resolved-border-muted)] p-4">
-        <SIcon name="i-heroicons-briefcase" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
-        <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
-          {{ t('index.shift.label') }}
-        </h2>
-      </div>
+    <SCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <SIcon name="i-heroicons-briefcase" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+          <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+            {{ t('index.shift.label') }}
+          </h2>
+        </div>
+      </template>
 
-      <div class="space-y-4 p-4">
+      <div class="space-y-4">
         <div>
           <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
             <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
@@ -577,120 +581,121 @@ onMounted(async () => {
           {{ t('index.buttons.clockOut') }}
         </SButton>
       </div>
-    </div>
+    </SCard>
 
     <!-- Location. Supporting detail, so it sits last and stays quiet. -->
-    <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
-      <div class="flex items-center justify-between gap-3 border-b border-[var(--selaras-resolved-border-muted)] p-4">
-        <div class="flex items-center gap-2">
-          <SIcon name="i-heroicons-map-pin" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
-          <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
-            {{ t('index.location.title') }}
-          </h2>
+    <SCard>
+      <template #header>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <SIcon name="i-heroicons-map-pin" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+            <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+              {{ t('index.location.title') }}
+            </h2>
+          </div>
+          <SBadge size="sm" :color="geoSupported ? 'primary' : 'neutral'">
+            {{ permissionStatus }}
+          </SBadge>
         </div>
-        <SBadge size="sm" :color="geoSupported ? 'primary' : 'neutral'">
-          {{ permissionStatus }}
-        </SBadge>
-      </div>
+      </template>
 
-      <div class="p-4">
-        <p v-if="!geoSupported">
-          <span class="text-red-500">{{ t('index.location.unsupported') }}</span>
-        </p>
-        <p v-else-if="geoError">
-          <span class="text-red-500">{{ geoError }}</span>
-        </p>
-        <template v-else>
-          <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)]">
-            <div class="pr-3">
-              <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                Lat
-              </dt>
-              <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
-                {{ coords.lat?.toFixed(6) || '-' }}
-              </dd>
-            </div>
-            <div class="px-3">
-              <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                Lng
-              </dt>
-              <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
-                {{ coords.lng?.toFixed(6) || '-' }}
-              </dd>
-            </div>
-            <div v-if="coords.accuracy" class="pl-3">
-              <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                Accuracy
-              </dt>
-              <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
-                &plusmn;{{ Math.round(coords.accuracy) }}m
-              </dd>
-            </div>
-          </dl>
-        </template>
-        <p v-if="geofenceError" class="mt-2 text-xs text-red-500">
-          {{ geofenceError }}
-        </p>
+      <p v-if="!geoSupported">
+        <span class="text-red-500">{{ t('index.location.unsupported') }}</span>
+      </p>
+      <p v-else-if="geoError">
+        <span class="text-red-500">{{ geoError }}</span>
+      </p>
+      <template v-else>
+        <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)]">
+          <div class="pr-3">
+            <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              Lat
+            </dt>
+            <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
+              {{ coords.lat?.toFixed(6) || '-' }}
+            </dd>
+          </div>
+          <div class="px-3">
+            <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              Lng
+            </dt>
+            <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
+              {{ coords.lng?.toFixed(6) || '-' }}
+            </dd>
+          </div>
+          <div v-if="coords.accuracy" class="pl-3">
+            <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              Accuracy
+            </dt>
+            <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
+              &plusmn;{{ Math.round(coords.accuracy) }}m
+            </dd>
+          </div>
+        </dl>
+      </template>
+      <p v-if="geofenceError" class="mt-2 text-xs text-red-500">
+        {{ geofenceError }}
+      </p>
 
-        <SButton
-          size="sm"
-          variant="soft"
-          icon="i-heroicons-arrow-path"
-          :loading="locating"
-          class="mt-4"
-          @click="requestLocationOnce"
-        >
-          {{ t('index.buttons.refreshLocation') }}
-        </SButton>
+      <SButton
+        size="sm"
+        variant="soft"
+        icon="i-heroicons-arrow-path"
+        :loading="locating"
+        class="mt-4"
+        @click="requestLocationOnce"
+      >
+        {{ t('index.buttons.refreshLocation') }}
+      </SButton>
 
-        <ClientOnly>
-          <div class="mt-4">
-            <div v-if="geoSupported">
-              <div
-                v-if="hasLocation"
-                class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)] saturate-[.85]"
+      <ClientOnly>
+        <div class="mt-4">
+          <div v-if="geoSupported">
+            <div
+              v-if="hasLocation"
+              class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)] saturate-[.85]"
+            >
+              <LMap
+                style="height: 220px"
+                :zoom="mapZoom"
+                :center="mapCenter"
+                :use-global-leaflet="false"
               >
-                <LMap
-                  style="height: 220px"
-                  :zoom="mapZoom"
-                  :center="mapCenter"
-                  :use-global-leaflet="false"
-                >
-                  <LTileLayer
-                    :url="mapTileUrl"
-                    :attribution="mapAttribution"
-                  />
-                  <LMarker :lat-lng="mapCenter" />
-                </LMap>
-              </div>
-              <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                {{ t('index.location.mapAllow') }}
-              </div>
+                <LTileLayer
+                  :url="mapTileUrl"
+                  :attribution="mapAttribution"
+                />
+                <LMarker :lat-lng="mapCenter" />
+              </LMap>
             </div>
             <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
-              {{ t('index.location.mapUnavailable') }}
+              {{ t('index.location.mapAllow') }}
             </div>
           </div>
-        </ClientOnly>
-      </div>
-    </div>
+          <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.location.mapUnavailable') }}
+          </div>
+        </div>
+      </ClientOnly>
+    </SCard>
 
     <SModal v-model:open="showConfirmOut" :title="t('index.modal.title')">
       <template #body>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
+        <p class="text-sm text-[var(--selaras-resolved-text-muted)]">
           {{ confirmOutMessage }}
         </p>
 
         <div v-if="isEarlyOut" class="mt-3">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('index.modal.reasonLabel') }}</label>
-          <textarea
-            v-model="earlyReason"
-            maxlength="200"
-            rows="3"
-            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2"
-            :placeholder="t('index.modal.reasonPlaceholder')"
-          />
-          <p class="text-xs text-gray-500 mt-1">
+          <SFormField :label="t('index.modal.reasonLabel')" label-mode="static">
+            <STextarea
+              v-model="earlyReason"
+              maxlength="200"
+              rows="3"
+              class="w-full"
+              :placeholder="t('index.modal.reasonPlaceholder')"
+            />
+          </SFormField>
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
             {{ earlyReason.length }}/200
           </p>
         </div>
@@ -708,7 +713,7 @@ onMounted(async () => {
 
     <SModal v-model:open="geofenceBlocked" title="Outside allowed area">
       <template #body>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
+        <p class="text-sm text-[var(--selaras-resolved-text-muted)]">
           {{ geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.' }}
         </p>
         <div class="flex justify-end gap-2 mt-4">
@@ -721,19 +726,20 @@ onMounted(async () => {
 
     <SModal v-model:open="geofenceCommentModalOpen" title="Comment required">
       <template #body>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
+        <p class="text-sm text-[var(--selaras-resolved-text-muted)]">
           {{ geofenceBlockedMessage || 'You are outside the allowed area. Please add a comment to continue.' }}
         </p>
         <div class="mt-3">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Comment</label>
-          <textarea
-            v-model="geofenceComment"
-            maxlength="200"
-            rows="3"
-            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2"
-            placeholder="Add a brief reason..."
-          />
-          <p class="text-xs text-gray-500 mt-1">
+          <SFormField label="Comment" label-mode="static">
+            <STextarea
+              v-model="geofenceComment"
+              maxlength="200"
+              rows="3"
+              class="w-full"
+              placeholder="Add a brief reason..."
+            />
+          </SFormField>
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
             {{ geofenceComment.length }}/200
           </p>
         </div>

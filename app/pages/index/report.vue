@@ -395,18 +395,20 @@ watch(selectedMonth, fetchReport)
     <div v-if="summary && !loading" class="space-y-4">
       <!-- Overview. Five tiles, each with its own icon, so the numbers are
            scannable instead of being a wall of grey captions. -->
-      <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
-        <div class="flex items-center justify-between gap-3 border-b border-[var(--selaras-resolved-border-muted)] p-4">
-          <div class="flex items-center gap-2">
-            <SIcon name="i-heroicons-calendar-days" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
-            <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
-              {{ t('report.overview') }}
-            </h2>
+      <SCard :ui="{ body: 'p-0' }">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <SIcon name="i-heroicons-calendar-days" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+              <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+                {{ t('report.overview') }}
+              </h2>
+            </div>
+            <span class="shrink-0 font-mono text-sm tabular-nums text-[var(--selaras-resolved-text-muted)]">
+              {{ monthLabel(summary?.month) }}
+            </span>
           </div>
-          <span class="shrink-0 font-mono text-sm tabular-nums text-[var(--selaras-resolved-text-muted)]">
-            {{ monthLabel(summary?.month) }}
-          </span>
-        </div>
+        </template>
 
         <dl class="grid grid-cols-2 divide-x divide-y divide-[var(--selaras-resolved-border-muted)] sm:grid-cols-3 sm:divide-y-0">
           <div class="p-4">
@@ -455,7 +457,7 @@ watch(selectedMonth, fetchReport)
             </dd>
           </div>
         </dl>
-      </div>
+      </SCard>
 
       <p class="px-1 text-xs text-[var(--selaras-resolved-text-muted)]">
         {{ t('report.note') }}
@@ -467,13 +469,13 @@ watch(selectedMonth, fetchReport)
       </h3>
 
       <div class="space-y-3">
-        <div
+        <SCard
           v-for="d in days"
           :key="d.date"
-          class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]"
+          :ui="{ body: 'p-0', header: 'flex flex-wrap items-center justify-between gap-2 bg-[var(--selaras-resolved-surface-elevated)] p-4' }"
         >
           <!-- Day header: date on the left, shift summary on the right. -->
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)] px-4 py-3">
+          <template #header>
             <div class="font-mono text-sm font-medium tabular-nums text-[var(--selaras-resolved-text-default)]">
               {{ new Date(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) }}
             </div>
@@ -508,7 +510,7 @@ watch(selectedMonth, fetchReport)
                 {{ t('report.noShifts') }}
               </span>
             </div>
-          </div>
+          </template>
 
           <!-- Day totals. -->
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--selaras-resolved-border-muted)] px-4 py-2 text-xs text-[var(--selaras-resolved-text-muted)]">
@@ -599,7 +601,7 @@ watch(selectedMonth, fetchReport)
               </div>
             </template>
           </div>
-        </div>
+        </SCard>
       </div>
     </div>
   </div>
