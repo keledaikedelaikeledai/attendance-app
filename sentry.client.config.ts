@@ -1,18 +1,28 @@
 import * as Sentry from '@sentry/nuxt'
 
-Sentry.init({
-  dsn: useRuntimeConfig().public.sentry.dsn,
+const dsn = useRuntimeConfig().public.sentry?.dsn as string | undefined
 
-  tracesSampleRate: 0.2,
+// Sentry is optional: the app must run without it. Without a DSN the SDK
+// would still run its full tracing and replay instrumentation into the void -
+// burning CPU on employees' phones and tripping web-vitals crashes (such as
+// `reportAllChanges` reading `startTime` of undefined) with nowhere to send
+// them. Skip init entirely instead. Every useErrorReporter call no-ops safely
+// when init never ran.
+if (dsn) {
+  Sentry.init({
+    dsn,
 
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
+    tracesSampleRate: 0.2,
 
-  integrations: [Sentry.replayIntegration()],
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0,
 
-  enableLogs: true,
+    integrations: [Sentry.replayIntegration()],
 
-  dataCollection: {},
+    enableLogs: true,
 
-  debug: false,
-})
+    dataCollection: {},
+
+    debug: false,
+  })
+}
