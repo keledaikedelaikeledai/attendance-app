@@ -264,13 +264,14 @@ A problem moves here when the fix is committed. Keep the entry. It tells the
 next agent what was already tried.
 
 - A double tap on Clock In or Clock Out fired two POSTs. The buttons bound
-  `:loading` to `locating`, which covers only the GPS lookup and clears before
-  the request fires. Fixed in `cbc0ef3`: a `submitting` flag in
-  `useAttendance` guards both `clockIn` and `clockOut` with an early return and
-  a try/finally reset, and all four action buttons bind to it. The flag lives
-  in the composable because both `clockIn` calls are fire-and-forget, so a
-  page-level flag would clear before the POST finished. The server already
-  rejected the second POST with 409, so this was never data corruption.
+  `:loading` to `locating`, which covers only the GPS lookup. It clears before
+  the request fires, so the button sat idle during the POST. Fixed in
+  `cbc0ef3`: a `submitting` flag in `useAttendance` guards both `clockIn` and
+  `clockOut` with an early return. A try/finally block resets it, and all four
+  action buttons bind to it. The flag lives in the composable because both
+  `clockIn` calls are fire-and-forget. A page-level flag would clear before the
+  POST finished. The server already rejected the second POST with 409, so this
+  was never data corruption.
 
 ## 9. Interface rules
 
