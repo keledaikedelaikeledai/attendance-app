@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { DropdownItem } from '@sewadah/selaras/types'
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { useI18n } from 'vue-i18n'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 definePageMeta({
   title: 'Geofence',
@@ -9,8 +11,6 @@ definePageMeta({
 
 const { t } = useI18n()
 
-const mapTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-const mapAttribution = '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
 const toast = useToast()
 
 const { data, pending, refresh } = useFetch('/api/admin/geofences', { method: 'get', credentials: 'include' })
@@ -146,26 +146,197 @@ const mapZoom = computed(() => {
   return 12
 })
 
-const mapKey = computed(() => {
-  const id = selectedId.value || 'new'
-  if (geofenceType.value === 'point') {
-    if (center.value)
-      return `point-${id}-${center.value.lat}-${center.value.lng}`
-    return `point-empty-${id}`
+// ---------------------------------------------------------------------------
+// MapLibre. Same engine and same OpenFreeMap styles as the home page, so the
+// two maps cannot drift apart.
+//
+// The map is built once and then moved with jumpTo. It used to be rebuilt from
+// scratch on every change: `mapKey` interpolated polygon.length and was bound
+// as :key on <LMap>, so placing a single vertex remounted the entire map, tiles
+// and all. That is also why the old page needed a manual move/draw toggle -
+// any state the map held internally was discarded each time.
+//
+// The shape is drawn with plain GeoJSON layers rather than a drawing library,
+// so the engine swap stands on its own and can be reviewed separately.
+// ---------------------------------------------------------------------------
+const mapContainer = ref<HTMLElement | null>(null)
+let map: import('maplibre-gl').Map | null = null
+let mapLib: any = null
+
+const colorMode = useColorMode()
+const mapStyle = computed(() => colorMode.value === 'dark'
+  ? 'https://tiles.openfreemap.org/styles/fiord'
+  : 'https://tiles.openfreemap.org/styles/positron')
+
+const SOURCE_ID = 'geofence'
+const LAYER_FILL = 'geofence-fill'
+const LAYER_LINE = 'geofence-line'
+const LAYER_VERTEX = 'geofence-vertex'
+
+const fillColor = computed(() => colorMode.value === 'dark' ? '#60a5fa' : '#2563eb')
+const strokeColor = computed(() => isActive.value ? fillColor.value : '#9ca3af')
+
+let initializing = false
+async function initMap() {
+  if (map || initializing || !mapContainer.value)
+    return
+  initializing = true
+  try {
+    // Dynamic: MapLibre touches window at import time, which SSR cannot do.
+    mapLib = await import('maplibre-gl')
+    // Vite does not serve the worker where MapLibre expects it, so point it at
+    // the bundled file. Without this every tile fails "Worker failed to load".
+    mapLib.setWorkerUrl(mapWorkerUrl)
+    map = new mapLib.Map({
+      container: mapContainer.value,
+      style: mapStyle.value,
+      center: mapCenter.value,
+      zoom: mapZoom.value,
+      attributionControl: { compact: true },
+    })
+    map.on('load', () => {
+      const m = map!
+      m.addSource(SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+      m.addLayer({
+        id: LAYER_FILL,
+        type: 'fill',
+        source: SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: { 'fill-color': fillColor.value, 'fill-opacity': isActive.value ? 0.18 : 0.1 },
+      })
+      m.addLayer({
+        id: LAYER_LINE,
+        type: 'line',
+        source: SOURCE_ID,
+        paint: {
+          'line-color': strokeColor.value,
+          'line-width': 2,
+          // A dashed line reads as "not finished" while fewer than 3 vertices.
+          'line-dasharray': drawing.value ? [2, 2] : [1, 0],
+        },
+      })
+      m.addLayer({
+        id: LAYER_VERTEX,
+        type: 'circle',
+        source: SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 5,
+          'circle-color': strokeColor.value,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#ffffff',
+        },
+      })
+      pushToMap()
+    })
+    map.on('click', onMapClick)
   }
-  return `polygon-${id}-${polygon.value.length}`
+  catch (err) {
+    // Display-only, but a failure here must not block editing: report it and
+    // carry on with the form still usable.
+    useErrorReporter().captureException(err, { context: 'geofence-map-init' })
+    map = null
+    mapLib = null
+  }
+  finally {
+    initializing = false
+  }
+}
+
+// A point geofence is stored as a centre plus a radius in metres, which is not
+// a shape MapLibre can draw. A 64-segment ring is visually identical at the
+// zooms this page reaches and leaves the stored contract untouched.
+function circleRing(lat: number, lng: number, meters: number): [number, number][] {
+  const steps = 64
+  const earth = 6371000
+  const dLat = (meters / earth) * (180 / Math.PI)
+  const ring: [number, number][] = []
+  for (let i = 0; i <= steps; i++) {
+    const bearing = (i / steps) * 2 * Math.PI
+    const dLng = ((meters / (earth * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI)) * Math.sin(bearing)
+    ring.push([lat + dLat * Math.cos(bearing), lng + dLng])
+  }
+  return ring
+}
+
+function closed(ring: [number, number][]): [number, number][] {
+  if (ring.length < 3)
+    return ring
+  const [firstLat, firstLng] = ring[0]
+  const [lastLat, lastLng] = ring[ring.length - 1]
+  return (firstLat === lastLat && firstLng === lastLng) ? ring : [...ring, ring[0]]
+}
+
+const drawnFeatures = computed<GeoJSON.Feature[]>(() => {
+  if (geofenceType.value === 'point') {
+    if (!center.value)
+      return []
+    const radius = radiusMeters.value ?? 0
+    if (radius <= 0)
+      return []
+    return [{
+      type: 'Feature',
+      properties: { kind: 'circle' },
+      geometry: { type: 'Polygon', coordinates: [closed(circleRing(center.value.lat, center.value.lng, radius))] },
+    }]
+  }
+  if (polygon.value.length < 2)
+    return []
+  const line: [number, number][] = polygon.value.map(([lat, lng]) => [lat, lng])
+  return [{
+    type: 'Feature',
+    properties: { kind: polygon.value.length >= 3 ? 'polygon' : 'polyline' },
+    geometry: polygon.value.length >= 3
+      ? { type: 'Polygon', coordinates: [closed(line)] }
+      : { type: 'LineString', coordinates: line },
+  }]
 })
 
-const mapOptions = computed(() => {
+function pushToMap() {
+  if (!map || !map.isStyleLoaded())
+    return
+  const source = map.getSource(SOURCE_ID) as import('maplibre-gl').GeoJSONSource | undefined
+  source?.setData({ type: 'FeatureCollection', features: drawnFeatures.value })
+}
+
+// Map paint and source data sit outside Vue's reactivity, so repaint by hand
+// whenever anything they read from changes.
+watch([drawnFeatures, isActive, drawing], () => {
+  if (!map)
+    return
+  pushToMap()
+  if (map.getLayer(LAYER_FILL))
+    map.setPaintProperty(LAYER_FILL, 'fill-color', fillColor.value)
+  if (map.getLayer(LAYER_LINE))
+    map.setPaintProperty(LAYER_LINE, 'line-color', strokeColor.value)
+}, { deep: true })
+
+watch([mapCenter, mapZoom], () => {
+  map?.jumpTo({ center: mapCenter.value, zoom: mapZoom.value })
+})
+
+watch(mapStyle, (style) => {
+  map?.setStyle(style)
+})
+
+// Watch the element rather than a flag: the container mounts inside <ClientOnly>
+// after page setup, so watching a value missed it and left a blank map.
+watch(mapContainer, (el) => {
+  if (el)
+    initMap()
+})
+
+// Panning has to be off while drawing, or dragging the map drops vertices.
+watch([mapTool, isReadOnly], () => {
+  if (!map)
+    return
   const allowMove = mapTool.value === 'move' || isReadOnly.value
-  return {
-    zoomControl: true,
-    dragging: allowMove,
-    scrollWheelZoom: allowMove,
-    touchZoom: allowMove,
-    doubleClickZoom: false,
-    boxZoom: allowMove,
-    keyboard: allowMove,
+  for (const name of ['dragPan', 'scrollZoom', 'boxZoom', 'keyboard', 'doubleClickZoom'] as const) {
+    const handler = map[name]
+    if (allowMove)
+      handler.enable()
+    else
+      handler.disable()
   }
 })
 
@@ -226,30 +397,28 @@ function cancelEdit() {
   mode.value = 'view'
 }
 
+// MapLibre reports lngLat, where Leaflet reported latlng.
 function onMapClick(e: any) {
-  if (mapTool.value !== 'add' || isReadOnly.value) return
-  if (e.originalEvent) {
-    e.originalEvent.preventDefault?.()
-    e.originalEvent.stopPropagation?.()
-  }
-  const { lat, lng } = e.latlng
+  if (mapTool.value !== 'add' || isReadOnly.value)
+    return
+  const lat = e.lngLat?.lat
+  const lng = e.lngLat?.lng
+  if (typeof lat !== 'number' || typeof lng !== 'number')
+    return
   if (geofenceType.value === 'point') {
     center.value = { lat, lng }
   }
   else {
-    if (!drawing.value) polygon.value = []
+    if (!drawing.value)
+      polygon.value = []
     drawing.value = true
     polygon.value = [...polygon.value, [lat, lng]]
   }
 }
 
-function onMapDblClick(e: any) {
-  if (mapTool.value !== 'add' || isReadOnly.value) return
-  if (e.originalEvent) {
-    e.originalEvent.preventDefault?.()
-    e.originalEvent.stopPropagation?.()
-  }
-}
+// The old onMapDblClick handler was dead: it stopped propagation and then did
+// nothing, so double-clicking never finished a polygon. Finishing is the
+// Finish button's job. Deleted rather than ported.
 
 function undoVertex() {
   polygon.value = polygon.value.slice(0, -1)
@@ -641,27 +810,12 @@ async function deleteGeofence() {
                 class="h-[460px] overflow-hidden rounded-lg border border-[var(--selaras-resolved-border-default)] lg:h-[560px]"
                 :class="[mapTool === 'add' && !isReadOnly ? '!cursor-crosshair' : '']"
               >
-                <LMap
-                  :key="mapKey"
-                  :style="{ height: '100%', cursor: mapTool === 'add' && !isReadOnly ? 'crosshair' : '' }"
-                  :zoom="mapZoom"
-                  :center="mapCenter"
-                  :use-global-leaflet="false"
-                  :options="mapOptions"
-                  @click="onMapClick"
-                  @dblclick="onMapDblClick"
-                >
-                  <LTileLayer :url="mapTileUrl" :attribution="mapAttribution" />
-                  <template v-if="geofenceType === 'point' && center">
-                    <LCircle :lat-lng="[center.lat, center.lng]" :radius="radiusMeters || 0" :color="isActive ? 'green' : 'gray'" />
-                    <LMarker :lat-lng="[center.lat, center.lng]" />
-                  </template>
-                  <template v-else>
-                    <LPolygon v-if="polygon.length >= 3" :lat-lngs="polygon" :color="drawing ? 'orange' : 'blue'" />
-                    <LPolyline v-else-if="polygon.length >= 2" :lat-lngs="polygon" color="orange" />
-                    <LMarker v-for="(p, idx) in polygon" :key="idx" :lat-lng="p" />
-                  </template>
-                </LMap>
+                <!-- The container is the map. Watched by element in initMap,
+                     so no :key - the map is built once and moved with jumpTo. -->
+                <div
+                  ref="mapContainer"
+                  class="size-full"
+                />
               </div>
               <template #fallback>
                 <div class="h-[460px] flex items-center justify-center text-sm text-[var(--selaras-resolved-text-muted)] lg:h-[560px]">
