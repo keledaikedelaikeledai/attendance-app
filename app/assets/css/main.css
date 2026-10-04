@@ -65,6 +65,24 @@
   --selaras-text-muted: var(--color-gray-500);
   --selaras-text-inverted: var(--color-white);
 
+  /* border-default does two jobs on a bare <SCard>, and in light mode they
+     pull in opposite directions. The card's default variant is `outline`:
+     its root paints surface-default plus a ring in border-default, and that
+     ring sits on the canvas. Its header draws border-b in the same token, and
+     that one sits on the white card.
+
+     So the ring wants to be visible on the canvas, and the header divider
+     wants to be quiet on white. White (L* 100) and this canvas (L* 91.6) are
+     only 8.4 apart, so no single value does both:
+
+       gray-200 -> header 8.4 (quiet)   ring 0.0 (invisible)
+       gray-300 -> header 14.9 (loud)  ring 6.5 (visible)
+
+     gray-200 is the right trade. The ring going invisible costs nothing -
+     white on grey already separates the card - whereas a 14.9 header divider
+     reads as a hard line across every card. Do not raise border-default
+     without moving surface-canvas too; gray-100 canvas would let gray-200
+     serve both (ring 4.6, header 8.4). */
   --selaras-border-default: var(--color-gray-200);
   --selaras-border-muted: var(--color-gray-100);
   --selaras-border-hover: var(--color-gray-300);
@@ -110,8 +128,21 @@
   --selaras-text-muted: var(--color-neutral-400);
   --selaras-text-inverted: var(--color-neutral-950);
 
+  /* Same two jobs as light mode, and the same trade. A bare <SCard> is
+     `outline`: surface-default plus a border-default ring on the canvas, and
+     a border-default header divider on the card itself.
+
+       neutral-800 -> header 7.4 (quiet)  ring 12.4 (visible)
+       neutral-700 -> header 19.4 (loud)  ring 24.4 (heavy)
+
+     neutral-800 is the right trade, and it is also what Selaras ships:
+     L* 7.4 against its own elevated surface.
+
+     border-muted is the one genuine fix here. It was neutral-900, the same
+     value as surface-default, so the eight dividers using it rendered at 0.0
+     inside a card. neutral-800 puts them at 7.4, matching border-default. */
   --selaras-border-default: var(--color-neutral-800);
-  --selaras-border-muted: var(--color-neutral-900);
+  --selaras-border-muted: var(--color-neutral-800);
   --selaras-border-hover: var(--color-neutral-700);
 
   --selaras-scrim: rgb(0 0 0 / 0.7);
