@@ -54,7 +54,21 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
        internally, so the sidebar never needs sticky positioning. -->
   <div class="h-screen overflow-hidden">
     <SDashboardGroup auto-save-id="admin-shell" class="h-full">
-      <SDashboardSidebar>
+      <!-- The footer slot theme is `border-t border-default`, while this
+           sidebar's own root is `surface-elevated`, and main.css maps both of those
+           tokens to neutral-800 in dark mode, so the divider rendered at
+           L* distance 0 and vanished. Light was fine (gray-200 on gray-50,
+           6.6), which is why only dark mode looked broken.
+
+           This override is still required after the token work in main.css,
+           because border-default needs to stay quiet for card dividers and
+           therefore keeps sharing surface-elevated's step. border-hover is
+           distinct from both modes' elevated surface (gray-300, 13.1;
+           neutral-700, 11.9), and it is the token the dashed frame already
+           uses, so the two dividers match. -->
+      <SDashboardSidebar
+        :ui="{ footer: 'border-[var(--selaras-resolved-border-hover)]' }"
+      >
         <template #header="{ isCollapsed }">
           <img
             v-if="!isCollapsed"
@@ -144,19 +158,19 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
           </SDropdown>
         </template>
       </SDashboardSidebar>
-      <!-- The handle defaults paint a visible 1px line plus a 4px gradient
-           strip down the seam. Both are wrong here: the gradient hardcodes
-           `surface-default` for the page side, but DashboardPanel has no
-           background at all, so the real page colour is `surface-canvas`
-           (set on body). That leaves three greys across ~5px - elevated,
-           default, canvas. Make the whole handle transparent and bring the
-           line back only on hover/drag, so the seam is invisible at rest
-           but the edge still announces itself as draggable. The 8px hit
-           area is unaffected. -->
+      <!-- 0.5.0 removed the gradient stripe that motivated this override
+           (sewadahapp/selaras#8): the root is now `z-10 -mx-1 w-2
+           bg-transparent`, overlapping the boundary without painting either
+           surface. So the root override is gone as redundant.
+
+           The line override stays, and is now the library's own documented
+           pattern. Their new `line` slot carries no base opacity, so opacity-0
+           is still what hides the divider at rest - but their example also
+           restores it on keyboard focus, which my first version omitted. That
+           omission left the divider invisible to keyboard users. -->
       <SDashboardResizeHandle
         :ui="{
-          root: 'bg-transparent',
-          line: 'opacity-0 group-hover:opacity-100 group-data-[state=drag]:opacity-100',
+          line: 'opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=drag]:opacity-100',
         }"
       />
       <SDashboardPanel>
