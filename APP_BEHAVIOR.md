@@ -273,6 +273,22 @@ next agent what was already tried.
   POST finished. The server already rejected the second POST with 409, so this
   was never data corruption.
 
+### 8.10 Non-issues
+
+An entry moves here when an investigation proves there is nothing to fix. Read
+this before chasing a console error. It records dead ends so nobody repeats
+them.
+
+- A console error from a `VMxxx` script that starts with
+  `window.devToolsReportSoftNavs = true` is Chrome DevTools itself, not the
+  app. DevTools injects its own web-vitals collector into the inspected page
+  when live metrics run. The string exists nowhere in this repo, its
+  dependencies, or its build output. Close DevTools and reload. The error goes
+  away. Do not change app code for it.
+- A Sentry client with no DSN still runs tracing and replay into the void.
+  `sentry.client.config.ts` gates init on DSN presence for this reason. That
+  gate is hygiene, not a cure for the item above. Do not confuse the two.
+
 ## 9. Interface rules
 
 - **[RULE]** The home page is used mostly on a phone.
