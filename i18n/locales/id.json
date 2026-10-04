@@ -60,6 +60,8 @@
     "loading": "Memuat...",
     "failedToLoad": "Gagal memuat laporan",
     "overview": "Ikhtisar",
+    "prevMonth": "Bulan sebelumnya",
+    "nextMonth": "Bulan berikutnya",
     "totalWorkingDays": "Total Hari Kerja",
     "harianShiftDays": "Hari Shift Harian",
     "bantuanShiftDays": "Hari Shift Bantuan",
@@ -136,7 +138,6 @@
       "logoAlt": "Logo Aplikasi"
     }
   },
-
   "adminUsers": {
     "addUser": "Tambah pengguna",
     "columns": {
@@ -209,7 +210,6 @@
       }
     }
   },
-
   "adminShifts": {
     "pageTitle": "Shift",
     "add": "Tambah shift",
@@ -272,7 +272,6 @@
       }
     }
   },
-
   "auth": {
     "login": {
       "title": "Masuk untuk mengelola waktu Anda",

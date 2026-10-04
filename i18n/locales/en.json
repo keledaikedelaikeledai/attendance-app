@@ -60,6 +60,8 @@
     "loading": "Loading...",
     "failedToLoad": "Failed to load report",
     "overview": "Overview",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
     "totalWorkingDays": "Total Working Days",
     "harianShiftDays": "Harian Shift Days",
     "bantuanShiftDays": "Bantuan Shift Days",
@@ -136,7 +138,6 @@
       "logoAlt": "App Logo"
     }
   },
-
   "adminUsers": {
     "addUser": "Add user",
     "columns": {
@@ -209,7 +210,6 @@
       }
     }
   },
-
   "adminShifts": {
     "pageTitle": "Shifts",
     "add": "Add shift",
@@ -272,7 +272,6 @@
       }
     }
   },
-
   "auth": {
     "login": {
       "title": "Sign in to manage your time",

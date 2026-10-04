@@ -375,6 +375,20 @@ function _changeMonth(delta: number) {
   selectedMonth.value = `${y}-${String(m).padStart(2, '0')}`
 }
 
+// The report starts on the current month and can look back, but never forward.
+// A future month cannot hold attendance, so the next button disables itself
+// there. Comparison is string-based: the YYYY-MM format sorts chronologically.
+const isCurrentMonth = computed(() => selectedMonth.value === currentMonthStr)
+
+function prevMonth() {
+  _changeMonth(-1)
+}
+
+function nextMonth() {
+  if (!isCurrentMonth.value)
+    _changeMonth(1)
+}
+
 onMounted(fetchReport)
 watch(selectedMonth, fetchReport)
 </script>
@@ -404,9 +418,28 @@ watch(selectedMonth, fetchReport)
                 {{ t('report.overview') }}
               </h2>
             </div>
-            <span class="shrink-0 font-mono text-sm tabular-nums text-[var(--selaras-resolved-text-muted)]">
-              {{ monthLabel(summary?.month) }}
-            </span>
+            <div class="flex items-center gap-1">
+              <SButton
+                icon="i-heroicons-chevron-left"
+                size="sm"
+                variant="ghost"
+                color="neutral"
+                :aria-label="t('report.prevMonth')"
+                @click="prevMonth"
+              />
+              <span class="shrink-0 font-mono text-sm tabular-nums text-[var(--selaras-resolved-text-muted)]" role="status">
+                {{ monthLabel(summary?.month ?? selectedMonth) }}
+              </span>
+              <SButton
+                icon="i-heroicons-chevron-right"
+                size="sm"
+                variant="ghost"
+                color="neutral"
+                :disabled="isCurrentMonth"
+                :aria-label="t('report.nextMonth')"
+                @click="nextMonth"
+              />
+            </div>
           </div>
         </template>
 
