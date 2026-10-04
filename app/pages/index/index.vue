@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import type { ShiftDef } from '~/types/shifts'
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getShiftLabel, useAttendance } from '~/composables/useAttendance'
+import { useGeolocation } from '~/composables/useGeolocation'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 const toast = useToast()
 const { t } = useI18n()
+const colorMode = useColorMode()
 
 const {
   clockedIn,
@@ -33,11 +37,19 @@ const shiftItems = computed(() => {
   }))
 })
 
-const geoSupported = ref<boolean>(false)
-const permissionStatus = ref<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt')
-const coords = ref<{ lat?: number, lng?: number, accuracy?: number }>({})
-const locating = ref(false)
-const geoError = ref<string | null>(null)
+// Position and permission live in useGeolocation, shared app-wide. They used
+// to be page-local, so every return to this page reset them, re-ran the GPS
+// fix and tore the map down and up again. Now the second visit renders the
+// cached position instantly. Clock actions still take a fresh fix each time.
+const {
+  geoSupported,
+  permissionStatus,
+  coords,
+  locating,
+  geoError,
+  requestLocationOnce,
+  ensurePermission,
+} = useGeolocation()
 const geofences = ref<any[]>([])
 const geofenceLoading = ref(true)
 const geofenceError = ref<string | null>(null)
@@ -52,14 +64,7 @@ const showConfirmOut = ref(false)
 const confirmOutMessage = ref(t('index.modal.confirm'))
 const earlyReason = ref<string>('')
 const isEarlyOut = ref(false)
-const mapTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-const mapAttribution = '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
 const hasLocation = computed(() => typeof coords.value.lat === 'number' && typeof coords.value.lng === 'number')
-const mapCenter = computed<[number, number]>(() => [
-  coords.value.lat ?? 0,
-  coords.value.lng ?? 0,
-])
-const mapZoom = computed(() => (hasLocation.value ? 17 : 14))
 
 function distanceMeters(a: [number, number], b: [number, number]) {
   const R = 6371000
@@ -274,53 +279,76 @@ function formatHumanMinutes(totalMinutes: number) {
 
 // Use ensureDefaultShift from composable (keeps logic centralized)
 
-async function requestLocationOnce() {
-  geoError.value = null
-  if (!('geolocation' in navigator)) {
-    geoSupported.value = false
-    permissionStatus.value = 'unsupported'
+// MapLibre renders vector tiles from OpenFreeMap: positron in light mode,
+// fiord in dark mode. Both are free with no key and no quota. The engine is
+// imported dynamically because it touches window at load, which SSR cannot do.
+// The map element lives inside <ClientOnly> in the template, so this only ever
+// runs in the browser.
+const mapContainer = ref<HTMLElement | null>(null)
+let map: import('maplibre-gl').Map | null = null
+let marker: import('maplibre-gl').Marker | null = null
+
+const mapStyle = computed(() => colorMode.value === 'dark'
+  ? 'https://tiles.openfreemap.org/styles/fiord'
+  : 'https://tiles.openfreemap.org/styles/positron')
+
+async function initMap() {
+  if (map || !mapContainer.value)
     return
+  // The map is display-only: it must never break page setup. Any failure here
+  // (no WebGL on an old device, a blocked style fetch, a worker that will not
+  // load) is contained, and clocking keeps working because the position flow
+  // never touches map state.
+  try {
+    const { Map: MLMap, Marker: MLMarker, setWorkerUrl } = await import('maplibre-gl')
+    // Vite does not serve the worker at the path MapLibre guesses, so point it
+    // at the bundled file explicitly. Without this every tile fails with
+    // "Worker failed to load".
+    setWorkerUrl(mapWorkerUrl)
+    map = new MLMap({
+      container: mapContainer.value,
+      style: mapStyle.value,
+      center: [coords.value.lng ?? 106.8, coords.value.lat ?? -6.49],
+      zoom: hasLocation.value ? 17 : 14,
+      attributionControl: { compact: true },
+    })
+    marker = new MLMarker()
+    if (hasLocation.value)
+      marker.setLngLat([coords.value.lng!, coords.value.lat!]).addTo(map)
   }
-  geoSupported.value = true
-  locating.value = true
-  return new Promise<void>((resolve) => {
-    navigator.geolocation.getCurrentPosition((pos) => {
-      coords.value = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }
-      locating.value = false
-      resolve()
-    }, (err) => {
-      geoError.value = err.message
-      locating.value = false
-      useErrorReporter().captureException(err, { context: 'geolocation' })
-      resolve()
-    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 })
-  })
+  catch (err) {
+    useErrorReporter().captureException(err, { context: 'map-init' })
+    map = null
+    marker = null
+  }
 }
 
-async function ensurePermission() {
-  if (!('permissions' in navigator)) {
-    await requestLocationOnce()
+// The map container only renders once a fix exists, so init then, after the
+// DOM has settled. On a revisit the cached fix is already there, so the map
+// appears on first paint with no re-request and no redraw.
+watch(hasLocation, (located) => {
+  if (located)
+    nextTick(() => initMap())
+})
+watch(coords, (c) => {
+  if (!map || !marker || typeof c.lat !== 'number' || typeof c.lng !== 'number')
     return
-  }
-  try {
-    const status = await (navigator as any).permissions.query({ name: 'geolocation' })
-    permissionStatus.value = status.state
-    if (status.state === 'granted') {
-      await requestLocationOnce()
-    }
-    else if (status.state === 'prompt') {
-      await requestLocationOnce()
-      const status2 = await (navigator as any).permissions.query({ name: 'geolocation' })
-      permissionStatus.value = status2.state
-    }
-    status.onchange = () => {
-      permissionStatus.value = status.state
-    }
-  }
-  catch {
-    await requestLocationOnce()
-  }
-}
+  marker.setLngLat([c.lng, c.lat]).addTo(map)
+  map.flyTo({ center: [c.lng, c.lat], zoom: 17 })
+})
+
+// A theme change re-styles in place. Markers are DOM overlays, not style
+// layers, so they survive setStyle untouched.
+watch(mapStyle, (style) => {
+  map?.setStyle(style)
+})
+
+onBeforeUnmount(() => {
+  marker?.remove()
+  marker = null
+  map?.remove()
+  map = null
+})
 
 async function handleClock(action: 'in' | 'out') {
   await requestLocationOnce()
@@ -447,7 +475,13 @@ function onCancelClockOut() {
 
 onMounted(async () => {
   await refresh()
-  ensurePermission()
+  // Only ask for a fix when there is no cached one. A revisit renders the
+  // cached position instantly instead of resetting and re-requesting.
+  if (!hasLocation.value)
+    ensurePermission()
+  // Fire and forget: map setup must never gate or break the lines below, so
+  // it is neither awaited nor allowed to throw (see initMap).
+  initMap()
   await ensureDefaultShift()
   // Minimal fallback: if ensureDefaultShift didn't set a code, pick the first available shift so the select has a value
   if (!selectedShiftCode.value && (shifts as any)?.value && (shifts as any).value.length) {
@@ -655,20 +689,12 @@ onMounted(async () => {
           <div v-if="geoSupported">
             <div
               v-if="hasLocation"
-              class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)] saturate-[.85]"
+              class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)]"
             >
-              <LMap
-                style="height: 220px"
-                :zoom="mapZoom"
-                :center="mapCenter"
-                :use-global-leaflet="false"
-              >
-                <LTileLayer
-                  :url="mapTileUrl"
-                  :attribution="mapAttribution"
-                />
-                <LMarker :lat-lng="mapCenter" />
-              </LMap>
+              <!-- MapLibre renders into this element imperatively (see
+                   initMap). The isolate wrapper keeps the canvas inside this
+                   stacking context so portalled overlays always win. -->
+              <div ref="mapContainer" style="height: 220px" class="h-[220px] w-full" />
             </div>
             <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
               {{ t('index.location.mapAllow') }}
