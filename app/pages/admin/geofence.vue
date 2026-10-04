@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+definePageMeta({
+  title: 'Geofence',
+  pageTitle: 'Geofence - Admin - Attendance App',
+})
+
+const { t } = useI18n()
+
 const mapTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const mapAttribution = '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
 const toast = useToast()
@@ -310,24 +319,29 @@ async function deleteGeofence() {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <SPageHeader title="Geofences" description="Manage multiple geofences for clock-in/out enforcement." />
+  <PageWrapper>
+    <!-- Add moved up from the list card's own header. The page header is the
+         single place for page-level actions, matching shifts/users. -->
+    <template #navRight>
+      <SButton
+        color="primary"
+        icon="i-heroicons-plus"
+        @click="startCreate"
+      >
+        {{ t('adminGeofence.add') }}
+      </SButton>
+    </template>
 
     <div class="grid gap-4 lg:grid-cols-3">
       <SCard class="lg:col-span-1">
         <template #header>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium">
-                Geofence list
-              </p>
-              <p class="text-xs text-gray-500">
-                Create, edit, or remove geofences.
-              </p>
-            </div>
-            <SButton size="sm" icon="i-heroicons-plus" @click="startCreate">
-              Add
-            </SButton>
+          <div>
+            <p class="text-sm font-medium">
+              {{ t('adminGeofence.list.title') }}
+            </p>
+            <p class="text-xs text-gray-500">
+              {{ t('adminGeofence.list.description') }}
+            </p>
           </div>
         </template>
 
@@ -624,5 +638,5 @@ async function deleteGeofence() {
         </div>
       </template>
     </SModal>
-  </div>
+  </PageWrapper>
 </template>

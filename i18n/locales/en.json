@@ -272,6 +272,13 @@
       }
     }
   },
+  "adminGeofence": {
+    "add": "Add geofence",
+    "list": {
+      "title": "Geofence list",
+      "description": "Create, edit, or remove geofences."
+    }
+  },
   "auth": {
     "login": {
       "title": "Sign in to manage your time",

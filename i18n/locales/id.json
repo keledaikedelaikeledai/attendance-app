@@ -272,6 +272,13 @@
       }
     }
   },
+  "adminGeofence": {
+    "add": "Tambah geofence",
+    "list": {
+      "title": "Daftar geofence",
+      "description": "Buat, edit, atau hapus geofence."
+    }
+  },
   "auth": {
     "login": {
       "title": "Masuk untuk mengelola waktu Anda",
