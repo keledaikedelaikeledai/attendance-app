@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { DropdownItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({
@@ -41,6 +42,40 @@ const isRadiusEditable = computed(() => geofenceType.value === 'point')
 const isApplyingConfig = ref(false)
 
 const defaultCenter: [number, number] = [-6.2, 106.816666]
+
+// The row itself is the View action - selecting a geofence already loads it
+// read-only - so Edit and Delete are all that is left for the overflow menu.
+function rowMenuItems(fence: any): DropdownItem[][] {
+  return [
+    [
+      {
+        label: t('adminGeofence.actions.edit'),
+        icon: 'i-lucide-pencil',
+        onSelect: () => applyGeofence(fence, 'edit'),
+      },
+      {
+        label: t('adminGeofence.actions.delete'),
+        icon: 'i-lucide-trash',
+        destructive: true,
+        onSelect: () => confirmDelete(fence),
+      },
+    ],
+  ]
+}
+
+function fenceName(fence: any) {
+  return fence?.name || t('adminGeofence.list.untitled')
+}
+
+// The API stores the policy in `interactionMode`. Translated rather than
+// printed raw, because the stored values read as allow_with_comment.
+function policyLabel(mode: string) {
+  if (mode === 'allow')
+    return t('adminGeofence.badge.allow')
+  if (mode === 'allow_with_comment')
+    return t('adminGeofence.badge.allowWithComment')
+  return t('adminGeofence.badge.disallow')
+}
 
 watch(
   () => geofences.value,
@@ -345,51 +380,64 @@ async function deleteGeofence() {
           </div>
         </template>
 
-        <div class="space-y-3" :class="{ 'opacity-50 pointer-events-none': isLoading }">
-          <div v-if="!geofences.length" class="text-xs text-gray-500">
-            No geofences yet. Click “Add” to create one.
-          </div>
-          <div
-            v-for="fence in geofences"
-            :key="fence.id"
-            class="rounded-md border border-gray-200 dark:border-gray-800 p-3 space-y-2"
-            :class="{ 'bg-gray-50 dark:bg-gray-900': fence.id === selectedId }"
-          >
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-medium">
-                  {{ fence.name || 'Untitled geofence' }}
-                </p>
-                <div class="flex flex-wrap gap-1 mt-1 text-xs">
-                  <SBadge size="sm" variant="soft" :color="fence.type === 'polygon' ? 'warning' : 'primary'">
-                    {{ fence.type }}
-                  </SBadge>
-                  <SBadge size="sm" variant="soft" :color="fence.isActive ? 'primary' : 'neutral'">
-                    {{ fence.isActive ? 'active' : 'inactive' }}
-                  </SBadge>
-                  <SBadge size="sm" variant="soft" color="neutral">
-                    {{ fence.interactionMode || 'disallow' }}
-                  </SBadge>
-                </div>
-              </div>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <SButton size="sm" variant="soft" @click="applyGeofence(fence, 'view')">
-                View
-              </SButton>
-              <SButton size="sm" @click="applyGeofence(fence, 'edit')">
-                Edit
-              </SButton>
-              <SButton
-                size="sm"
-                color="danger"
-                variant="ghost"
-                @click="confirmDelete(fence)"
+        <div :class="{ 'opacity-50 pointer-events-none': isLoading }">
+          <p v-if="!geofences.length" class="text-xs text-gray-500">
+            {{ t('adminGeofence.list.empty') }}
+          </p>
+          <ul v-else class="space-y-2">
+            <li v-for="fence in geofences" :key="fence.id">
+              <!-- Selection uses the brand ramp from main.css rather than a
+                   Selaras token: there is no resolved primary-subtle or
+                   primary-border variable to reference outside a component. -->
+              <div
+                class="flex items-stretch overflow-hidden rounded-md border transition-colors"
+                :class="fence.id === selectedId
+                  ? 'border-primary-300 bg-primary-50 dark:border-primary-800 dark:bg-primary-950'
+                  : 'border-[var(--selaras-resolved-border-default)] hover:bg-[var(--selaras-resolved-surface-elevated)]'"
               >
-                Delete
-              </SButton>
-            </div>
-          </div>
+                <SButton
+                  variant="ghost"
+                  color="neutral"
+                  class="h-auto min-w-0 flex-1 p-0"
+                  :aria-current="fence.id === selectedId ? 'true' : undefined"
+                  @click="applyGeofence(fence, 'view')"
+                >
+                  <!-- SButton centres its slot by default; the w-full wrapper
+                       lays the row out instead of fighting it with a
+                       justify-start override, which does not take. -->
+                  <span class="flex w-full min-w-0 flex-col gap-1 px-3 py-2.5 text-left">
+                    <span class="w-full truncate text-sm font-medium">
+                      {{ fenceName(fence) }}
+                    </span>
+                    <span class="flex flex-wrap gap-1">
+                      <SBadge size="sm" variant="soft" :color="fence.type === 'polygon' ? 'warning' : 'primary'">
+                        {{ fence.type === 'polygon' ? t('adminGeofence.badge.polygon') : t('adminGeofence.badge.point') }}
+                      </SBadge>
+                      <SBadge size="sm" variant="soft" :color="fence.isActive ? 'primary' : 'neutral'">
+                        {{ fence.isActive ? t('adminGeofence.badge.active') : t('adminGeofence.badge.inactive') }}
+                      </SBadge>
+                      <SBadge size="sm" variant="soft" color="neutral">
+                        {{ policyLabel(fence.interactionMode) }}
+                      </SBadge>
+                    </span>
+                  </span>
+                </SButton>
+                <SDropdown
+                  :items="rowMenuItems(fence)"
+                  :positioning="{ align: 'end' }"
+                >
+                  <SButton
+                    variant="ghost"
+                    color="neutral"
+                    class="w-8 shrink-0 self-center"
+                    :aria-label="t('adminGeofence.actions.moreLabel', { name: fenceName(fence) })"
+                  >
+                    <SIcon name="i-lucide-ellipsis-vertical" />
+                  </SButton>
+                </SDropdown>
+              </div>
+            </li>
+          </ul>
         </div>
       </SCard>
 

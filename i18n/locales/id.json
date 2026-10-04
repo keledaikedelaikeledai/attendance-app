@@ -276,7 +276,23 @@
     "add": "Tambah geofence",
     "list": {
       "title": "Daftar geofence",
-      "description": "Buat, edit, atau hapus geofence."
+      "description": "Buat, edit, atau hapus geofence.",
+      "empty": "Belum ada geofence. Gunakan Tambah geofence untuk membuat.",
+      "untitled": "Geofence tanpa nama"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Hapus",
+      "moreLabel": "Aksi lainnya untuk {name}"
+    },
+    "badge": {
+      "point": "Titik",
+      "polygon": "Poligon",
+      "active": "Aktif",
+      "inactive": "Nonaktif",
+      "disallow": "Dilarang",
+      "allow": "Diizinkan",
+      "allowWithComment": "Diizinkan dengan komentar"
     }
   },
   "auth": {

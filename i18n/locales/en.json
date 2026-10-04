@@ -276,7 +276,23 @@
     "add": "Add geofence",
     "list": {
       "title": "Geofence list",
-      "description": "Create, edit, or remove geofences."
+      "description": "Create, edit, or remove geofences.",
+      "empty": "No geofences yet. Use Add geofence to create one.",
+      "untitled": "Untitled geofence"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "moreLabel": "More actions for {name}"
+    },
+    "badge": {
+      "point": "Point",
+      "polygon": "Polygon",
+      "active": "Active",
+      "inactive": "Inactive",
+      "disallow": "Disallow",
+      "allow": "Allow",
+      "allowWithComment": "Allow with comment"
     }
   },
   "auth": {
