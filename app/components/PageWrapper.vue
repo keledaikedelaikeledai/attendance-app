@@ -82,7 +82,6 @@ const localeItems = computed<DropdownItem[][]>(() => {
         :handle="false"
       >
         <SButton
-          :as="NuxtLink"
           icon="i-lucide-menu"
           class="w-8 h-8 sm:hidden"
           color="neutral"
@@ -116,7 +115,6 @@ const localeItems = computed<DropdownItem[][]>(() => {
                     Profile
                   </SButton>
                   <SButton
-                    :as="NuxtLink"
                     icon="i-lucide-log-out"
                     size="sm"
                     color="neutral"
@@ -129,7 +127,6 @@ const localeItems = computed<DropdownItem[][]>(() => {
                 </template>
 
                 <SButton
-                  :as="NuxtLink"
                   color="neutral"
                   variant="ghost"
                   class="w-full flex items-center justify-between mt-2 pt-2 pb-2 p-0"
@@ -154,7 +151,6 @@ const localeItems = computed<DropdownItem[][]>(() => {
         </template>
       </SDrawer>
       <SButton
-        :as="NuxtLink"
         :icon="isCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
         class="w-8 h-8 hidden sm:block"
         color="neutral"
@@ -175,7 +171,6 @@ const localeItems = computed<DropdownItem[][]>(() => {
       <ClientOnly>
         <SDropdown :items="localeItems" :positioning="{ align: 'end' }" :ui="{ content: 'w-48' }">
           <SButton
-            :as="NuxtLink"
             icon="i-heroicons-language"
             class="w-8 h-8"
             color="neutral"

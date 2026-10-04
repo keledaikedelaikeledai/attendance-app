@@ -82,7 +82,6 @@ definePageMeta({
               >
                 <template #trailing>
                   <SButton
-                    :as="NuxtLink"
                     color="neutral"
                     variant="text"
                     size="sm"
@@ -99,7 +98,6 @@ definePageMeta({
           <SCheckbox v-model="remember" :label="t('auth.login.remember')" />
           <div class="pt-2">
             <SButton
-              :as="NuxtLink"
               size="lg"
               :loading="isSubmitting"
               block

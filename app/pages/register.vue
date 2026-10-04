@@ -120,7 +120,6 @@ definePageMeta({
           </div>
           <div class="pt-2">
             <SButton
-              :as="NuxtLink"
               size="lg"
               :loading="isSubmitting"
               block

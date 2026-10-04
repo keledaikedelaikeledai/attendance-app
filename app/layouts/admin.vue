@@ -57,7 +57,6 @@ function onSignOut() {
                 Profile
               </SButton>
               <SButton
-                :as="NuxtLink"
                 icon="i-lucide-log-out"
                 size="sm"
                 color="neutral"
