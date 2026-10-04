@@ -51,6 +51,12 @@ function pickClosestShiftFromShifts(now = new Date()) {
 const clockedIn = ref<boolean>(false)
 const clockInTime = ref<string | undefined>()
 const clockOutTime = ref<string | undefined>()
+// True while a clock-in or clock-out POST is in flight. The page binds it to
+// the action buttons so a double tap cannot fire two requests. It lives here
+// rather than in the page because both clockIn calls below are fire-and-forget
+// (not awaited), so a page-level flag set around the call would clear before
+// the POST finishes.
+const submitting = ref<boolean>(false)
 const logs = ref<AttendanceLog[]>([])
 const selectedShiftCode = ref<ShiftCode | undefined>()
 const selectedShiftType = ref<'harian' | 'bantuan' | undefined>()
@@ -148,67 +154,81 @@ async function ensureDefaultShift() {
 
 interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCode | undefined, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
 async function clockIn(opts?: ClockInOptions) {
+  if (submitting.value) return
   if (clockedIn.value) return
+  submitting.value = true
   try {
-    const shiftTypeToCheck = selectedShiftType.value
-    if (shiftTypeToCheck) {
-      const today = businessDateForInstant(new Date())
-      for (const l of logs.value) {
-        if (l.type !== 'clock-in' || l.shiftType !== shiftTypeToCheck) continue
-        if (l.date === today) {
-          try {
-            const _t = (typeof useToast === 'function') ? useToast() : null
-            if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
+    try {
+      const shiftTypeToCheck = selectedShiftType.value
+      if (shiftTypeToCheck) {
+        const today = businessDateForInstant(new Date())
+        for (const l of logs.value) {
+          if (l.type !== 'clock-in' || l.shiftType !== shiftTypeToCheck) continue
+          if (l.date === today) {
+            try {
+              const _t = (typeof useToast === 'function') ? useToast() : null
+              if (_t) _t.add({ title: 'Already clocked in', description: `You already have a ${shiftTypeToCheck} clock-in today.`, color: 'warning' })
+            }
+            catch {}
+            return
           }
-          catch {}
-          return
         }
       }
     }
+    catch (err) {
+      useErrorReporter().captureException(err, { context: 'clock-in-duplicate-check' })
+    }
+    if (opts?.shiftCode) selectedShiftCode.value = opts.shiftCode
+    const res = await $fetch<any>('/api/attendance/clock-in', {
+      method: 'POST',
+      body: {
+        shiftCode: selectedShiftCode.value,
+        shiftType: selectedShiftType.value,
+        timeZone: clientTimeZone(),
+        coords: opts?.coords ? { latitude: opts.coords.latitude, longitude: opts.coords.longitude, accuracy: opts.coords.accuracy } : undefined,
+        geofenceComment: typeof opts?.geofenceComment === 'string' && opts.geofenceComment.length ? opts.geofenceComment.slice(0, 200) : undefined,
+        geofenceId: typeof opts?.geofenceId === 'string' && opts?.geofenceId.length ? opts.geofenceId.slice(0, 64) : undefined,
+        geofenceName: typeof opts?.geofenceName === 'string' && opts?.geofenceName.length ? opts.geofenceName.slice(0, 200) : undefined,
+      },
+      credentials: 'include',
+    })
+    if (res) {
+      clockedIn.value = true; clockInTime.value = new Date().toISOString(); clockOutTime.value = undefined
+      selectedShiftCode.value = res.selectedShiftCode ?? selectedShiftCode.value
+      selectedShiftType.value = res.shiftType ?? selectedShiftType.value
+    }
+    await refresh()
   }
-  catch (err) {
-    useErrorReporter().captureException(err, { context: 'clock-in-duplicate-check' })
+  finally {
+    submitting.value = false
   }
-  if (opts?.shiftCode) selectedShiftCode.value = opts.shiftCode
-  const res = await $fetch<any>('/api/attendance/clock-in', {
-    method: 'POST',
-    body: {
-      shiftCode: selectedShiftCode.value,
-      shiftType: selectedShiftType.value,
-      timeZone: clientTimeZone(),
-      coords: opts?.coords ? { latitude: opts.coords.latitude, longitude: opts.coords.longitude, accuracy: opts.coords.accuracy } : undefined,
-      geofenceComment: typeof opts?.geofenceComment === 'string' && opts.geofenceComment.length ? opts.geofenceComment.slice(0, 200) : undefined,
-      geofenceId: typeof opts?.geofenceId === 'string' && opts?.geofenceId.length ? opts.geofenceId.slice(0, 64) : undefined,
-      geofenceName: typeof opts?.geofenceName === 'string' && opts?.geofenceName.length ? opts.geofenceName.slice(0, 200) : undefined,
-    },
-    credentials: 'include',
-  })
-  if (res) {
-    clockedIn.value = true; clockInTime.value = new Date().toISOString(); clockOutTime.value = undefined
-    selectedShiftCode.value = res.selectedShiftCode ?? selectedShiftCode.value
-    selectedShiftType.value = res.shiftType ?? selectedShiftType.value
-  }
-  await refresh()
 }
 
 async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | null, geofenceComment?: string | null, geofenceId?: string | null, geofenceName?: string | null) {
+  if (submitting.value) return
   if (!clockedIn.value) return
-  const res = await $fetch<any>('/api/attendance/clock-out', {
-    method: 'POST',
-    body: {
-      coords: coords ? { latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy } : undefined,
-      shiftType: selectedShiftType.value,
-      shiftCode: selectedShiftCode.value,
-      timeZone: clientTimeZone(),
-      earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
-      geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
-      geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
-      geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
-    },
-    credentials: 'include',
-  })
-  if (res) { clockedIn.value = false; clockOutTime.value = new Date().toISOString() }
-  await refresh()
+  submitting.value = true
+  try {
+    const res = await $fetch<any>('/api/attendance/clock-out', {
+      method: 'POST',
+      body: {
+        coords: coords ? { latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy } : undefined,
+        shiftType: selectedShiftType.value,
+        shiftCode: selectedShiftCode.value,
+        timeZone: clientTimeZone(),
+        earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : undefined,
+        geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : undefined,
+        geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : undefined,
+        geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : undefined,
+      },
+      credentials: 'include',
+    })
+    if (res) { clockedIn.value = false; clockOutTime.value = new Date().toISOString() }
+    await refresh()
+  }
+  finally {
+    submitting.value = false
+  }
 }
 
 async function resetDay() {
@@ -219,6 +239,7 @@ async function resetDay() {
 export function useAttendance() {
   return {
     clockedIn,
+    submitting,
     clockInTime,
     clockOutTime,
     logs,

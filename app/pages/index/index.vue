@@ -17,6 +17,7 @@ const {
   clockIn,
   clockOut,
   selectedShiftCode,
+  submitting,
   refresh,
   shifts,
   selectedShiftType,
@@ -560,8 +561,8 @@ onMounted(async () => {
           v-if="!clockedIn"
           color="primary"
           icon="i-heroicons-play"
-          :loading="locating"
-          :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
+          :loading="locating || submitting"
+          :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType) || submitting"
           size="lg"
           block
           @click="() => handleClock('in')"
@@ -573,7 +574,8 @@ onMounted(async () => {
           color="primary"
           variant="solid"
           icon="i-heroicons-stop"
-          :loading="locating"
+          :loading="locating || submitting"
+          :disabled="submitting"
           size="lg"
           block
           @click="handleClock('out')"
@@ -704,7 +706,13 @@ onMounted(async () => {
           <SButton color="neutral" variant="soft" @click="onCancelClockOut">
             {{ t('index.modal.cancel') }}
           </SButton>
-          <SButton color="primary" icon="i-heroicons-check" @click="onConfirmClockOut">
+          <SButton
+            color="primary"
+            icon="i-heroicons-check"
+            :loading="submitting"
+            :disabled="submitting"
+            @click="onConfirmClockOut"
+          >
             {{ t('index.modal.confirmButton') }}
           </SButton>
         </div>
@@ -747,7 +755,13 @@ onMounted(async () => {
           <SButton color="neutral" variant="soft" @click="cancelGeofenceComment">
             Cancel
           </SButton>
-          <SButton color="primary" icon="i-heroicons-check" @click="submitGeofenceComment">
+          <SButton
+            color="primary"
+            icon="i-heroicons-check"
+            :loading="submitting"
+            :disabled="submitting"
+            @click="submitGeofenceComment"
+          >
             Continue
           </SButton>
         </div>
