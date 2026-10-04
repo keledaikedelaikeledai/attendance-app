@@ -22,6 +22,52 @@ const permissionStatus = ref<GeoPermission>('prompt')
 const coords = ref<GeoCoords>({})
 const locating = ref<boolean>(false)
 const geoError = ref<string | null>(null)
+// Human-readable locality for the fix, resolved lazily from Nominatim (free,
+// no key). Display-only: a failed lookup leaves lat/lng untouched, and the
+// position flow never waits for it.
+const address = ref<string | null>(null)
+const addressCache = new Map<string, string>()
+let addressPendingKey: string | null = null
+
+function addressKey(lat: number, lng: number) {
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`
+}
+
+async function resolveAddress(lat: number, lng: number) {
+  const key = addressKey(lat, lng)
+  const hit = addressCache.get(key)
+  if (hit) {
+    address.value = hit
+    return
+  }
+  if (addressPendingKey === key)
+    return
+  addressPendingKey = key
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`)
+    if (!res.ok)
+      return
+    const data = await res.json()
+    const short = typeof data?.display_name === 'string'
+      ? data.display_name.split(',').slice(0, 2).join(',').trim()
+      : null
+    if (!short)
+      return
+    addressCache.set(key, short)
+    // Only apply if the fix has not moved on while the lookup was in flight.
+    const c = coords.value
+    if (typeof c.lat === 'number' && typeof c.lng === 'number' && addressKey(c.lat, c.lng) === key)
+      address.value = short
+  }
+  catch {
+    // Silent by design. The coordinates are the source of truth; the address
+    // line simply does not render.
+  }
+  finally {
+    if (addressPendingKey === key)
+      addressPendingKey = null
+  }
+}
 
 async function requestLocationOnce() {
   geoError.value = null
@@ -36,6 +82,8 @@ async function requestLocationOnce() {
     navigator.geolocation.getCurrentPosition((pos) => {
       coords.value = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }
       locating.value = false
+      // Fire and forget: the address line fills in when it arrives.
+      void resolveAddress(pos.coords.latitude, pos.coords.longitude)
       resolve()
     }, (err) => {
       geoError.value = err.message
@@ -78,6 +126,7 @@ export function useGeolocation() {
     coords,
     locating,
     geoError,
+    address,
     requestLocationOnce,
     ensurePermission,
   }

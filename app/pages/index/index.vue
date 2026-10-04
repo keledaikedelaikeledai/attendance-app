@@ -47,6 +47,7 @@ const {
   coords,
   locating,
   geoError,
+  address,
   requestLocationOnce,
   ensurePermission,
 } = useGeolocation()
@@ -292,9 +293,13 @@ const mapStyle = computed(() => colorMode.value === 'dark'
   ? 'https://tiles.openfreemap.org/styles/fiord'
   : 'https://tiles.openfreemap.org/styles/positron')
 
+let initializing = false
 async function initMap() {
-  if (map || !mapContainer.value)
+  // Guard the async gap: two triggers can overlap on the import above, and
+  // without this both would build a Map on the same container.
+  if (map || initializing || !mapContainer.value)
     return
+  initializing = true
   // The map is display-only: it must never break page setup. Any failure here
   // (no WebGL on an old device, a blocked style fetch, a worker that will not
   // load) is contained, and clocking keeps working because the position flow
@@ -321,14 +326,19 @@ async function initMap() {
     map = null
     marker = null
   }
+  finally {
+    initializing = false
+  }
 }
 
-// The map container only renders once a fix exists, so init then, after the
-// DOM has settled. On a revisit the cached fix is already there, so the map
-// appears on first paint with no re-request and no redraw.
-watch(hasLocation, (located) => {
-  if (located)
-    nextTick(() => initMap())
+// Init when the container element itself appears, not when the position
+// arrives. The container lives behind v-if="hasLocation" inside ClientOnly,
+// so on a revisit with cached coords it mounts after page setup while
+// hasLocation never flips - watching the value missed it entirely and the map
+// stayed blank. Watching the element catches every mount.
+watch([mapContainer, hasLocation], ([el, located]) => {
+  if (el && located)
+    initMap()
 })
 watch(coords, (c) => {
   if (!map || !marker || typeof c.lat !== 'number' || typeof c.lng !== 'number')
@@ -479,9 +489,6 @@ onMounted(async () => {
   // cached position instantly instead of resetting and re-requesting.
   if (!hasLocation.value)
     ensurePermission()
-  // Fire and forget: map setup must never gate or break the lines below, so
-  // it is neither awaited nor allowed to throw (see initMap).
-  initMap()
   await ensureDefaultShift()
   // Minimal fallback: if ensureDefaultShift didn't set a code, pick the first available shift so the select has a value
   if (!selectedShiftCode.value && (shifts as any)?.value && (shifts as any).value.length) {
@@ -669,6 +676,9 @@ onMounted(async () => {
           </div>
         </dl>
       </template>
+      <p v-if="address" class="mt-2 truncate text-xs text-[var(--selaras-resolved-text-muted)]">
+        {{ address }}
+      </p>
       <p v-if="geofenceError" class="mt-2 text-xs text-red-500">
         {{ geofenceError }}
       </p>
