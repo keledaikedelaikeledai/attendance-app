@@ -258,6 +258,20 @@ Raise each problem before you fix it.
   redirect loop. The code expects the page to exist. It does not.
 - **[OPEN]** Nobody decided what this page must say.
 
+### 8.9 Resolved problems
+
+A problem moves here when the fix is committed. Keep the entry. It tells the
+next agent what was already tried.
+
+- A double tap on Clock In or Clock Out fired two POSTs. The buttons bound
+  `:loading` to `locating`, which covers only the GPS lookup and clears before
+  the request fires. Fixed in `cbc0ef3`: a `submitting` flag in
+  `useAttendance` guards both `clockIn` and `clockOut` with an early return and
+  a try/finally reset, and all four action buttons bind to it. The flag lives
+  in the composable because both `clockIn` calls are fire-and-forget, so a
+  page-level flag would clear before the POST finished. The server already
+  rejected the second POST with 409, so this was never data corruption.
+
 ## 9. Interface rules
 
 - **[RULE]** The home page is used mostly on a phone.
