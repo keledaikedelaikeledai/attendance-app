@@ -457,11 +457,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-xl">
-    <!-- Status + primary action. The action sits above the selectors so a
-         phone user never has to scroll to reach it (APP_BEHAVIOR 9.2). -->
-    <div class="rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
-      <div class="flex flex-wrap items-center gap-2">
+  <div class="mx-auto w-full max-w-xl space-y-4">
+    <!-- Status. The page's hero, so it leads with the status and the figures. -->
+    <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
+      <div class="flex items-center gap-2 border-b border-[var(--selaras-resolved-border-muted)] p-4">
+        <SIcon name="i-heroicons-clock" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
         <SBadge :color="clockedIn ? 'primary' : 'neutral'" variant="soft">
           {{ clockedIn ? t('index.clockedIn') : t('index.notClockedIn') }}
         </SBadge>
@@ -470,105 +470,130 @@ onMounted(async () => {
         </SBadge>
       </div>
 
-      <!-- Times. Tabular figures stop the digits shifting as the seconds tick. -->
-      <dl class="mt-5 grid grid-cols-3 gap-3">
-        <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
+      <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)] p-4">
+        <div class="pr-3">
+          <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-arrow-right-on-rectangle" class="size-3.5 shrink-0" />
             {{ t('index.labels.clockIn') }}
           </dt>
-          <dd class="mt-1 font-mono text-base tabular-nums text-[var(--selaras-resolved-text-default)] sm:text-lg whitespace-nowrap">
+          <dd class="mt-1.5 font-mono text-lg tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)] sm:text-xl">
             {{ formatTime(clockInTime) }}
           </dd>
         </div>
-        <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
+        <div class="px-3">
+          <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-arrow-left-on-rectangle" class="size-3.5 shrink-0" />
             {{ t('index.labels.clockOut') }}
           </dt>
-          <dd class="mt-1 font-mono text-base tabular-nums text-[var(--selaras-resolved-text-default)] sm:text-lg whitespace-nowrap">
+          <dd class="mt-1.5 font-mono text-lg tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)] sm:text-xl">
             {{ formatTime(clockOutTime) }}
           </dd>
         </div>
-        <div>
-          <dt class="text-xs font-medium uppercase tracking-wide text-[var(--selaras-resolved-text-muted)]">
+        <div class="pl-3">
+          <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
             {{ t('index.labels.duration') }}
           </dt>
-          <dd class="mt-1 font-mono text-base tabular-nums text-[var(--selaras-resolved-text-default)] sm:text-lg whitespace-nowrap">
+          <dd class="mt-1.5 font-mono text-lg tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)] sm:text-xl">
             {{ durationHuman }}
           </dd>
         </div>
       </dl>
     </div>
 
-    <!-- Shift selection. Secondary, because it only matters before clock-in. -->
-    <div class="mt-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
-      <SFormField :label="t('index.shift.label')" :hint="t('index.shift.help')" label-mode="static">
-        <SSelect
-          v-model="selectedShiftCode"
-          :items="shiftItems"
-          class="w-full"
-          adaptive
-          :disabled="clockedIn"
-          :placeholder="t('index.shift.placeholder')"
-          label-key="label"
-          value-key="value"
-        />
-      </SFormField>
-      <SFormField :label="t('index.shiftType.label')" :hint="t('index.shiftType.help')" label-mode="static">
-        <SSelect
-          v-model="selectedShiftType"
-          :items="[{ label: t('index.shiftType.items.harian'), value: 'harian' }, { label: t('index.shiftType.items.bantuan'), value: 'bantuan' }]"
-          class="w-full"
-          adaptive
-          :disabled="clockedIn"
-          :placeholder="t('index.shiftType.placeholder')"
-          label-key="label"
-          value-key="value"
-        />
-      </SFormField>
+    <!-- Shift selection and the action, in one surface. The action follows the
+         selectors because both selectors gate it. -->
+    <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
+      <div class="flex items-center gap-2 border-b border-[var(--selaras-resolved-border-muted)] p-4">
+        <SIcon name="i-heroicons-briefcase" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+        <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+          {{ t('index.shift.label') }}
+        </h2>
+      </div>
 
-      <!-- Inside the card, below the selectors. Both selects gate the action, so
-           it must follow them, and grouping the three keeps the whole clocking
-           decision in one place. -->
-      <SButton
-        v-if="!clockedIn"
-        color="primary"
-        icon="i-heroicons-play"
-        :loading="locating"
-        :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
-        size="lg"
-        block
-        class="mt-5"
-        @click="() => handleClock('in')"
-      >
-        {{ t('index.buttons.clockIn') }}
-      </SButton>
-      <SButton
-        v-else
-        color="primary"
-        variant="solid"
-        icon="i-heroicons-stop"
-        :loading="locating"
-        size="lg"
-        block
-        class="mt-5"
-        @click="handleClock('out')"
-      >
-        {{ t('index.buttons.clockOut') }}
-      </SButton>
+      <div class="space-y-4 p-4">
+        <div>
+          <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
+            {{ t('index.shift.label') }}
+          </div>
+          <SSelect
+            v-model="selectedShiftCode"
+            :items="shiftItems"
+            class="mt-1 w-full"
+            adaptive
+            :disabled="clockedIn"
+            :placeholder="t('index.shift.placeholder')"
+            label-key="label"
+            value-key="value"
+          />
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.shift.help') }}
+          </p>
+        </div>
+
+        <div>
+          <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-tag" class="size-3.5 shrink-0" />
+            {{ t('index.shiftType.label') }}
+          </div>
+          <SSelect
+            v-model="selectedShiftType"
+            :items="[{ label: t('index.shiftType.items.harian'), value: 'harian' }, { label: t('index.shiftType.items.bantuan'), value: 'bantuan' }]"
+            class="mt-1 w-full"
+            adaptive
+            :disabled="clockedIn"
+            :placeholder="t('index.shiftType.placeholder')"
+            label-key="label"
+            value-key="value"
+          />
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.shiftType.help') }}
+          </p>
+        </div>
+
+        <SButton
+          v-if="!clockedIn"
+          color="primary"
+          icon="i-heroicons-play"
+          :loading="locating"
+          :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
+          size="lg"
+          block
+          @click="() => handleClock('in')"
+        >
+          {{ t('index.buttons.clockIn') }}
+        </SButton>
+        <SButton
+          v-else
+          color="primary"
+          variant="solid"
+          icon="i-heroicons-stop"
+          :loading="locating"
+          size="lg"
+          block
+          @click="handleClock('out')"
+        >
+          {{ t('index.buttons.clockOut') }}
+        </SButton>
+      </div>
     </div>
 
     <!-- Location. Supporting detail, so it sits last and stays quiet. -->
-    <div class="mt-4 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)] p-5">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-medium text-[var(--selaras-resolved-text-default)]">
-          {{ t('index.location.title') }}
-        </h2>
+    <div class="overflow-hidden rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]">
+      <div class="flex items-center justify-between gap-3 border-b border-[var(--selaras-resolved-border-muted)] p-4">
+        <div class="flex items-center gap-2">
+          <SIcon name="i-heroicons-map-pin" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+          <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+            {{ t('index.location.title') }}
+          </h2>
+        </div>
         <SBadge size="sm" :color="geoSupported ? 'primary' : 'neutral'">
           {{ permissionStatus }}
         </SBadge>
       </div>
 
-      <div class="mt-3 text-sm">
+      <div class="p-4">
         <p v-if="!geoSupported">
           <span class="text-red-500">{{ t('index.location.unsupported') }}</span>
         </p>
@@ -576,28 +601,28 @@ onMounted(async () => {
           <span class="text-red-500">{{ geoError }}</span>
         </p>
         <template v-else>
-          <dl class="grid grid-cols-3 gap-3">
-            <div>
+          <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)]">
+            <div class="pr-3">
               <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
                 Lat
               </dt>
-              <dd class="font-mono tabular-nums text-[var(--selaras-resolved-text-default)]">
+              <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
                 {{ coords.lat?.toFixed(6) || '-' }}
               </dd>
             </div>
-            <div>
+            <div class="px-3">
               <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
                 Lng
               </dt>
-              <dd class="font-mono tabular-nums text-[var(--selaras-resolved-text-default)]">
+              <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
                 {{ coords.lng?.toFixed(6) || '-' }}
               </dd>
             </div>
-            <div v-if="coords.accuracy">
+            <div v-if="coords.accuracy" class="pl-3">
               <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
                 Accuracy
               </dt>
-              <dd class="font-mono tabular-nums text-[var(--selaras-resolved-text-default)]">
+              <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
                 &plusmn;{{ Math.round(coords.accuracy) }}m
               </dd>
             </div>
@@ -606,52 +631,48 @@ onMounted(async () => {
         <p v-if="geofenceError" class="mt-2 text-xs text-red-500">
           {{ geofenceError }}
         </p>
-      </div>
 
-      <SButton
-        size="sm"
-        variant="soft"
-        icon="i-heroicons-map-pin"
-        :loading="locating"
-        class="mt-4"
-        @click="requestLocationOnce"
-      >
-        {{ t('index.buttons.refreshLocation') }}
-      </SButton>
+        <SButton
+          size="sm"
+          variant="soft"
+          icon="i-heroicons-arrow-path"
+          :loading="locating"
+          class="mt-4"
+          @click="requestLocationOnce"
+        >
+          {{ t('index.buttons.refreshLocation') }}
+        </SButton>
 
-      <ClientOnly>
-        <div class="mt-4">
-          <div v-if="geoSupported">
-            <!-- Leaflet sets z-index 200-1000 on its panes, while Selaras'
-                 modal overlay sits at 40. Without an isolated stacking context
-                 the map paints over the scrim. `isolate` scopes those z-indexes
-                 to this box, so portalled overlays always win. -->
-            <div
-              v-if="hasLocation"
-              class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)] saturate-[.85]"
-            >
-              <LMap
-                style="height: 220px"
-                :zoom="mapZoom"
-                :center="mapCenter"
-                :use-global-leaflet="false"
+        <ClientOnly>
+          <div class="mt-4">
+            <div v-if="geoSupported">
+              <div
+                v-if="hasLocation"
+                class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)] saturate-[.85]"
               >
-                <LTileLayer
-                  :url="mapTileUrl"
-                  :attribution="mapAttribution"
-                />
-                <LMarker :lat-lng="mapCenter" />
-              </LMap>
+                <LMap
+                  style="height: 220px"
+                  :zoom="mapZoom"
+                  :center="mapCenter"
+                  :use-global-leaflet="false"
+                >
+                  <LTileLayer
+                    :url="mapTileUrl"
+                    :attribution="mapAttribution"
+                  />
+                  <LMarker :lat-lng="mapCenter" />
+                </LMap>
+              </div>
+              <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('index.location.mapAllow') }}
+              </div>
             </div>
             <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
-              {{ t('index.location.mapAllow') }}
+              {{ t('index.location.mapUnavailable') }}
             </div>
           </div>
-          <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
-            {{ t('index.location.mapUnavailable') }}
-          </div>
-        </div>
-      </ClientOnly>
+        </ClientOnly>
+      </div>
     </div>
 
     <SModal v-model:open="showConfirmOut" :title="t('index.modal.title')">
