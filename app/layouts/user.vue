@@ -24,17 +24,27 @@ const items = computed(() => [
 </script>
 
 <template>
-  <SContainer class="py-8 space-y-8 pb-28 md:pb-8">
-    <div class="flex items-center justify-between">
-      <div>
-        <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="w-[150px] h-auto">
-      </div>
-      <div class="hidden md:block">
-        <SNavigationMenu :items="items" highlight />
-      </div>
-    </div>
+  <div class="min-h-screen">
+    <!-- Sticky header. z-20 sits below the bottom bar (30) and the modal
+         overlay (40), so dialogs always cover it. -->
+    <header class="sticky top-0 z-20 border-b border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-default)]/85 backdrop-blur">
+      <SContainer class="flex h-16 items-center justify-between gap-4">
+        <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="h-9 w-auto">
+        <div class="hidden md:block">
+          <!-- No `highlight`: with variant="pill" the library renders both a
+               background and an underline for the active item, which reads as
+               two signals for one state. Pill alone is the single treatment. -->
+          <SNavigationMenu :items="items" />
+        </div>
+      </SContainer>
+    </header>
 
-    <slot />
+    <SContainer class="py-6 md:py-8">
+      <!-- pb-28 clears the fixed bottom bar on mobile. -->
+      <div class="pb-28 md:pb-0">
+        <slot />
+      </div>
+    </SContainer>
 
     <!-- A permanent bottom bar, not a drawer. It used to be an SDrawer held open
          with overlay and modal both off, which bought nothing: a drawer portal
@@ -61,5 +71,5 @@ const items = computed(() => [
         </div>
       </SContainer>
     </div>
-  </SContainer>
+  </div>
 </template>
