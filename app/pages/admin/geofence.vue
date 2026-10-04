@@ -24,11 +24,24 @@ const name = ref('')
 const isActive = ref(false)
 const interactionPolicy = ref<'disallow' | 'allow' | 'allow_with_comment'>('disallow')
 const geofenceType = ref<'point' | 'polygon'>('point')
-const geofenceItems = [
-  { label: 'Point', value: 'point' },
-  { label: 'Polygon', value: 'polygon' },
-]
-const interactionMode = ref<'move' | 'add'>('move')
+// Computed rather than constant so the labels follow the active locale - the
+// page used to render these as literal English.
+const geofenceItems = computed(() => [
+  { label: t('adminGeofence.form.type.point'), value: 'point' },
+  { label: t('adminGeofence.form.type.polygon'), value: 'polygon' },
+])
+const policyItems = computed(() => [
+  { label: t('adminGeofence.form.policy.disallow'), value: 'disallow' },
+  { label: t('adminGeofence.form.policy.allow'), value: 'allow' },
+  { label: t('adminGeofence.form.policy.allowWithComment'), value: 'allow_with_comment' },
+])
+// The map tool, not the server's `interactionMode`. Renamed from that, which
+// collided: the API field means the outside-interaction policy.
+const mapToolItems = computed(() => [
+  { label: t('adminGeofence.map.tool.move'), value: 'move', icon: 'i-lucide-hand' },
+  { label: t('adminGeofence.map.tool.draw'), value: 'add', icon: 'i-lucide-pen-tool' },
+])
+const mapTool = ref<'move' | 'add'>('move')
 const radiusMeters = ref<number | null>(100)
 const pointRadiusBackup = ref<number | null>(100)
 const center = ref<{ lat: number, lng: number } | null>(null)
@@ -67,8 +80,9 @@ function fenceName(fence: any) {
   return fence?.name || t('adminGeofence.list.untitled')
 }
 
-// The API stores the policy in `interactionMode`. Translated rather than
-// printed raw, because the stored values read as allow_with_comment.
+// The API stores the policy in a column called `interactionMode`, which is
+// unrelated to the map tool above. Translated rather than printed raw,
+// because the stored values read as allow_with_comment.
 function policyLabel(mode: string) {
   if (mode === 'allow')
     return t('adminGeofence.badge.allow')
@@ -93,7 +107,7 @@ watch(
   (val, prev) => {
     if (isApplyingConfig.value || val === prev)
       return
-    interactionMode.value = 'move'
+    mapTool.value = 'move'
     if (val === 'polygon') {
       center.value = null
       pointRadiusBackup.value = radiusMeters.value ?? pointRadiusBackup.value
@@ -113,7 +127,7 @@ watch(
   () => isReadOnly.value,
   (val) => {
     if (val)
-      interactionMode.value = 'move'
+      mapTool.value = 'move'
   },
 )
 
@@ -143,7 +157,7 @@ const mapKey = computed(() => {
 })
 
 const mapOptions = computed(() => {
-  const allowMove = interactionMode.value === 'move' || isReadOnly.value
+  const allowMove = mapTool.value === 'move' || isReadOnly.value
   return {
     zoomControl: true,
     dragging: allowMove,
@@ -191,7 +205,7 @@ function startCreate() {
   center.value = null
   polygon.value = []
   drawing.value = false
-  interactionMode.value = 'add'
+  mapTool.value = 'add'
   mode.value = 'create'
 }
 
@@ -213,7 +227,7 @@ function cancelEdit() {
 }
 
 function onMapClick(e: any) {
-  if (interactionMode.value !== 'add' || isReadOnly.value) return
+  if (mapTool.value !== 'add' || isReadOnly.value) return
   if (e.originalEvent) {
     e.originalEvent.preventDefault?.()
     e.originalEvent.stopPropagation?.()
@@ -230,7 +244,7 @@ function onMapClick(e: any) {
 }
 
 function onMapDblClick(e: any) {
-  if (interactionMode.value !== 'add' || isReadOnly.value) return
+  if (mapTool.value !== 'add' || isReadOnly.value) return
   if (e.originalEvent) {
     e.originalEvent.preventDefault?.()
     e.originalEvent.stopPropagation?.()
@@ -374,14 +388,14 @@ async function deleteGeofence() {
             <p class="text-sm font-medium">
               {{ t('adminGeofence.list.title') }}
             </p>
-            <p class="text-xs text-gray-500">
+            <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
               {{ t('adminGeofence.list.description') }}
             </p>
           </div>
         </template>
 
         <div :class="{ 'opacity-50 pointer-events-none': isLoading }">
-          <p v-if="!geofences.length" class="text-xs text-gray-500">
+          <p v-if="!geofences.length" class="text-xs text-[var(--selaras-resolved-text-muted)]">
             {{ t('adminGeofence.list.empty') }}
           </p>
           <ul v-else class="space-y-2">
@@ -446,10 +460,14 @@ async function deleteGeofence() {
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm font-medium">
-                {{ mode === 'create' ? 'New geofence' : mode === 'edit' ? 'Edit geofence' : 'Geofence details' }}
+                {{ mode === 'create'
+                  ? t('adminGeofence.detail.newTitle')
+                  : mode === 'edit'
+                    ? t('adminGeofence.detail.editTitle')
+                    : t('adminGeofence.detail.viewTitle') }}
               </p>
-              <p class="text-xs text-gray-500">
-                Configure shape, policy, and map coordinates.
+              <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminGeofence.detail.description') }}
               </p>
             </div>
             <div class="flex gap-2">
@@ -459,7 +477,7 @@ async function deleteGeofence() {
                 variant="soft"
                 @click="startEdit"
               >
-                Edit
+                {{ t('adminGeofence.actions.edit') }}
               </SButton>
               <SButton
                 v-if="mode !== 'view'"
@@ -468,7 +486,7 @@ async function deleteGeofence() {
                 color="neutral"
                 @click="cancelEdit"
               >
-                Cancel
+                {{ t('adminGeofence.actions.cancel') }}
               </SButton>
               <SButton
                 v-if="mode !== 'view'"
@@ -477,26 +495,32 @@ async function deleteGeofence() {
                 icon="i-heroicons-cloud-arrow-up"
                 @click="saveGeofence"
               >
-                Save
+                {{ t('adminGeofence.actions.save') }}
               </SButton>
             </div>
           </div>
         </template>
 
-        <div class="grid gap-4 lg:grid-cols-2">
-          <div class="space-y-4" :class="{ 'opacity-50 pointer-events-none': isLoading }">
-            <div>
-              <label class="block text-sm font-medium mb-1">Name</label>
-              <SInput v-model="name" placeholder="e.g. HQ geofence" :disabled="isReadOnly" />
-            </div>
+        <!-- Form 2/5, map 3/5. The map needs the room: drawing a polygon means
+             clicking precise vertices, and it was previously sharing the row
+             equally with the form. -->
+        <div class="grid gap-4 lg:grid-cols-5">
+          <div class="space-y-4 lg:col-span-2" :class="{ 'opacity-50 pointer-events-none': isLoading }">
+            <SFormField :label="t('adminGeofence.form.name.label')">
+              <SInput
+                v-model="name"
+                :placeholder="t('adminGeofence.form.name.placeholder')"
+                :disabled="isReadOnly"
+              />
+            </SFormField>
 
             <div class="flex items-center justify-between gap-3">
               <div>
                 <p class="font-medium">
-                  Active geofence
+                  {{ t('adminGeofence.form.active.label') }}
                 </p>
-                <p class="text-xs text-gray-500">
-                  Enable this geofence for clock-in/out checks.
+                <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                  {{ t('adminGeofence.form.active.description') }}
                 </p>
               </div>
               <ClientOnly>
@@ -504,28 +528,23 @@ async function deleteGeofence() {
               </ClientOnly>
             </div>
 
-            <div>
-              <label class="block text-sm font-medium mb-1">Outside interaction</label>
+            <SFormField
+              :label="t('adminGeofence.form.policy.label')"
+              :description="t('adminGeofence.form.policy.description')"
+            >
               <SSelect
                 v-model="interactionPolicy"
-                :items="[
-                  { label: 'Disallow', value: 'disallow' },
-                  { label: 'Allow', value: 'allow' },
-                  { label: 'Allow with comment', value: 'allow_with_comment' },
-                ]"
+                :items="policyItems"
                 class="w-full"
                 label-key="label"
                 value-key="value"
                 :disabled="isReadOnly"
               />
-              <p class="text-xs text-gray-500 mt-1">
-                Applies when user is outside this geofence and it is active.
-              </p>
-            </div>
+            </SFormField>
 
             <div>
               <p class="font-medium mb-1">
-                Geofence type
+                {{ t('adminGeofence.form.type.label') }}
               </p>
               <SRadioGroup
                 v-model="geofenceType"
@@ -535,69 +554,52 @@ async function deleteGeofence() {
               />
             </div>
 
-            <div class="space-y-1">
-              <p class="font-medium">
-                Interaction mode
-              </p>
-              <div class="flex flex-wrap gap-2 text-xs text-gray-500">
-                <SButton
-                  size="sm"
-                  :variant="interactionMode === 'move' ? 'solid' : 'soft'"
-                  icon="i-heroicons-hand-raised"
-                  :disabled="isReadOnly"
-                  @click="interactionMode = 'move'"
-                >
-                  Move map
-                </SButton>
-                <SButton
-                  size="sm"
-                  :variant="interactionMode === 'add' ? 'solid' : 'soft'"
-                  icon="i-heroicons-plus"
-                  :disabled="isReadOnly"
-                  @click="interactionMode = 'add'"
-                >
-                  Add point/polygon
-                </SButton>
-              </div>
-              <p class="text-xs text-gray-500">
-                When in add mode, clicking the map will place the point or polygon vertices.
-              </p>
-            </div>
-
-            <div v-if="isRadiusEditable">
-              <label class="block text-sm font-medium mb-1">Allowed radius (meters)</label>
+            <!-- The map tool and the polygon actions moved out of this form and up to a
+                 toolbar above the map. They only affect the map, and sitting
+                 between "Geofence type" and "Radius" made them read as another
+                 field of the geofence. -->
+            <SFormField
+              v-if="isRadiusEditable"
+              :label="t('adminGeofence.form.radius.label')"
+              :description="suggestedRadius
+                ? t('adminGeofence.form.radius.suggested', { m: Math.round(suggestedRadius) })
+                : undefined"
+            >
               <SInput
                 v-model.number="radiusMeters"
                 type="number"
                 min="0"
-                placeholder="e.g. 100"
+                :placeholder="t('adminGeofence.form.radius.placeholder')"
                 :disabled="isReadOnly"
               />
-              <p v-if="suggestedRadius" class="text-xs text-gray-500 mt-1">
-                Suggested from polygon: ~{{ Math.round(suggestedRadius) }} m
-              </p>
-            </div>
-            <p v-else class="text-xs text-gray-500">
-              Radius is fixed to 0 while using polygons; switch to point to edit.
+            </SFormField>
+            <p v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              {{ t('adminGeofence.form.radius.fixedForPolygon') }}
             </p>
+          </div>
 
-            <div v-if="geofenceType === 'point'" class="text-xs text-gray-500">
-              Click on the map to set the allowed center point.
-              <div v-if="center" class="mt-1 text-[11px]">
-                Current: {{ center.lat.toFixed(5) }}, {{ center.lng.toFixed(5) }}
-              </div>
-            </div>
-
-            <div v-else class="text-xs text-gray-500 space-y-2">
-              <p>Click on the map to add polygon vertices. Minimum 3 points.</p>
-              <div class="flex flex-wrap gap-2">
+          <div class="lg:col-span-3">
+            <!-- Map toolbar. Everything here acts on the map, so it sits with
+                 the map rather than in the form column. -->
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <SToggleGroup
+                v-model="mapTool"
+                :items="mapToolItems"
+                size="sm"
+                :disabled="isReadOnly"
+                :aria-label="t('adminGeofence.map.tool.label')"
+              />
+              <div class="flex flex-wrap items-center gap-2">
+                <SBadge size="sm" variant="soft" color="neutral">
+                  {{ t('adminGeofence.map.polygon.vertices', { count: polygon.length }) }}
+                </SBadge>
                 <SButton
                   size="sm"
                   icon="i-heroicons-check"
                   :disabled="polygon.length < 3 || isReadOnly"
                   @click="finishPolygon"
                 >
-                  Finish
+                  {{ t('adminGeofence.map.polygon.finish') }}
                 </SButton>
                 <SButton
                   size="sm"
@@ -606,7 +608,7 @@ async function deleteGeofence() {
                   :disabled="!polygon.length || isReadOnly"
                   @click="undoVertex"
                 >
-                  Undo
+                  {{ t('adminGeofence.map.polygon.undo') }}
                 </SButton>
                 <SButton
                   size="sm"
@@ -616,26 +618,32 @@ async function deleteGeofence() {
                   :disabled="!polygon.length || isReadOnly"
                   @click="clearPolygon"
                 >
-                  Clear
+                  {{ t('adminGeofence.map.polygon.clear') }}
                 </SButton>
               </div>
-              <p class="text-xs text-gray-500">
-                Radius value is fixed to 0 while using polygons and becomes editable again when switching back to point.
-              </p>
-              <ul v-if="polygon.length" class="text-[11px] space-y-1">
-                <li v-for="(p, i) in polygon" :key="i">
-                  #{{ i + 1 }}: {{ p[0].toFixed(5) }}, {{ p[1].toFixed(5) }}
-                </li>
-              </ul>
             </div>
-          </div>
+            <p class="mb-2 text-xs text-[var(--selaras-resolved-text-muted)]">
+              <template v-if="mapTool === 'add'">
+                {{ geofenceType === 'polygon'
+                  ? t('adminGeofence.map.polygon.hint')
+                  : t('adminGeofence.map.point.hint') }}
+              </template>
+              <template v-else-if="center && geofenceType === 'point'">
+                {{ t('adminGeofence.map.point.current') }}: {{ center.lat.toFixed(5) }}, {{ center.lng.toFixed(5) }}
+              </template>
+              <template v-else-if="!center && !polygon.length">
+                {{ t('adminGeofence.map.empty') }}
+              </template>
+            </p>
 
-          <div>
             <ClientOnly>
-              <div class="h-[420px] overflow-hidden rounded-b-lg border border-gray-200 dark:border-gray-800" :class="[interactionMode === 'add' && !isReadOnly ? '!cursor-crosshair' : '']">
+              <div
+                class="h-[460px] overflow-hidden rounded-lg border border-[var(--selaras-resolved-border-default)] lg:h-[560px]"
+                :class="[mapTool === 'add' && !isReadOnly ? '!cursor-crosshair' : '']"
+              >
                 <LMap
                   :key="mapKey"
-                  :style="{ height: '420px', cursor: interactionMode === 'add' && !isReadOnly ? 'crosshair' : '' }"
+                  :style="{ height: '100%', cursor: mapTool === 'add' && !isReadOnly ? 'crosshair' : '' }"
                   :zoom="mapZoom"
                   :center="mapCenter"
                   :use-global-leaflet="false"
@@ -656,8 +664,8 @@ async function deleteGeofence() {
                 </LMap>
               </div>
               <template #fallback>
-                <div class="h-[420px] flex items-center justify-center text-sm text-gray-500">
-                  Loading map...
+                <div class="h-[460px] flex items-center justify-center text-sm text-[var(--selaras-resolved-text-muted)] lg:h-[560px]">
+                  {{ t('adminGeofence.map.loading') }}
                 </div>
               </template>
             </ClientOnly>
@@ -666,14 +674,17 @@ async function deleteGeofence() {
       </SCard>
     </div>
 
-    <SModal v-model:open="showDelete" title="Delete geofence?">
+    <SModal
+      v-model:open="showDelete"
+      :title="t('adminGeofence.confirm.deleteTitle')"
+    >
       <template #body>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
-          This will permanently delete <strong>{{ deleteTarget?.name || 'this geofence' }}</strong>.
+        <p class="text-sm text-[var(--selaras-resolved-text-default)]">
+          {{ t('adminGeofence.confirm.deleteBody', { name: deleteTarget?.name || t('adminGeofence.list.untitled') }) }}
         </p>
         <div class="flex justify-end gap-2 mt-4">
           <SButton color="neutral" variant="soft" @click="showDelete = false">
-            Cancel
+            {{ t('adminGeofence.actions.cancel') }}
           </SButton>
           <SButton
             color="danger"
@@ -681,7 +692,7 @@ async function deleteGeofence() {
             :loading="saving"
             @click="deleteGeofence"
           >
-            Delete
+            {{ t('adminGeofence.actions.delete') }}
           </SButton>
         </div>
       </template>

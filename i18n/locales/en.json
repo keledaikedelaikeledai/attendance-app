@@ -283,7 +283,9 @@
     "actions": {
       "edit": "Edit",
       "delete": "Delete",
-      "moreLabel": "More actions for {name}"
+      "moreLabel": "More actions for {name}",
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "badge": {
       "point": "Point",
@@ -293,6 +295,67 @@
       "disallow": "Disallow",
       "allow": "Allow",
       "allowWithComment": "Allow with comment"
+    },
+    "detail": {
+      "newTitle": "New geofence",
+      "editTitle": "Edit geofence",
+      "viewTitle": "Geofence details",
+      "description": "Configure shape, policy, and map coordinates.",
+      "configure": "Configure"
+    },
+    "form": {
+      "name": {
+        "label": "Name",
+        "placeholder": "e.g. HQ geofence"
+      },
+      "active": {
+        "label": "Active geofence",
+        "description": "Enable this geofence for clock-in/out checks."
+      },
+      "policy": {
+        "label": "Outside interaction",
+        "description": "Applies when a user is outside this geofence and it is active.",
+        "disallow": "Disallow",
+        "allow": "Allow",
+        "allowWithComment": "Allow with comment"
+      },
+      "type": {
+        "label": "Geofence type",
+        "point": "Point",
+        "polygon": "Polygon"
+      },
+      "radius": {
+        "label": "Allowed radius (meters)",
+        "placeholder": "e.g. 100",
+        "suggested": "Suggested from polygon: ~{m} m",
+        "fixedForPolygon": "Radius is fixed to 0 while using polygons; switch to Point to edit it."
+      }
+    },
+    "map": {
+      "tool": {
+        "label": "Map tool",
+        "move": "Move map",
+        "draw": "Draw",
+        "hint": "Drawing mode is active. Click the map to place a point or a polygon vertex."
+      },
+      "point": {
+        "hint": "Click the map to set the centre point.",
+        "current": "Current"
+      },
+      "polygon": {
+        "hint": "Click the map to add vertices. A polygon needs at least 3.",
+        "vertices": "{count} vertices",
+        "finish": "Finish",
+        "undo": "Undo",
+        "clear": "Clear",
+        "radiusNote": "Radius is fixed to 0 while using polygons."
+      },
+      "loading": "Loading map...",
+      "empty": "No coordinates set yet."
+    },
+    "confirm": {
+      "deleteTitle": "Delete geofence?",
+      "deleteBody": "This will permanently delete {name}."
     }
   },
   "auth": {

@@ -283,7 +283,9 @@
     "actions": {
       "edit": "Edit",
       "delete": "Hapus",
-      "moreLabel": "Aksi lainnya untuk {name}"
+      "moreLabel": "Aksi lainnya untuk {name}",
+      "save": "Simpan",
+      "cancel": "Batal"
     },
     "badge": {
       "point": "Titik",
@@ -293,6 +295,67 @@
       "disallow": "Dilarang",
       "allow": "Diizinkan",
       "allowWithComment": "Diizinkan dengan komentar"
+    },
+    "detail": {
+      "newTitle": "Geofence baru",
+      "editTitle": "Edit geofence",
+      "viewTitle": "Detail geofence",
+      "description": "Atur bentuk, kebijakan, dan koordinat peta.",
+      "configure": "Atur"
+    },
+    "form": {
+      "name": {
+        "label": "Nama",
+        "placeholder": "mis. Geofence kantor pusat"
+      },
+      "active": {
+        "label": "Geofence aktif",
+        "description": "Aktifkan geofence ini untuk pengecekan clock in/out."
+      },
+      "policy": {
+        "label": "Interaksi di luar",
+        "description": "Berlaku saat pengguna berada di luar geofence ini dan geofence aktif.",
+        "disallow": "Dilarang",
+        "allow": "Diizinkan",
+        "allowWithComment": "Diizinkan dengan komentar"
+      },
+      "type": {
+        "label": "Tipe geofence",
+        "point": "Titik",
+        "polygon": "Poligon"
+      },
+      "radius": {
+        "label": "Radius yang diizinkan (meter)",
+        "placeholder": "mis. 100",
+        "suggested": "Disarankan dari poligon: ~{m} m",
+        "fixedForPolygon": "Radius dikunci di 0 saat memakai poligon; pindah ke Titik untuk mengubahnya."
+      }
+    },
+    "map": {
+      "tool": {
+        "label": "Alat peta",
+        "move": "Geser peta",
+        "draw": "Gambar",
+        "hint": "Mode gambar aktif. Klik peta untuk placing titik atau titik poligon."
+      },
+      "point": {
+        "hint": "Klik peta untuk menentukan titik pusat.",
+        "current": "Sekarang"
+      },
+      "polygon": {
+        "hint": "Klik peta untuk menambah titik. Poligon minimal 3 titik.",
+        "vertices": "{count} titik",
+        "finish": "Selesai",
+        "undo": "Urungkan",
+        "clear": "Hapus",
+        "radiusNote": "Radius dikunci di 0 saat memakai poligon."
+      },
+      "loading": "Memuat peta...",
+      "empty": "Belum ada koordinat."
+    },
+    "confirm": {
+      "deleteTitle": "Hapus geofence?",
+      "deleteBody": "Ini akan menghapus {name} secara permanen."
     }
   },
   "auth": {
