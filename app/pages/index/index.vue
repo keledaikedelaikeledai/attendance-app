@@ -52,16 +52,8 @@ const showConfirmOut = ref(false)
 const confirmOutMessage = ref(t('index.modal.confirm'))
 const earlyReason = ref<string>('')
 const isEarlyOut = ref(false)
-const colorMode = useColorMode()
-// CARTO raster tiles instead of OSM's own servers: OSM's tile usage policy
-// targets exactly this kind of production app with daily users, and OSM ships
-// no dark variant. CARTO is free with attribution and serves a matching dark
-// style, so the map follows the theme. `{r}` serves @2x tiles on retina
-// phones. Anything that is not resolved dark (including SSR) gets light.
-const mapTileUrl = computed(() => colorMode.value === 'dark'
-  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-  : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png')
-const mapAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+const mapTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const mapAttribution = '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
 const hasLocation = computed(() => typeof coords.value.lat === 'number' && typeof coords.value.lng === 'number')
 const mapCenter = computed<[number, number]>(() => [
   coords.value.lat ?? 0,
