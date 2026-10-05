@@ -132,12 +132,16 @@ watch(
 )
 
 const mapCenter = computed<[number, number]>(() => {
-  if (geofenceType.value === 'point' && center.value) return [center.value.lat, center.value.lng]
+  // MapLibre and GeoJSON both want [lng, lat]. Storage stays [lat, lng] to
+  // match the rows already in the database, so swap at this boundary only.
+  if (geofenceType.value === 'point' && center.value)
+    return [center.value.lng, center.value.lat]
   if (polygon.value.length) {
     const sum = polygon.value.reduce((acc, [lat, lng]) => [acc[0] + lat, acc[1] + lng], [0, 0])
-    return [sum[0] / polygon.value.length, sum[1] / polygon.value.length]
+    const n = polygon.value.length
+    return [sum[1] / n, sum[0] / n]
   }
-  return defaultCenter
+  return [defaultCenter[1], defaultCenter[0]]
 })
 
 const mapZoom = computed(() => {
@@ -261,7 +265,8 @@ async function initMap() {
 
 // A point geofence is stored as a centre plus a radius in metres, which is not
 // a shape MapLibre can draw. A 64-segment ring is visually identical at the
-// zooms this page reaches and leaves the stored contract untouched.
+// zooms this page reaches and leaves the stored contract untouched. Emits
+// [lng, lat] for GeoJSON; storage stays [lat, lng].
 function circleRing(lat: number, lng: number, meters: number): [number, number][] {
   const steps = 64
   const earth = 6371000
@@ -270,7 +275,7 @@ function circleRing(lat: number, lng: number, meters: number): [number, number][
   for (let i = 0; i <= steps; i++) {
     const bearing = (i / steps) * 2 * Math.PI
     const dLng = ((meters / (earth * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI)) * Math.sin(bearing)
-    ring.push([lat + dLat * Math.cos(bearing), lng + dLng])
+    ring.push([lng + dLng, lat + dLat * Math.cos(bearing)])
   }
   return ring
 }
@@ -278,9 +283,9 @@ function circleRing(lat: number, lng: number, meters: number): [number, number][
 function closed(ring: [number, number][]): [number, number][] {
   if (ring.length < 3)
     return ring
-  const [firstLat, firstLng] = ring[0]
-  const [lastLat, lastLng] = ring[ring.length - 1]
-  return (firstLat === lastLat && firstLng === lastLng) ? ring : [...ring, ring[0]]
+  const [firstX, firstY] = ring[0]
+  const [lastX, lastY] = ring[ring.length - 1]
+  return (firstX === lastX && firstY === lastY) ? ring : [...ring, ring[0]]
 }
 
 const drawnFeatures = computed<GeoJSON.Feature[]>(() => {
@@ -298,14 +303,22 @@ const drawnFeatures = computed<GeoJSON.Feature[]>(() => {
   }
   if (polygon.value.length < 2)
     return []
-  const line: [number, number][] = polygon.value.map(([lat, lng]) => [lat, lng])
-  return [{
+  // Swap storage order [lat, lng] to GeoJSON [lng, lat], and emit a Point per
+  // vertex so the in-progress run shows its handles.
+  const line: [number, number][] = polygon.value.map(([lat, lng]) => [lng, lat])
+  const shape: GeoJSON.Feature = {
     type: 'Feature',
     properties: { kind: polygon.value.length >= 3 ? 'polygon' : 'polyline' },
     geometry: polygon.value.length >= 3
       ? { type: 'Polygon', coordinates: [closed(line)] }
       : { type: 'LineString', coordinates: line },
-  }]
+  }
+  const vertices: GeoJSON.Feature[] = polygon.value.map(([lat, lng]) => ({
+    type: 'Feature',
+    properties: { kind: 'vertex' },
+    geometry: { type: 'Point', coordinates: [lng, lat] },
+  }))
+  return [shape, ...vertices]
 })
 
 function pushToMap() {
