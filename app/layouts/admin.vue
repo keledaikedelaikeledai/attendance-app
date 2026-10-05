@@ -163,14 +163,23 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
            bg-transparent`, overlapping the boundary without painting either
            surface. So the root override is gone as redundant.
 
-           The line override stays, and is now the library's own documented
-           pattern. Their new `line` slot carries no base opacity, so opacity-0
-           is still what hides the divider at rest - but their example also
-           restores it on keyboard focus, which my first version omitted. That
-           omission left the divider invisible to keyboard users. -->
+           The divider is permanent now, not hover-only. It was `opacity-0`
+           until hover, which was right while the sidebar and the panel were
+           both plain surfaces with nothing to separate. With the header bar
+           spanning edge to edge there is a real edge to mark, so the line sits
+           at full strength and the handle still tints it on hover, focus and
+           drag to show the boundary is grabbable.
+
+           The line is a `w-px` div painted with a background, so the override
+           has to be a bg-* colour: a border-* class would not render on it.
+
+           border-hover, not border-default: the two collapse in dark mode,
+           where border-default shares surface-elevated's step (see the
+           sidebar footer note above). This also matches the header's bottom
+           border, so the two dividers meet at the corner. -->
       <SDashboardResizeHandle
         :ui="{
-          line: 'opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=drag]:opacity-100',
+          line: 'bg-[var(--selaras-resolved-border-hover)] transition-colors group-hover:bg-primary-500 group-focus-visible:bg-primary-500 group-data-[state=drag]:bg-primary-500',
         }"
       />
       <SDashboardPanel>

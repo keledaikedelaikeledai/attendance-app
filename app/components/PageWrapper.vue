@@ -63,8 +63,13 @@ const localeItems = computed<DropdownItem[][]>(() => {
          An elevated rounded bar next to the sidebar's own elevated surface read
          as two competing panels, and the radius had to be matched to a frame
          that no longer exists. bg-elevated stays so the bar still covers page
-         content passing under it, and z-10 keeps it above that content. -->
-    <HeaderColumn class="sticky top-0 z-10 flex-none border-b border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-elevated)] px-4 py-3">
+         content passing under it, and z-10 keeps it above that content.
+
+         border-hover, not border-default: the two collapse in dark mode, where
+         border-default shares this bar's own elevated step and the line
+         disappears. It is also the token the sidebar divider uses, so the two
+         meet cleanly at the corner instead of stepping in lightness. -->
+    <HeaderColumn class="sticky top-0 z-10 flex-none border-b border-[var(--selaras-resolved-border-hover)] bg-[var(--selaras-resolved-surface-elevated)] px-4 py-3">
       <template #left>
         <SDashboardSidebarToggle class="w-8 h-8" />
         <h1 class="font-semibold text-lg">
