@@ -92,11 +92,18 @@ const localeItems = computed<DropdownItem[][]>(() => {
         <SColorModeToggle />
       </template>
     </HeaderColumn>
-    <!-- No dashed content frame any more. `main` is the only scroll
-         container, so a page's own content flows inside it and the header
-         above stays put on its own `sticky top-0`. The frame used to be a
-         second scroller nested inside `main`, which is what forced every
-         page to hand-roll its own overflow. -->
-    <slot />
+    <!-- The gap between the bar and the page content. It lives here, not on
+         `main`, because `main` has to leave the header flush to the panel
+         edges; padding `main` would inset the bar too, and the bar then read
+         as a card floating inside the panel instead of as the panel's own
+         header.
+
+         No dashed content frame any more. `main` is the one scroll container,
+         so page content flows inside it and the header stays put on its own
+         `sticky top-0`. The frame used to be a second scroller nested inside
+         `main`, which is what forced every page to hand-roll its overflow. -->
+    <div class="p-2">
+      <slot />
+    </div>
   </div>
 </template>

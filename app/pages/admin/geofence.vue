@@ -1022,9 +1022,13 @@ async function deleteGeofence() {
     <!-- The map fills what is left below the header. This used to be
          `flex-1 min-h-0` inside a flex-column wrapper; with `main` as the one
          scroll container there is no leftover height to resolve against, so
-         the canvas takes a viewport height minus the header and `main`'s
-         padding instead. min-h keeps it usable on short windows. -->
-    <div class="relative h-[calc(100dvh-5rem)] min-h-[440px]">
+         the canvas takes a viewport height minus the header and the content
+         padding instead. min-h keeps it usable on short windows.
+
+         -m-2 cancels PageWrapper's p-2 so the canvas runs to the panel edge,
+         matching the header above it: both are the panel's own surfaces now,
+         not cards inside it. -->
+    <div class="relative -m-2 h-[calc(100dvh-5rem)] min-h-[440px]">
       <!-- Full-page map -->
       <ClientOnly>
         <div

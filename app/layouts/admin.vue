@@ -174,7 +174,11 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
         }"
       />
       <SDashboardPanel>
-        <main class="flex-1 overflow-y-auto p-2">
+        <!-- No padding here on purpose. `main` is the scroll container, and
+             PageWrapper's header has to span the panel edge to edge to read
+             as the panel's own bar rather than a card floating in it. The
+             padding lives on the page content instead, inside PageWrapper. -->
+        <main class="flex-1 overflow-y-auto">
           <slot />
         </main>
       </SDashboardPanel>
