@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Airpro">
+  <title>Airpro</title>
+  <defs>
+    <!-- Blue leading from the top left, green trailing to the bottom right, so
+         the mark runs the same way as the AIR=blue / PRO=green wordmark. -->
+    <linearGradient id="ap-disc" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B9AD6" />
+      <stop offset="0.5" stop-color="#4FA9DF" />
+      <stop offset="1" stop-color="#8CC63F" />
+    </linearGradient>
+
+    <!-- The trail is meant to run off the edge of the disc. Clipping to the
+         circle is what guarantees that, rather than tuning every control point
+         to stay inside the rim by hand. -->
+    <clipPath id="ap-clip">
+      <circle cx="32" cy="32" r="28" />
+    </clipPath>
+  </defs>
+
+  <circle cx="32" cy="32" r="28" fill="url(#ap-disc)" />
+
+  <!-- Trail: two tapered crescents sweeping up from the lower left, echoing the
+       tail in the full logo. Under the plane, so the plane reads on top.
+
+       Two, and unevenly spaced on purpose. An earlier pass used three evenly
+       stacked strokes, which read as concentric arcs hugging the rim rather
+       than as a trail moving behind the plane. -->
+  <g clip-path="url(#ap-clip)" fill="#FFFFFF">
+    <path d="M6 44c11 8 27 8.6 39.5 2.4 5.6-2.8 9.8-6.6 12.4-10.3-1.6 5.3-5.3 10.3-10.9 13.6-9.3 5.4-23.2 5.2-32.6-.4-4.2-2.5-7.3-6.2-8.4-5.3Z" opacity="0.95" />
+    <path d="M11 53c9.8 5.6 23 5.9 33.6 1.2 4.8-2.1 8.5-5.2 10.9-8.5-1.4 4.8-4.7 9.2-9.7 12.1-8 4.7-19.8 4.6-27.8-.2-3.9-2.3-7-5.7-8.6-10.4Z" opacity="0.5" />
+  </g>
+
+  <!-- Plane climbing to the upper right. Drawn pointing right and rotated, so
+       the silhouette stays editable instead of hand-wound in diagonal
+       coordinates. The nose breaks the rim, which reads as thrust rather than
+       a badge parked inside the circle.
+
+       Three parts only. An earlier pass added a tail fin and a tailplane; both
+       were thin enough that at the 28px the rail renders this they separated
+       into floating slivers instead of reading as one silhouette. -->
+  <g transform="rotate(-45 32 32)" fill="#FFFFFF">
+    <!-- nose to tail -->
+    <path d="M58 32c0-1.05-3.8-1.9-8.5-1.9H25c-4.7 0-9 0.85-9 1.9s4.3 1.9 9 1.9h24.5c4.7 0 8.5-.85 8.5-1.9Z" />
+    <!-- wing, swept back -->
+    <path d="M38 30.5 26 21.5h5L43 30.5Z" />
+    <!-- far wing, foreshortened -->
+    <path d="M38 33.5 26 42.5h5L43 33.5Z" opacity="0.66" />
+  </g>
+</svg>

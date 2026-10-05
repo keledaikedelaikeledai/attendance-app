@@ -70,11 +70,22 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
         :ui="{ footer: 'border-[var(--selaras-resolved-border-hover)]' }"
       >
         <template #header="{ isCollapsed }">
+          <!-- Expanded gets the full wordmark; collapsed gets the round mark.
+               The rail is 64px and the wordmark does not fit it, which is why
+               this slot used to render nothing at all when collapsed and the
+               rail lost its branding. The mark is square and legible at 28px,
+               so it carries the identity on its own. -->
           <img
             v-if="!isCollapsed"
             src="/logo-app.png"
             alt="App Logo"
             class="mx-auto w-[150px] h-auto"
+          >
+          <img
+            v-else
+            src="/logo-mark.svg"
+            alt="App Logo"
+            class="mx-auto w-7 h-auto"
           >
         </template>
         <template #default="{ isCollapsed }">
