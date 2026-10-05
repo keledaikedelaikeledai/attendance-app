@@ -2,6 +2,10 @@
 import type { DropdownItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
 
+// `bare` drops the dashed content frame and its padding/overflow constraints,
+// for pages that render a full-bleed canvas (e.g. the geofence map).
+const props = withDefaults(defineProps<{ bare?: boolean }>(), { bare: false })
+
 const route = useRoute()
 
 // locales available (kept in sync with nuxt.config i18n locales)
@@ -103,7 +107,11 @@ const localeItems = computed<DropdownItem[][]>(() => {
            neutral-200 border is a 0.6% lightness step, so the dashes were
            invisible. border-hover is gray-300 on canvas in light and
            neutral-700 in dark, which keeps the approved dark mode. -->
-    <div class="p-2 border-2 border-dashed border-[var(--selaras-resolved-border-hover)] rounded-lg flex-1 min-h-0 overflow-auto">
+    <div
+      :class="props.bare
+        ? 'flex-1 min-h-0 flex flex-col'
+        : 'p-2 border-2 border-dashed border-[var(--selaras-resolved-border-hover)] rounded-lg flex-1 min-h-0 overflow-auto'"
+    >
       <slot />
     </div>
   </div>

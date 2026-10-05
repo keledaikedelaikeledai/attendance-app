@@ -48,6 +48,9 @@ const center = ref<{ lat: number, lng: number } | null>(null)
 const polygon = ref<Array<[number, number]>>([])
 const saving = ref(false)
 const showDelete = ref(false)
+// The edit/create form lives in a slideover, so a separate flag drives it - mode
+// alone is not enough because staying in 'edit' must still let the panel close.
+const formOpen = ref(false)
 const deleteTarget = ref<any | null>(null)
 const isLoading = computed(() => Boolean(pending.value))
 const isRadiusEditable = computed(() => geofenceType.value === 'point')
@@ -177,6 +180,11 @@ const mapStyle = computed(() => colorMode.value === 'dark'
 const SOURCE_ID = 'geofence'
 const LAYER_FILL = 'geofence-fill'
 const LAYER_LINE = 'geofence-line'
+// Separate, non-editable underlay that shows every fence on the map at once.
+const ALL_SOURCE_ID = 'geofence-all'
+const ALL_FILL = 'geofence-all-fill'
+const ALL_LINE = 'geofence-all-line'
+const ALL_POINT = 'geofence-all-point'
 
 const fillColor = computed(() => colorMode.value === 'dark' ? '#60a5fa' : '#2563eb')
 const strokeColor = computed(() => isActive.value ? fillColor.value : '#9ca3af')
@@ -207,7 +215,77 @@ function addGeofenceLayers() {
       },
     })
   }
+  if (!m.getSource(ALL_SOURCE_ID))
+    m.addSource(ALL_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+  if (!m.getLayer(ALL_FILL)) {
+    m.addLayer({
+      id: ALL_FILL,
+      type: 'fill',
+      source: ALL_SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'fill-color': fillColor.value, 'fill-opacity': 0.07 },
+    })
+  }
+  if (!m.getLayer(ALL_LINE)) {
+    m.addLayer({
+      id: ALL_LINE,
+      type: 'line',
+      source: ALL_SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'line-color': fillColor.value, 'line-width': 1.5, 'line-opacity': 0.6 },
+    })
+  }
+  if (!m.getLayer(ALL_POINT)) {
+    m.addLayer({
+      id: ALL_POINT,
+      type: 'circle',
+      source: ALL_SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-radius': 4, 'circle-color': fillColor.value, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 },
+    })
+  }
   pushToMap()
+  pushAllToMap()
+}
+
+// Every fence at once, as a muted underlay, excluding the selected one - that
+// one is driven by Terra Draw and the ring above so it can be edited.
+const allFeatures = computed<GeoJSON.Feature[]>(() => {
+  const feats: GeoJSON.Feature[] = []
+  for (const f of geofences.value ?? []) {
+    if (!f || f.id === selectedId.value)
+      continue
+    if (f.type === 'polygon' && Array.isArray(f.polygon) && f.polygon.length >= 3) {
+      feats.push({
+        type: 'Feature',
+        properties: { kind: 'polygon' },
+        geometry: { type: 'Polygon', coordinates: [closed(f.polygon.map(([lat, lng]: [number, number]) => [lng, lat]))] },
+      })
+    }
+    else if (f.type === 'point' && typeof f.centerLat === 'number' && typeof f.centerLng === 'number') {
+      const r = typeof f.radiusMeters === 'number' ? f.radiusMeters : 0
+      if (r > 0) {
+        feats.push({
+          type: 'Feature',
+          properties: { kind: 'ring' },
+          geometry: { type: 'Polygon', coordinates: [closed(circleRing(f.centerLat, f.centerLng, r))] },
+        })
+      }
+      feats.push({
+        type: 'Feature',
+        properties: { kind: 'point' },
+        geometry: { type: 'Point', coordinates: [f.centerLng, f.centerLat] },
+      })
+    }
+  }
+  return feats
+})
+
+function pushAllToMap() {
+  if (!map || !map.isStyleLoaded())
+    return
+  const source = map.getSource(ALL_SOURCE_ID) as import('maplibre-gl').GeoJSONSource | undefined
+  source?.setData({ type: 'FeatureCollection', features: allFeatures.value })
 }
 
 // ---------------------------------------------------------------------------
@@ -677,6 +755,12 @@ function pushToMap() {
   source?.setData({ type: 'FeatureCollection', features: drawnFeatures.value })
 }
 
+watch([allFeatures, isActive], () => {
+  if (!map)
+    return
+  pushAllToMap()
+}, { deep: true })
+
 // Map paint and source data sit outside Vue's reactivity, so repaint by hand
 // whenever anything they read from changes. The radius ring is the only thing
 // our own layers draw now; Terra Draw paints the shape.
@@ -752,6 +836,7 @@ function applyGeofence(fence: any, nextMode: 'view' | 'edit' | 'create') {
   }
   polygon.value = Array.isArray(fence?.polygon) ? fence.polygon : []
   mode.value = nextMode
+  formOpen.value = nextMode !== 'view'
   nextTick(() => {
     isApplyingConfig.value = false
   })
@@ -768,12 +853,14 @@ function startCreate() {
   polygon.value = []
   mapTool.value = 'add'
   mode.value = 'create'
+  formOpen.value = true
 }
 
 function startEdit() {
   if (!selectedId.value)
     return
   mode.value = 'edit'
+  formOpen.value = true
 }
 
 function cancelEdit() {
@@ -785,7 +872,13 @@ function cancelEdit() {
     }
   }
   mode.value = 'view'
+  formOpen.value = false
 }
+
+watch(formOpen, (open) => {
+  if (!open && (mode.value === 'edit' || mode.value === 'create'))
+    cancelEdit()
+})
 
 // Click-to-place is gone: Terra Draw puts vertices where you click. The old
 // onMapDblClick handler never made it across either - it stopped propagation
@@ -913,7 +1006,7 @@ async function deleteGeofence() {
 </script>
 
 <template>
-  <PageWrapper>
+  <PageWrapper bare>
     <!-- Add moved up from the list card's own header. The page header is the
          single place for page-level actions, matching shifts/users. -->
     <template #navRight>
@@ -926,9 +1019,83 @@ async function deleteGeofence() {
       </SButton>
     </template>
 
-    <div class="grid gap-4 lg:grid-cols-3">
-      <SCard class="lg:col-span-1">
-        <template #header>
+    <div class="relative flex-1 min-h-0">
+      <!-- Full-page map -->
+      <ClientOnly>
+        <div
+          class="absolute inset-0 overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-default)]"
+          :class="mapTool === 'add' && !isReadOnly ? 'cursor-crosshair' : ''"
+        >
+          <!-- The container is the map. Watched by element in initMap, so no
+               :key - the map is built once and moved with jumpTo. -->
+          <div ref="mapContainer" class="size-full" />
+        </div>
+        <template #fallback>
+          <div class="absolute inset-0 flex items-center justify-center rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-default)] text-sm text-[var(--selaras-resolved-text-muted)]">
+            {{ t('adminGeofence.map.loading') }}
+          </div>
+        </template>
+      </ClientOnly>
+
+      <!-- Map toolbar floats over the map, top-right. -->
+      <div class="absolute right-3 top-3 z-20 flex flex-col items-end gap-2">
+        <SToggleGroup
+          v-model="mapTool"
+          :items="mapToolItems"
+          size="sm"
+          :disabled="isReadOnly"
+          :aria-label="t('adminGeofence.map.tool.label')"
+        />
+        <div class="flex items-center gap-2 rounded-md border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-elevated)] px-2 py-1.5 shadow-sm">
+          <SBadge size="sm" variant="soft" color="neutral">
+            {{ t('adminGeofence.map.polygon.vertices', { count: polygon.length }) }}
+          </SBadge>
+          <SButton
+            size="sm"
+            icon="i-heroicons-check"
+            :disabled="polygon.length < 3 || isReadOnly"
+            @click="finishPolygon"
+          >
+            {{ t('adminGeofence.map.polygon.finish') }}
+          </SButton>
+          <SButton
+            size="sm"
+            variant="soft"
+            icon="i-heroicons-arrow-uturn-left"
+            :disabled="!polygon.length || isReadOnly"
+            @click="undoVertex"
+          >
+            {{ t('adminGeofence.map.polygon.undo') }}
+          </SButton>
+          <SButton
+            size="sm"
+            variant="ghost"
+            color="neutral"
+            icon="i-heroicons-trash"
+            :disabled="!polygon.length || isReadOnly"
+            @click="clearPolygon"
+          >
+            {{ t('adminGeofence.map.polygon.clear') }}
+          </SButton>
+        </div>
+        <p class="mb-2 text-xs text-[var(--selaras-resolved-text-muted)]">
+          <template v-if="mapTool === 'add'">
+            {{ geofenceType === 'polygon'
+              ? t('adminGeofence.map.polygon.hint')
+              : t('adminGeofence.map.point.hint') }}
+          </template>
+          <template v-else-if="center && geofenceType === 'point'">
+            {{ t('adminGeofence.map.point.current') }}: {{ center.lat.toFixed(5) }}, {{ center.lng.toFixed(5) }}
+          </template>
+          <template v-else-if="!center && !polygon.length">
+            {{ t('adminGeofence.map.empty') }}
+          </template>
+        </p>
+      </div>
+
+      <!-- Left-edge panel with the list, flush to the panel edge. -->
+      <aside class="absolute bottom-0 left-0 top-0 z-10 flex w-[300px] flex-col overflow-hidden border-r border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-elevated)]/95 backdrop-blur sm:w-[320px]">
+        <div class="flex items-start justify-between gap-2 border-b border-[var(--selaras-resolved-border-default)] p-3">
           <div>
             <p class="text-sm font-medium">
               {{ t('adminGeofence.list.title') }}
@@ -937,9 +1104,17 @@ async function deleteGeofence() {
               {{ t('adminGeofence.list.description') }}
             </p>
           </div>
-        </template>
-
-        <div :class="{ 'opacity-50 pointer-events-none': isLoading }">
+          <SButton
+            v-if="mode === 'view' && selectedId"
+            size="sm"
+            variant="soft"
+            icon="i-lucide-pencil"
+            @click="startEdit"
+          >
+            {{ t('adminGeofence.actions.edit') }}
+          </SButton>
+        </div>
+        <div class="flex-1 overflow-auto p-3" :class="{ 'opacity-50 pointer-events-none': isLoading }">
           <p v-if="!geofences.length" class="text-xs text-[var(--selaras-resolved-text-muted)]">
             {{ t('adminGeofence.list.empty') }}
           </p>
@@ -998,59 +1173,17 @@ async function deleteGeofence() {
             </li>
           </ul>
         </div>
-      </SCard>
+      </aside>
 
-      <SCard class="lg:col-span-2">
-        <template #header>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium">
-                {{ mode === 'create'
-                  ? t('adminGeofence.detail.newTitle')
-                  : mode === 'edit'
-                    ? t('adminGeofence.detail.editTitle')
-                    : t('adminGeofence.detail.viewTitle') }}
-              </p>
-              <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                {{ t('adminGeofence.detail.description') }}
-              </p>
-            </div>
-            <div class="flex gap-2">
-              <SButton
-                v-if="mode === 'view' && selectedId"
-                size="sm"
-                variant="soft"
-                @click="startEdit"
-              >
-                {{ t('adminGeofence.actions.edit') }}
-              </SButton>
-              <SButton
-                v-if="mode !== 'view'"
-                size="sm"
-                variant="ghost"
-                color="neutral"
-                @click="cancelEdit"
-              >
-                {{ t('adminGeofence.actions.cancel') }}
-              </SButton>
-              <SButton
-                v-if="mode !== 'view'"
-                size="sm"
-                :loading="saving"
-                icon="i-heroicons-cloud-arrow-up"
-                @click="saveGeofence"
-              >
-                {{ t('adminGeofence.actions.save') }}
-              </SButton>
-            </div>
-          </div>
-        </template>
-
-        <!-- Form 2/5, map 3/5. The map needs the room: drawing a polygon means
-             clicking precise vertices, and it was previously sharing the row
-             equally with the form. -->
-        <div class="grid gap-4 lg:grid-cols-5">
-          <div class="space-y-4 lg:col-span-2" :class="{ 'opacity-50 pointer-events-none': isLoading }">
+      <!-- Edit / Create form slides over from the right. -->
+      <SSlideover
+        v-model:open="formOpen"
+        side="right"
+        :title="mode === 'create' ? t('adminGeofence.detail.newTitle') : t('adminGeofence.detail.editTitle')"
+        :description="t('adminGeofence.detail.description')"
+      >
+        <template #body>
+          <div class="space-y-4" :class="{ 'opacity-50 pointer-events-none': isLoading }">
             <SFormField :label="t('adminGeofence.form.name.label')">
               <SInput
                 v-model="name"
@@ -1122,86 +1255,19 @@ async function deleteGeofence() {
               {{ t('adminGeofence.form.radius.fixedForPolygon') }}
             </p>
           </div>
-
-          <div class="lg:col-span-3">
-            <!-- Map toolbar. Everything here acts on the map, so it sits with
-                 the map rather than in the form column. -->
-            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <SToggleGroup
-                v-model="mapTool"
-                :items="mapToolItems"
-                size="sm"
-                :disabled="isReadOnly"
-                :aria-label="t('adminGeofence.map.tool.label')"
-              />
-              <div class="flex flex-wrap items-center gap-2">
-                <SBadge size="sm" variant="soft" color="neutral">
-                  {{ t('adminGeofence.map.polygon.vertices', { count: polygon.length }) }}
-                </SBadge>
-                <SButton
-                  size="sm"
-                  icon="i-heroicons-check"
-                  :disabled="polygon.length < 3 || isReadOnly"
-                  @click="finishPolygon"
-                >
-                  {{ t('adminGeofence.map.polygon.finish') }}
-                </SButton>
-                <SButton
-                  size="sm"
-                  variant="soft"
-                  icon="i-heroicons-arrow-uturn-left"
-                  :disabled="!polygon.length || isReadOnly"
-                  @click="undoVertex"
-                >
-                  {{ t('adminGeofence.map.polygon.undo') }}
-                </SButton>
-                <SButton
-                  size="sm"
-                  variant="ghost"
-                  color="neutral"
-                  icon="i-heroicons-trash"
-                  :disabled="!polygon.length || isReadOnly"
-                  @click="clearPolygon"
-                >
-                  {{ t('adminGeofence.map.polygon.clear') }}
-                </SButton>
-              </div>
-            </div>
-            <p class="mb-2 text-xs text-[var(--selaras-resolved-text-muted)]">
-              <template v-if="mapTool === 'add'">
-                {{ geofenceType === 'polygon'
-                  ? t('adminGeofence.map.polygon.hint')
-                  : t('adminGeofence.map.point.hint') }}
-              </template>
-              <template v-else-if="center && geofenceType === 'point'">
-                {{ t('adminGeofence.map.point.current') }}: {{ center.lat.toFixed(5) }}, {{ center.lng.toFixed(5) }}
-              </template>
-              <template v-else-if="!center && !polygon.length">
-                {{ t('adminGeofence.map.empty') }}
-              </template>
-            </p>
-
-            <ClientOnly>
-              <div
-                class="h-[460px] overflow-hidden rounded-lg border border-[var(--selaras-resolved-border-default)] lg:h-[560px]"
-                :class="[mapTool === 'add' && !isReadOnly ? '!cursor-crosshair' : '']"
-              >
-                <!-- The container is the map. Watched by element in initMap,
-                     so no :key - the map is built once and moved with jumpTo. -->
-                <div
-                  ref="mapContainer"
-                  class="size-full"
-                />
-              </div>
-              <template #fallback>
-                <div class="h-[460px] flex items-center justify-center text-sm text-[var(--selaras-resolved-text-muted)] lg:h-[560px]">
-                  {{ t('adminGeofence.map.loading') }}
-                </div>
-              </template>
-            </ClientOnly>
-          </div>
-        </div>
-      </SCard>
+        </template>
+        <template #footer>
+          <SButton
+            size="lg"
+            block
+            icon="i-heroicons-cloud-arrow-up"
+            :loading="saving"
+            @click="saveGeofence"
+          >
+            {{ t('adminGeofence.actions.save') }}
+          </SButton>
+        </template>
+      </SSlideover>
     </div>
 
     <SModal
