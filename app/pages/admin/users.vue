@@ -14,6 +14,13 @@ const { t } = useI18n()
 const pageTitle = computed(() => `${t('adminUsers.columns.name')} - Attendance System`)
 useHead({ title: pageTitle })
 
+// definePageMeta is hoisted, so it cannot read the i18n `t()` above. The header
+// reads `title`; without it this page had no heading at all in the admin shell.
+definePageMeta({
+  title: 'Users',
+  pageTitle: 'Users - Admin - Attendance App',
+})
+
 interface AdminUser {
   name: string
   email: string

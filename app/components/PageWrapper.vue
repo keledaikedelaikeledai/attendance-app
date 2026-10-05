@@ -2,10 +2,6 @@
 import type { DropdownItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
 
-// `bare` drops the dashed content frame and its padding/overflow constraints,
-// for pages that render a full-bleed canvas (e.g. the geofence map).
-const props = withDefaults(defineProps<{ bare?: boolean }>(), { bare: false })
-
 const route = useRoute()
 
 // locales available (kept in sync with nuxt.config i18n locales)
@@ -50,26 +46,27 @@ const localeItems = computed<DropdownItem[][]>(() => {
 </script>
 
 <template>
-  <div class="flex flex-col h-full min-h-0">
-    <!-- The single admin header. Same elevated surface as the sidebar so the two
-         read as one chrome. The toggle is always visible: on desktop it
-         collapses the sidebar to a rail, on mobile it opens the sidebar drawer.
-         The mobile drawer, user popover and collapse state this component used
-         to own all live in the sidebar now, which covers them with a superset
-         (its nav includes Geofence). What remains here is the per-page action
-         row plus the global locale and theme controls.
+  <!-- A plain block, not a flex column of a fixed height. `main` is the one
+       scroll container now, so this wrapper only has to stack the header above
+       the page content; giving it a height is what used to make it a second
+       scroller. -->
+  <div>
+    <!-- The single admin header, sticky because `main` scrolls. The toggle is
+         always visible: on desktop it collapses the sidebar to a rail, on mobile
+         it opens the sidebar drawer. The mobile drawer, user popover and
+         collapse state this component used to own all live in the sidebar now,
+         which covers them with a superset (its nav includes Geofence). What
+         remains here is the page title, the per-page action row, and the global
+         locale and theme controls.
 
-         Sticky: the dashed frame below scrolls its own content, not `main`,
-         so this bar does not move. `sticky top-0` is belt-and-braces for a
-         page whose slot content forces `main` to overflow anyway - `h-full`
-         here fits the frame inside main's content box, so that should not
-         normally happen. z-10 keeps the bar above the frame, which is static.
-         radius-md (0.5rem) matches the rounded-lg dashed frame below and
-         drops it from radius-lg (1rem). -->
-    <HeaderColumn class="sticky top-0 z-10 mb-2 flex-none rounded-[var(--selaras-resolved-radius-md)] bg-[var(--selaras-resolved-surface-elevated)] px-3 py-2">
+         Simple on purpose: a flat bar with one bottom border, not a raised card.
+         An elevated rounded bar next to the sidebar's own elevated surface read
+         as two competing panels, and the radius had to be matched to a frame
+         that no longer exists. bg-elevated stays so the bar still covers page
+         content passing under it, and z-10 keeps it above that content. -->
+    <HeaderColumn class="sticky top-0 z-10 flex-none border-b border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-elevated)] px-4 py-3">
       <template #left>
         <SDashboardSidebarToggle class="w-8 h-8" />
-        <title>{{ route.meta.pageTitle }}</title>
         <h1 class="font-semibold text-lg">
           {{ route.meta.title }}
         </h1>
@@ -95,24 +92,11 @@ const localeItems = computed<DropdownItem[][]>(() => {
         <SColorModeToggle />
       </template>
     </HeaderColumn>
-    <!-- The dashed frame. `flex-1 min-h-0` only resolve now that this
-           component has a single flex-column root: previously it rendered a
-           fragment, so the frame's flex-1 was inert, it grew to content
-           height, and `main` scrolled the border out of view instead. Now the
-           frame takes the leftover height and scrolls its own content, so it
-           stays put - the old design's behaviour, restored structurally.
-
-           Border uses border-hover, not border-default. On the canvas the two
-           are near-identical in light mode: canvas is gray-200 and the old
-           neutral-200 border is a 0.6% lightness step, so the dashes were
-           invisible. border-hover is gray-300 on canvas in light and
-           neutral-700 in dark, which keeps the approved dark mode. -->
-    <div
-      :class="props.bare
-        ? 'flex-1 min-h-0 flex flex-col'
-        : 'p-2 border-2 border-dashed border-[var(--selaras-resolved-border-hover)] rounded-lg flex-1 min-h-0 overflow-auto'"
-    >
-      <slot />
-    </div>
+    <!-- No dashed content frame any more. `main` is the only scroll
+         container, so a page's own content flows inside it and the header
+         above stays put on its own `sticky top-0`. The frame used to be a
+         second scroller nested inside `main`, which is what forced every
+         page to hand-roll its own overflow. -->
+    <slot />
   </div>
 </template>

@@ -1006,7 +1006,7 @@ async function deleteGeofence() {
 </script>
 
 <template>
-  <PageWrapper bare>
+  <PageWrapper>
     <!-- Add moved up from the list card's own header. The page header is the
          single place for page-level actions, matching shifts/users. -->
     <template #navRight>
@@ -1019,7 +1019,12 @@ async function deleteGeofence() {
       </SButton>
     </template>
 
-    <div class="relative flex-1 min-h-0">
+    <!-- The map fills what is left below the header. This used to be
+         `flex-1 min-h-0` inside a flex-column wrapper; with `main` as the one
+         scroll container there is no leftover height to resolve against, so
+         the canvas takes a viewport height minus the header and `main`'s
+         padding instead. min-h keeps it usable on short windows. -->
+    <div class="relative h-[calc(100dvh-5rem)] min-h-[440px]">
       <!-- Full-page map -->
       <ClientOnly>
         <div
