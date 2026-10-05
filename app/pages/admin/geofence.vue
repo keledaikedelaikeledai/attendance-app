@@ -176,6 +176,51 @@ const LAYER_VERTEX = 'geofence-vertex'
 const fillColor = computed(() => colorMode.value === 'dark' ? '#60a5fa' : '#2563eb')
 const strokeColor = computed(() => isActive.value ? fillColor.value : '#9ca3af')
 
+function addGeofenceLayers() {
+  const m = map
+  if (!m)
+    return
+  if (!m.getSource(SOURCE_ID))
+    m.addSource(SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
+  if (!m.getLayer(LAYER_FILL)) {
+    m.addLayer({
+      id: LAYER_FILL,
+      type: 'fill',
+      source: SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'fill-color': fillColor.value, 'fill-opacity': isActive.value ? 0.18 : 0.1 },
+    })
+  }
+  if (!m.getLayer(LAYER_LINE)) {
+    m.addLayer({
+      id: LAYER_LINE,
+      type: 'line',
+      source: SOURCE_ID,
+      paint: {
+        'line-color': strokeColor.value,
+        'line-width': 2,
+        // Dashed while the run is unfinished, solid once it is closed.
+        'line-dasharray': drawing.value ? [2, 2] : [1, 0],
+      },
+    })
+  }
+  if (!m.getLayer(LAYER_VERTEX)) {
+    m.addLayer({
+      id: LAYER_VERTEX,
+      type: 'circle',
+      source: SOURCE_ID,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: {
+        'circle-radius': 5,
+        'circle-color': strokeColor.value,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff',
+      },
+    })
+  }
+  pushToMap()
+}
+
 let initializing = false
 async function initMap() {
   if (map || initializing || !mapContainer.value)
@@ -194,41 +239,12 @@ async function initMap() {
       zoom: mapZoom.value,
       attributionControl: { compact: true },
     })
-    map.on('load', () => {
-      const m = map!
-      m.addSource(SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      m.addLayer({
-        id: LAYER_FILL,
-        type: 'fill',
-        source: SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Polygon'],
-        paint: { 'fill-color': fillColor.value, 'fill-opacity': isActive.value ? 0.18 : 0.1 },
-      })
-      m.addLayer({
-        id: LAYER_LINE,
-        type: 'line',
-        source: SOURCE_ID,
-        paint: {
-          'line-color': strokeColor.value,
-          'line-width': 2,
-          // A dashed line reads as "not finished" while fewer than 3 vertices.
-          'line-dasharray': drawing.value ? [2, 2] : [1, 0],
-        },
-      })
-      m.addLayer({
-        id: LAYER_VERTEX,
-        type: 'circle',
-        source: SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Point'],
-        paint: {
-          'circle-radius': 5,
-          'circle-color': strokeColor.value,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
-        },
-      })
-      pushToMap()
-    })
+    // Both events, because setStyle on a theme switch throws away every
+    // source and layer added here. Re-adding on 'load' alone left the geofence
+    // invisible after switching between light and dark until a reload.
+    // addGeofenceLayers is idempotent so firing on both is harmless.
+    map.on('load', addGeofenceLayers)
+    map.on('style.load', addGeofenceLayers)
     map.on('click', onMapClick)
   }
   catch (err) {
@@ -305,10 +321,19 @@ watch([drawnFeatures, isActive, drawing], () => {
   if (!map)
     return
   pushToMap()
-  if (map.getLayer(LAYER_FILL))
+  // Every paint value that reads reactive state has to be refreshed here, not
+  // only at layer creation: fill-opacity follows isActive and the dash follows
+  // drawing, and neither was being updated.
+  if (map.getLayer(LAYER_FILL)) {
     map.setPaintProperty(LAYER_FILL, 'fill-color', fillColor.value)
-  if (map.getLayer(LAYER_LINE))
+    map.setPaintProperty(LAYER_FILL, 'fill-opacity', isActive.value ? 0.18 : 0.1)
+  }
+  if (map.getLayer(LAYER_LINE)) {
     map.setPaintProperty(LAYER_LINE, 'line-color', strokeColor.value)
+    map.setPaintProperty(LAYER_LINE, 'line-dasharray', drawing.value ? [2, 2] : [1, 0])
+  }
+  if (map.getLayer(LAYER_VERTEX))
+    map.setPaintProperty(LAYER_VERTEX, 'circle-color', strokeColor.value)
 }, { deep: true })
 
 watch([mapCenter, mapZoom], () => {
