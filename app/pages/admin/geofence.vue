@@ -46,7 +46,6 @@ const radiusMeters = ref<number | null>(100)
 const pointRadiusBackup = ref<number | null>(100)
 const center = ref<{ lat: number, lng: number } | null>(null)
 const polygon = ref<Array<[number, number]>>([])
-const drawing = ref(false)
 const saving = ref(false)
 const showDelete = ref(false)
 const deleteTarget = ref<any | null>(null)
@@ -113,12 +112,10 @@ watch(
       pointRadiusBackup.value = radiusMeters.value ?? pointRadiusBackup.value
       radiusMeters.value = 0
       polygon.value = []
-      drawing.value = false
     }
     else {
       radiusMeters.value = pointRadiusBackup.value ?? 100
       polygon.value = []
-      drawing.value = false
     }
   },
 )
@@ -160,12 +157,17 @@ const mapZoom = computed(() => {
 // and all. That is also why the old page needed a manual move/draw toggle -
 // any state the map held internally was discarded each time.
 //
-// The shape is drawn with plain GeoJSON layers rather than a drawing library,
-// so the engine swap stands on its own and can be reviewed separately.
+// The editable shape lives in Terra Draw, which owns the store, the handles
+// and the interactions. The GeoJSON layers below only draw the radius ring of
+// a point geofence: that is derived from the form, not a shape you trace.
 // ---------------------------------------------------------------------------
 const mapContainer = ref<HTMLElement | null>(null)
 let map: import('maplibre-gl').Map | null = null
 let mapLib: any = null
+let terraDraw: any = null
+let drawStarted = false
+let writingDraw = false
+let suppressPush = false
 
 const colorMode = useColorMode()
 const mapStyle = computed(() => colorMode.value === 'dark'
@@ -175,7 +177,6 @@ const mapStyle = computed(() => colorMode.value === 'dark'
 const SOURCE_ID = 'geofence'
 const LAYER_FILL = 'geofence-fill'
 const LAYER_LINE = 'geofence-line'
-const LAYER_VERTEX = 'geofence-vertex'
 
 const fillColor = computed(() => colorMode.value === 'dark' ? '#60a5fa' : '#2563eb')
 const strokeColor = computed(() => isActive.value ? fillColor.value : '#9ca3af')
@@ -203,36 +204,360 @@ function addGeofenceLayers() {
       paint: {
         'line-color': strokeColor.value,
         'line-width': 2,
-        // Dashed while the run is unfinished, solid once it is closed.
-        'line-dasharray': drawing.value ? [2, 2] : [1, 0],
-      },
-    })
-  }
-  if (!m.getLayer(LAYER_VERTEX)) {
-    m.addLayer({
-      id: LAYER_VERTEX,
-      type: 'circle',
-      source: SOURCE_ID,
-      filter: ['==', ['geometry-type'], 'Point'],
-      paint: {
-        'circle-radius': 5,
-        'circle-color': strokeColor.value,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff',
       },
     })
   }
   pushToMap()
 }
 
+// ---------------------------------------------------------------------------
+// Terra Draw owns the shape you are editing: the store, the vertex handles, the
+// midpoints, the drag and the delete. The page keeps `polygon` / `center` as
+// the saved contract, because that is what the API takes, and mirrors them
+// into the store in both directions.
+//
+// Two guards stop the mirror feeding itself:
+//   `writingDraw`   - set while we write the store. Terra Draw fires `change`
+//                     synchronously from inside clear() and addFeatures().
+//   `suppressPush`  - set while we write Vue state from Terra Draw. The state
+//                     watcher uses `flush: 'sync'`, so it still runs under this
+//                     flag; the flag is dropped on nextTick, after that flush.
+// ---------------------------------------------------------------------------
+const drawMode = computed<string>(() => {
+  if (isReadOnly.value)
+    return 'render'
+  if (mapTool.value !== 'add')
+    return 'select'
+  return geofenceType.value === 'polygon' ? 'polygon' : 'point'
+})
+
+// Terra Draw paints these on top of its own layers, so they follow the theme
+// the same way the radius ring does. Re-applied on every colour or isActive
+// change: mode styles are plain values, not reactive.
+function drawStyles() {
+  const fill = fillColor.value
+  const stroke = strokeColor.value
+  const fillOpacity = isActive.value ? 0.18 : 0.1
+  return {
+    render: {
+      polygonFillColor: fill,
+      polygonFillOpacity: fillOpacity,
+      polygonOutlineColor: stroke,
+      polygonOutlineWidth: 2,
+      lineStringColor: stroke,
+      lineStringWidth: 2,
+      lineStringOpacity: 1,
+      pointColor: stroke,
+      pointWidth: 8,
+      pointOpacity: 1,
+      pointOutlineColor: '#ffffff',
+      pointOutlineWidth: 2,
+      pointOutlineOpacity: 1,
+      zIndex: 0,
+    },
+    polygon: {
+      fillColor: fill,
+      fillOpacity,
+      outlineColor: stroke,
+      outlineOpacity: 1,
+      outlineWidth: 2,
+      closingPointColor: stroke,
+      closingPointWidth: 9,
+      closingPointOpacity: 1,
+      closingPointOutlineColor: '#ffffff',
+      closingPointOutlineWidth: 2,
+      closingPointOutlineOpacity: 1,
+      coordinatePointColor: stroke,
+      coordinatePointWidth: 7,
+      coordinatePointOpacity: 1,
+      coordinatePointOutlineColor: '#ffffff',
+      coordinatePointOutlineWidth: 2,
+      coordinatePointOutlineOpacity: 1,
+    },
+    point: {
+      pointColor: stroke,
+      pointWidth: 9,
+      pointOpacity: 1,
+      pointOutlineColor: '#ffffff',
+      pointOutlineWidth: 2,
+      pointOutlineOpacity: 1,
+      editedPointColor: stroke,
+      editedPointWidth: 9,
+      editedPointOutlineColor: '#ffffff',
+      editedPointOutlineWidth: 2,
+    },
+    select: {
+      selectedPolygonColor: stroke,
+      selectedPolygonFillOpacity: fillOpacity,
+      selectedPolygonOutlineColor: stroke,
+      selectedPolygonOutlineWidth: 2,
+      selectedLineStringColor: stroke,
+      selectedLineStringWidth: 2,
+      selectedPointColor: stroke,
+      selectedPointWidth: 9,
+      selectedPointOutlineColor: '#ffffff',
+      selectedPointOutlineWidth: 2,
+      // Empty string, not the default: Terra Draw's default selected marker is
+      // a PNG on raw.githubusercontent.com. One outbound request we do not need.
+      selectedMarkerUrl: '',
+      selectionPointColor: '#ffffff',
+      selectionPointWidth: 8,
+      selectionPointOutlineColor: stroke,
+      selectionPointOutlineWidth: 2,
+      midPointColor: '#ffffff',
+      midPointWidth: 7,
+      midPointOutlineColor: stroke,
+      midPointOutlineWidth: 2,
+    },
+  }
+}
+
+// Which parts of a feature may be dragged or deleted, per mode.
+const drawFlags = {
+  polygon: {
+    feature: {
+      draggable: false,
+      rotateable: false,
+      scaleable: false,
+      coordinates: { draggable: true, midpoints: true, deletable: true, snappable: false },
+    },
+  },
+  point: {
+    feature: {
+      draggable: true,
+      coordinates: { draggable: true, midpoints: false, deletable: true, snappable: false },
+    },
+  },
+}
+
+// One place, because Terra Draw's updateOptions drops any option you leave
+// out: passing styles alone would silently blank `keyEvents` and `flags`.
+function applyDrawOptions() {
+  if (!terraDraw || !drawStarted)
+    return
+  const styles = drawStyles()
+  terraDraw.updateModeOptions('render', { styles: styles.render })
+  terraDraw.updateModeOptions('polygon', {
+    styles: styles.polygon,
+    keyEvents: { cancel: 'Escape', finish: 'Enter' },
+    showCoordinatePoints: true,
+  })
+  terraDraw.updateModeOptions('point', { styles: styles.point })
+  terraDraw.updateModeOptions('select', { styles: styles.select, flags: drawFlags })
+}
+
+// Guidance features Terra Draw parks in the store beside your geometry:
+// closing points, snapping points, coordinate points, selection handles. They
+// are Points, so a geometry-type test alone would read them as your shape.
+const GUIDANCE_PROPS = [
+  'closingPoint',
+  'snappingPoint',
+  'coordinatePoint',
+  'midPoint',
+  'selectionPoint',
+  'edited',
+  'marker',
+]
+
+// Guidance handles Terra Draw parks in the store beside your geometry. The two
+// branches differ on purpose. For a polygon, geometry type alone is enough -
+// every handle is a Point - and property tests are unsafe, because the polygon
+// itself carries `coordinatePointIds`, a pointer to its own handles. Filtering
+// on that rejected the real shape, so the mirror read "nothing here" and the
+// next push cleared the store. The point branch has to test properties, since
+// its shape is a Point like the handles; `mode` stays 'point' on the real
+// feature even when it is selected.
+function shapeFeatures(snapshot: any[]): any[] {
+  return snapshot.filter((f: any) => {
+    const geometry = f?.geometry
+    if (geofenceType.value !== 'point')
+      return geometry?.type === 'Polygon'
+    if (geometry?.type !== 'Point')
+      return false
+    const props = f?.properties ?? {}
+    if (props.mode === 'select')
+      return false
+    return !GUIDANCE_PROPS.some(key => props[key])
+  })
+}
+
+// Terra Draw keeps a drawn ring closed (last point repeats the first); the
+// saved contract does not. Drop the repeat so the two forms compare equal and
+// a closed ring is not saved with a duplicate vertex.
+function openRing(ring: [number, number][]): [number, number][] {
+  if (ring.length < 2)
+    return ring
+  const first = ring[0]
+  const last = ring[ring.length - 1]
+  return (first[0] === last[0] && first[1] === last[1]) ? ring.slice(0, -1) : ring
+}
+
+// Terra Draw validates each coordinate's decimal places against its precision
+// (default 9). The DB keeps full-precision floats, which the validator rejects
+// as "excessive precision" and silently drops. Round to that grid before
+// pushing, so the pushed polygon, the store, and what we read back agree.
+function roundToCoordinatePrecision(n: number): number {
+  return Math.round(n * 1e9) / 1e9
+}
+
+// Terra Draw validates feature ids as UUIDs (length 36) and silently drops
+// anything else, which used to leave the store empty with no error.
+const SHAPE_ID = '00000000-0000-4000-8000-000000000000'
+
+function desiredFeatures(): any[] {
+  if (geofenceType.value === 'point') {
+    if (!center.value)
+      return []
+    return [{
+      type: 'Feature',
+      id: SHAPE_ID,
+      properties: { mode: 'point' },
+      geometry: { type: 'Point', coordinates: [roundToCoordinatePrecision(center.value.lng), roundToCoordinatePrecision(center.value.lat)] },
+    }]
+  }
+  if (polygon.value.length < 3)
+    return []
+  return [{
+    type: 'Feature',
+    id: SHAPE_ID,
+    properties: { mode: 'polygon' },
+    geometry: {
+      type: 'Polygon',
+      coordinates: [closed(polygon.value.map(([lat, lng]) => [roundToCoordinatePrecision(lng), roundToCoordinatePrecision(lat)]))],
+    },
+  }]
+}
+
+// Canonical form of a shape, so the store and Vue state can be compared
+// without caring about ring closure or coordinate order.
+function shapeKey(feature: any): string {
+  if (!feature)
+    return ''
+  const geometry = feature.geometry
+  if (geometry?.type === 'Point')
+    return `point:${geometry.coordinates[0]},${geometry.coordinates[1]}`
+  if (geometry?.type === 'Polygon') {
+    const ring = openRing(geometry.coordinates[0])
+    return `polygon:${ring.map(c => `${c[0]},${c[1]}`).join('|')}`
+  }
+  return ''
+}
+
+// Vue state -> store. Runs when something outside Terra Draw moved the shape:
+// loading a fence, switching type, pressing Clear.
+function pushStateIntoDraw() {
+  if (!terraDraw || !drawStarted || writingDraw || suppressPush)
+    return
+  const want = desiredFeatures()
+  const have = shapeFeatures(terraDraw.getSnapshot())
+  if (shapeKey(want[0]) === shapeKey(have[0]) && want.length === have.length)
+    return
+  writingDraw = true
+  try {
+    terraDraw.clear()
+    if (want.length)
+      terraDraw.addFeatures(want)
+  }
+  finally {
+    writingDraw = false
+  }
+}
+
+// Store -> Vue state. Runs on every Terra Draw `change`: drawing a vertex,
+// dragging one, inserting a midpoint, deleting.
+function readDrawIntoState() {
+  if (!terraDraw || writingDraw)
+    return
+  const [feature] = shapeFeatures(terraDraw.getSnapshot())
+  suppressPush = true
+  if (geofenceType.value === 'point') {
+    const coordinates = feature?.geometry?.coordinates
+    center.value = coordinates ? { lat: coordinates[1], lng: coordinates[0] } : null
+  }
+  else if (feature) {
+    polygon.value = openRing(feature.geometry.coordinates[0])
+      .map(([lng, lat]) => [lat, lng] as [number, number])
+  }
+  else {
+    polygon.value = []
+  }
+  nextTick(() => {
+    suppressPush = false
+  })
+}
+
+function applyDrawMode() {
+  if (!terraDraw || !drawStarted)
+    return
+  const next = drawMode.value
+  if (terraDraw.getMode() === 'polygon' && next !== 'polygon') {
+    // Leaving Draw calls the mode's cleanUp, which deletes the polygon it had
+    // not closed yet. Close it first; a run with too few vertices cannot be
+    // closed and Terra Draw cannot store it either, so drop it here rather than
+    // leave a vertex count the map does not show.
+    if (polygon.value.length >= 3)
+      finishPolygon()
+    else if (polygon.value.length)
+      polygon.value = []
+  }
+  terraDraw.setMode(next)
+  // cleanUp still runs inside setMode, so hand back whatever the form holds.
+  // The suppress flag is lifted for this one call: finishPolygon just raised a
+  // change event, and that flag is what stops this very write from echoing.
+  const heldBack = suppressPush
+  suppressPush = false
+  try {
+    pushStateIntoDraw()
+  }
+  finally {
+    suppressPush = heldBack
+  }
+}
+
+// setStyle on a theme switch destroys the adapter's source and layers along
+// with everything else. stop() unregisters and start() rebuilds them; the
+// store is untouched, so the shape survives the switch.
+function restartDraw() {
+  if (!terraDraw || !map)
+    return
+  try {
+    if (drawStarted)
+      terraDraw.stop()
+    terraDraw.start()
+    drawStarted = true
+    applyDrawOptions()
+    pushStateIntoDraw()
+    applyDrawMode()
+  }
+  catch (err) {
+    useErrorReporter().captureException(err, { context: 'geofence-draw-init' })
+    drawStarted = false
+  }
+}
+
+// Both events: 'load' covers the first paint, 'style.load' covers the theme
+// switch that tears the adapter down again.
+function onMapReady() {
+  addGeofenceLayers()
+  restartDraw()
+}
+
 let initializing = false
 async function initMap() {
-  if (map || initializing || !mapContainer.value)
+  if (map || initializing || !mapContainer.value) {
     return
+  }
+
   initializing = true
+  let terraDrawModule: any = null
+  let adapterModule: any = null
   try {
     // Dynamic: MapLibre touches window at import time, which SSR cannot do.
     mapLib = await import('maplibre-gl')
+    ;[terraDrawModule, adapterModule] = await Promise.all([
+      import('terra-draw'),
+      import('terra-draw-maplibre-gl-adapter'),
+    ])
     // Vite does not serve the worker where MapLibre expects it, so point it at
     // the bundled file. Without this every tile fails "Worker failed to load".
     mapLib.setWorkerUrl(mapWorkerUrl)
@@ -243,13 +568,6 @@ async function initMap() {
       zoom: mapZoom.value,
       attributionControl: { compact: true },
     })
-    // Both events, because setStyle on a theme switch throws away every
-    // source and layer added here. Re-adding on 'load' alone left the geofence
-    // invisible after switching between light and dark until a reload.
-    // addGeofenceLayers is idempotent so firing on both is harmless.
-    map.on('load', addGeofenceLayers)
-    map.on('style.load', addGeofenceLayers)
-    map.on('click', onMapClick)
   }
   catch (err) {
     // Display-only, but a failure here must not block editing: report it and
@@ -260,6 +578,54 @@ async function initMap() {
   }
   finally {
     initializing = false
+  }
+
+  if (!map)
+    return
+
+  // Registered before Terra Draw is built. A drawing failure must not cost the
+  // tiles, the radius ring, or the jumpTo that follows a fence change. Both
+  // events, because setStyle on a theme switch throws away every source and
+  // layer added here - including Terra Draw's own. Re-adding on 'load' alone
+  // left the geofence invisible after a theme switch until a reload. Both
+  // handlers are idempotent.
+  map.on('load', onMapReady)
+  map.on('style.load', onMapReady)
+
+  try {
+    const styles = drawStyles()
+    terraDraw = new terraDrawModule.TerraDraw({
+      adapter: new adapterModule.TerraDrawMapLibreGLAdapter({ map }),
+      modes: [
+        // Render mode takes its identity from `modeName` and refuses to build
+        // without it - Terra Draw throws "Mode name is required for
+        // TerraDrawRenderMode". It is also the key setMode and
+        // updateModeOptions look a mode up by.
+        new terraDrawModule.TerraDrawRenderMode({ modeName: 'render', styles: styles.render }),
+        new terraDrawModule.TerraDrawPolygonMode({
+          styles: styles.polygon,
+          keyEvents: { cancel: 'Escape', finish: 'Enter' },
+          showCoordinatePoints: true,
+        }),
+        new terraDrawModule.TerraDrawPointMode({ styles: styles.point }),
+        new terraDrawModule.TerraDrawSelectMode({ styles: styles.select, flags: drawFlags }),
+      ],
+    })
+    terraDraw.on('change', (changes: any, origin: any) => {
+      // Terra Draw emits 'change' with origin 'styling' when paint styles are
+      // refreshed; the snapshot itself is untouched, so there is nothing to
+      // mirror. That event arrived on load with an empty store and, treated as
+      // "no shape", readDrawIntoState cleared the local polygon just before the
+      // first real push. Ignore empty/style-only sweeps.
+      if (origin === 'styling' || !Array.isArray(changes) || changes.length === 0)
+        return
+      readDrawIntoState()
+    })
+  }
+  catch (err) {
+    useErrorReporter().captureException(err, { context: 'geofence-draw-init' })
+    terraDraw = null
+    drawStarted = false
   }
 }
 
@@ -288,37 +654,20 @@ function closed(ring: [number, number][]): [number, number][] {
   return (firstX === lastX && firstY === lastY) ? ring : [...ring, ring[0]]
 }
 
+// Terra Draw renders the shape you trace. The only thing left for our own
+// layers is the radius ring of a point geofence: it follows the Radius field,
+// so it is derived state rather than something a drawing library can hold.
 const drawnFeatures = computed<GeoJSON.Feature[]>(() => {
-  if (geofenceType.value === 'point') {
-    if (!center.value)
-      return []
-    const radius = radiusMeters.value ?? 0
-    if (radius <= 0)
-      return []
-    return [{
-      type: 'Feature',
-      properties: { kind: 'circle' },
-      geometry: { type: 'Polygon', coordinates: [closed(circleRing(center.value.lat, center.value.lng, radius))] },
-    }]
-  }
-  if (polygon.value.length < 2)
+  if (geofenceType.value !== 'point' || !center.value)
     return []
-  // Swap storage order [lat, lng] to GeoJSON [lng, lat], and emit a Point per
-  // vertex so the in-progress run shows its handles.
-  const line: [number, number][] = polygon.value.map(([lat, lng]) => [lng, lat])
-  const shape: GeoJSON.Feature = {
+  const radius = radiusMeters.value ?? 0
+  if (radius <= 0)
+    return []
+  return [{
     type: 'Feature',
-    properties: { kind: polygon.value.length >= 3 ? 'polygon' : 'polyline' },
-    geometry: polygon.value.length >= 3
-      ? { type: 'Polygon', coordinates: [closed(line)] }
-      : { type: 'LineString', coordinates: line },
-  }
-  const vertices: GeoJSON.Feature[] = polygon.value.map(([lat, lng]) => ({
-    type: 'Feature',
-    properties: { kind: 'vertex' },
-    geometry: { type: 'Point', coordinates: [lng, lat] },
-  }))
-  return [shape, ...vertices]
+    properties: { kind: 'circle' },
+    geometry: { type: 'Polygon', coordinates: [closed(circleRing(center.value.lat, center.value.lng, radius))] },
+  }]
 })
 
 function pushToMap() {
@@ -329,25 +678,40 @@ function pushToMap() {
 }
 
 // Map paint and source data sit outside Vue's reactivity, so repaint by hand
-// whenever anything they read from changes.
-watch([drawnFeatures, isActive, drawing], () => {
+// whenever anything they read from changes. The radius ring is the only thing
+// our own layers draw now; Terra Draw paints the shape.
+watch([drawnFeatures, isActive], () => {
   if (!map)
     return
   pushToMap()
   // Every paint value that reads reactive state has to be refreshed here, not
-  // only at layer creation: fill-opacity follows isActive and the dash follows
-  // drawing, and neither was being updated.
+  // only at layer creation: fill-opacity follows isActive, and it was frozen at
+  // whatever it held when the layer was created.
   if (map.getLayer(LAYER_FILL)) {
     map.setPaintProperty(LAYER_FILL, 'fill-color', fillColor.value)
     map.setPaintProperty(LAYER_FILL, 'fill-opacity', isActive.value ? 0.18 : 0.1)
   }
-  if (map.getLayer(LAYER_LINE)) {
+  if (map.getLayer(LAYER_LINE))
     map.setPaintProperty(LAYER_LINE, 'line-color', strokeColor.value)
-    map.setPaintProperty(LAYER_LINE, 'line-dasharray', drawing.value ? [2, 2] : [1, 0])
-  }
-  if (map.getLayer(LAYER_VERTEX))
-    map.setPaintProperty(LAYER_VERTEX, 'circle-color', strokeColor.value)
 }, { deep: true })
+
+// Terra Draw mode styles are plain values, not reactive, so re-apply them when
+// the palette or the active flag changes. A theme switch also restarts the
+// adapter, which re-applies them on its own - running this twice is harmless.
+watch([colorMode, isActive], () => {
+  applyDrawOptions()
+})
+
+// Geometry moved outside Terra Draw - loading a fence, switching type, Clear -
+// so mirror it back into the store. Synchronous, so the flag that readDrawInto
+// State raises still covers this run.
+watch([polygon, center], () => {
+  pushStateIntoDraw()
+}, { deep: true, flush: 'sync' })
+
+watch([mapTool, isReadOnly, geofenceType], () => {
+  applyDrawMode()
+})
 
 watch([mapCenter, mapZoom], () => {
   map?.jumpTo({ center: mapCenter.value, zoom: mapZoom.value })
@@ -364,19 +728,9 @@ watch(mapContainer, (el) => {
     initMap()
 })
 
-// Panning has to be off while drawing, or dragging the map drops vertices.
-watch([mapTool, isReadOnly], () => {
-  if (!map)
-    return
-  const allowMove = mapTool.value === 'move' || isReadOnly.value
-  for (const name of ['dragPan', 'scrollZoom', 'boxZoom', 'keyboard', 'doubleClickZoom'] as const) {
-    const handler = map[name]
-    if (allowMove)
-      handler.enable()
-    else
-      handler.disable()
-  }
-})
+// No manual dragPan/scrollZoom gating any more. Terra Draw's adapter calls
+// setDraggability(false) itself while you drag a handle, and turning panning
+// off used to cost you the ability to pan at all while drawing.
 
 function applyGeofence(fence: any, nextMode: 'view' | 'edit' | 'create') {
   isApplyingConfig.value = true
@@ -397,7 +751,6 @@ function applyGeofence(fence: any, nextMode: 'view' | 'edit' | 'create') {
     center.value = null
   }
   polygon.value = Array.isArray(fence?.polygon) ? fence.polygon : []
-  drawing.value = false
   mode.value = nextMode
   nextTick(() => {
     isApplyingConfig.value = false
@@ -413,7 +766,6 @@ function startCreate() {
   radiusMeters.value = 100
   center.value = null
   polygon.value = []
-  drawing.value = false
   mapTool.value = 'add'
   mode.value = 'create'
 }
@@ -435,41 +787,27 @@ function cancelEdit() {
   mode.value = 'view'
 }
 
-// MapLibre reports lngLat, where Leaflet reported latlng.
-function onMapClick(e: any) {
-  if (mapTool.value !== 'add' || isReadOnly.value)
+// Click-to-place is gone: Terra Draw puts vertices where you click. The old
+// onMapDblClick handler never made it across either - it stopped propagation
+// and then did nothing - so it stays deleted.
+
+// Terra Draw has no "finish" method. Closing a polygon is a key event that
+// goes to the map canvas, so the Finish button raises that key instead of
+// reaching into the mode. Clicking the first vertex closes it all the same.
+function finishPolygon() {
+  if (!map || polygon.value.length < 3)
     return
-  const lat = e.lngLat?.lat
-  const lng = e.lngLat?.lng
-  if (typeof lat !== 'number' || typeof lng !== 'number')
-    return
-  if (geofenceType.value === 'point') {
-    center.value = { lat, lng }
-  }
-  else {
-    if (!drawing.value)
-      polygon.value = []
-    drawing.value = true
-    polygon.value = [...polygon.value, [lat, lng]]
-  }
+  map.getCanvas().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }))
 }
 
-// The old onMapDblClick handler was dead: it stopped propagation and then did
-// nothing, so double-clicking never finished a polygon. Finishing is the
-// Finish button's job. Deleted rather than ported.
-
 function undoVertex() {
-  polygon.value = polygon.value.slice(0, -1)
-  if (polygon.value.length === 0) drawing.value = false
+  if (!terraDraw || !drawStarted)
+    return
+  terraDraw.undo()
 }
 
 function clearPolygon() {
   polygon.value = []
-  drawing.value = false
-}
-
-function finishPolygon() {
-  if (polygon.value.length >= 3) drawing.value = false
 }
 
 function distanceMeters(a: [number, number], b: [number, number]) {

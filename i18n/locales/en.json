@@ -339,11 +339,11 @@
         "hint": "Drawing mode is active. Click the map to place a point or a polygon vertex."
       },
       "point": {
-        "hint": "Click the map to set the centre point.",
+        "hint": "Click the map to set the centre point. Drag the point to move it.",
         "current": "Current"
       },
       "polygon": {
-        "hint": "Click the map to add vertices. A polygon needs at least 3.",
+        "hint": "Click the map to add vertices. A polygon needs at least 3 points. Click the first point to close it, or press Finish.",
         "vertices": "{count} vertices",
         "finish": "Finish",
         "undo": "Undo",

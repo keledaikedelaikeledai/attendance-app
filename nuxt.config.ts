@@ -54,6 +54,14 @@ export default defineNuxtConfig({
     // the module attempting to resolve an object as a file path.
   },
 
+  vite: {
+    optimizeDeps: {
+      // Terra Draw is pre-bundled ESM with no deps; letting esbuild's dev-dep
+      // scanner crawl it hangs the dev server, so serve it unoptimized.
+      exclude: ['terra-draw', 'terra-draw-maplibre-gl-adapter'],
+    },
+  },
+
   nitro: {
     experimental: {
       openAPI: true,

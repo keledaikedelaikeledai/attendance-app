@@ -336,14 +336,14 @@
         "label": "Alat peta",
         "move": "Geser peta",
         "draw": "Gambar",
-        "hint": "Mode gambar aktif. Klik peta untuk placing titik atau titik poligon."
+        "hint": "Mode gambar aktif. Klik peta untuk membuat titik atau titik poligon."
       },
       "point": {
-        "hint": "Klik peta untuk menentukan titik pusat.",
+        "hint": "Klik peta untuk menentukan titik pusat. Seret titiknya untuk memindah.",
         "current": "Sekarang"
       },
       "polygon": {
-        "hint": "Klik peta untuk menambah titik. Poligon minimal 3 titik.",
+        "hint": "Klik peta untuk menambah titik. Poligon minimal 3 titik. Klik titik pertama untuk menutup, atau tekan Selesai.",
         "vertices": "{count} titik",
         "finish": "Selesai",
         "undo": "Urungkan",
