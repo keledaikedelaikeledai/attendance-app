@@ -6,6 +6,7 @@
 // Remove once @sewadah/selaras registers them itself.
 
 import type { DropdownItem } from '@sewadah/selaras/types'
+import { Time } from '@internationalized/date'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -36,6 +37,14 @@ interface ShiftRow {
 interface ShiftSpan {
   hours: number
   wraps: boolean
+}
+
+// 24-hour, zero padded, and locale independent. Without this the picker's
+// default `timeStyle: 'short'` renders `07:00` under `en` but `07.00` under `id`.
+const TIME_FORMAT: Intl.DateTimeFormatOptions = {
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
 }
 
 const toast = useToast()
@@ -70,6 +79,23 @@ const rows = computed(() => data.value.map(s => ({ ...s, span: shiftSpan(s.start
 const activeCount = computed(() => data.value.filter(s => s.active).length)
 const totalCount = computed(() => data.value.length)
 
+// `SDatePicker` in `time-only` mode speaks `@internationalized/date`'s `Time`.
+// The column and the API payload are `HH:mm` text, so convert at the boundary
+// instead of storing a `Time` in the field.
+//
+// `Time` only accepts positional arguments here: `new Time({ hour: 7, minute: 0 })`
+// silently produces `hour: NaN`, which the picker then renders as `00`.
+function timeFromHhmm(value: string): Time | undefined {
+  const parsed = parseMinutes(value)
+  if (parsed === null) return undefined
+  return new Time(Math.floor(parsed / 60), parsed % 60)
+}
+
+function hhmmFromTime(value: Time | undefined | null): string {
+  if (!value) return ''
+  return `${String(value.hour).padStart(2, '0')}:${String(value.minute).padStart(2, '0')}`
+}
+
 const formOpen = ref(false)
 const editing = ref<ShiftRow | null>(null)
 
@@ -82,6 +108,16 @@ const active = useState('admin.shift.active', () => false)
 const { value: sortOrder } = useField('sortOrder', () => true, { initialValue: 0 })
 
 const formSpan = computed(() => shiftSpan(start.value, end.value))
+
+const startTime = computed({
+  get: () => timeFromHhmm(start.value),
+  set: (value: Time | undefined | null) => { start.value = hhmmFromTime(value) },
+})
+
+const endTime = computed({
+  get: () => timeFromHhmm(end.value),
+  set: (value: Time | undefined | null) => { end.value = hhmmFromTime(value) },
+})
 
 function openAdd() {
   editing.value = null
@@ -295,31 +331,40 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
           <SFormField :label="t('adminShifts.form.label')" label-mode="static">
             <SInput v-model="label" :placeholder="t('adminShifts.form.labelPlaceholder')" />
           </SFormField>
+          <!-- `time-only` mode drives hour + minute; the format is pinned rather
+               than left to `timeStyle: 'short'`, which renders 07.00 under `id`. -->
           <div class="grid grid-cols-2 gap-3">
             <SFormField :label="t('adminShifts.form.start')" label-mode="static">
-              <SInput v-model="start" type="time" />
+              <SDatePicker
+                v-model="startTime"
+                time-only
+                :hour-cycle="24"
+                :minute-step="5"
+                :format="TIME_FORMAT"
+              />
             </SFormField>
             <SFormField :label="t('adminShifts.form.end')" label-mode="static">
-              <SInput v-model="end" type="time" />
+              <SDatePicker
+                v-model="endTime"
+                time-only
+                :hour-cycle="24"
+                :minute-step="5"
+                :format="TIME_FORMAT"
+              />
             </SFormField>
           </div>
           <p v-if="formSpan?.wraps" class="text-xs text-[var(--selaras-resolved-text-muted)]">
             {{ t('adminShifts.form.overnight') }}
           </p>
 
-          <div class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-sm font-medium">
-                {{ t('adminShifts.form.active') }}
-              </p>
-              <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                {{ t('adminShifts.form.activeDescription') }}
-              </p>
-            </div>
-            <ClientOnly>
-              <SSwitch v-model="active" :loading="isSubmitting" />
-            </ClientOnly>
-          </div>
+          <!-- `SSwitch` renders its own <label> around the control, so the label
+               toggles the switch without any hand-rolled markup. -->
+          <SSwitch
+            v-model="active"
+            :label="t('adminShifts.form.active')"
+            :description="t('adminShifts.form.activeDescription')"
+            :loading="isSubmitting"
+          />
 
           <SFormField
             :label="t('adminShifts.form.sortOrder')"

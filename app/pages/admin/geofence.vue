@@ -1201,19 +1201,15 @@ async function deleteGeofence() {
               />
             </SFormField>
 
-            <div class="flex items-center justify-between gap-3">
-              <div>
-                <p class="font-medium">
-                  {{ t('adminGeofence.form.active.label') }}
-                </p>
-                <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                  {{ t('adminGeofence.form.active.description') }}
-                </p>
-              </div>
-              <ClientOnly>
-                <SSwitch v-model="isActive" :loading="pending" :disabled="isReadOnly" />
-              </ClientOnly>
-            </div>
+            <!-- `SSwitch` renders its own <label> around the control, so the label
+                 toggles the switch without any hand-rolled markup. -->
+            <SSwitch
+              v-model="isActive"
+              :label="t('adminGeofence.form.active.label')"
+              :description="t('adminGeofence.form.active.description')"
+              :loading="pending"
+              :disabled="isReadOnly"
+            />
 
             <SFormField
               :label="t('adminGeofence.form.policy.label')"
