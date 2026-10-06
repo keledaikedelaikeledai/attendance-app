@@ -7,15 +7,21 @@
       "daysInMonth": "Days in Month",
       "presencePercent": "Presence %",
       "avgLatePerUser": "Avg Late / User",
-      "dailyPresence": "Daily Presence",
-      "chartLoading": "Chart loading...",
       "userRecap": "User Recap",
       "name": "Name",
       "totalDays": "Total Days",
       "harian": "Harian",
       "bantuan": "Bantuan",
       "lateHours": "Late Hours",
-      "earlyHours": "Early Leave Hours"
+      "earlyHours": "Early Leave Hours",
+      "totalUsersSub": "registered accounts",
+      "daysInMonthSub": "in selected period",
+      "presenceSub": "{present} of {total} shifts attended",
+      "avgLateSub": "{days} user-days late",
+      "heatmapTitle": "Working Hours by Day",
+      "heatmapDesc": "One row per user, one column per day. Darker cells mean more hours worked.",
+      "heatmapLoading": "Chart loading...",
+      "userRecapDesc": "Monthly totals per user for the selected period."
     }
   },
   "common": {

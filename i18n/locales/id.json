@@ -7,15 +7,21 @@
       "daysInMonth": "Jumlah Hari",
       "presencePercent": "Persentase Hadir",
       "avgLatePerUser": "Rata-rata Telat / Pengguna",
-      "dailyPresence": "Kehadiran Harian",
-      "chartLoading": "Grafik dimuat...",
       "userRecap": "Rekap Pengguna",
       "name": "Nama",
       "totalDays": "Total Hari",
       "harian": "Harian",
       "bantuan": "Bantuan",
       "lateHours": "Jam Telat",
-      "earlyHours": "Jam Pulang Awal"
+      "earlyHours": "Jam Pulang Awal",
+      "totalUsersSub": "akun terdaftar",
+      "daysInMonthSub": "dalam periode terpilih",
+      "presenceSub": "{present} dari {total} shift hadir",
+      "avgLateSub": "{days} hari-user terlambat",
+      "heatmapTitle": "Jam Kerja per Hari",
+      "heatmapDesc": "Satu baris per pengguna, satu kolom per hari. Sel lebih gelap berarti jam kerja lebih panjang.",
+      "heatmapLoading": "Grafik dimuat...",
+      "userRecapDesc": "Total bulanan per pengguna untuk periode terpilih."
     }
   },
   "common": {

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { TableColumnDef } from '@sewadah/selaras/table'
-import { useWindowSize } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 // `computed`, `ref`, `onMounted`, etc. are auto-imported by Nuxt; do not import from 'vue' explicitly
 
@@ -19,21 +18,7 @@ const isLoading = computed(() => Boolean(attendancePending.value))
 
 const ApexChart = shallowRef<any>(null)
 const primaryColor = ref('#2563eb')
-const secondaryColor = ref('#60a5fa')
-
-// Responsive helpers for chart
-const { width: windowWidth } = useWindowSize()
-const chartHeight = computed(() => (windowWidth.value && windowWidth.value < 640) ? 220 : 320)
-// Compute chart width: on mobile make the chart wider than the viewport so it can scroll horizontally
-const chartWidth = computed(() => {
-  const isMobile = Boolean(windowWidth.value && windowWidth.value < 640)
-  const daysCount = (data.value.days || []).length || 0
-  if (!isMobile) return '100%'
-  // target ~28-36px per day bar to avoid cramping; clamp to a reasonable max
-  const perDay = 34
-  const w = Math.max(640, Math.min(2400, daysCount * perDay))
-  return `${w}px`
-})
+const emptyCellColor = ref('#e5e7eb')
 
 function refreshAll() {
   void refreshAttendance()
@@ -56,45 +41,43 @@ onMounted(async () => {
       ).trim()
 
       if (foundRaw) {
-        // Create a hidden element to let the browser resolve the color (OKLCH -> rgb if supported)
+        // Resolve the oklch() custom property to a concrete rgb() string via a
+        // canvas: getComputedStyle returns oklch() verbatim in Chrome, which we
+        // cannot parse as RGB components for mixing.
         try {
-          const tmp = document.createElement('div')
-          tmp.style.color = foundRaw
-          tmp.style.display = 'none'
-          document.body.appendChild(tmp)
-          const resolved = getComputedStyle(tmp).color
-          document.body.removeChild(tmp)
-          if (resolved && resolved !== 'rgba(0, 0, 0, 0)') {
-            primaryColor.value = resolved
-          }
-          else {
-            primaryColor.value = foundRaw
-          }
+          const cv = document.createElement('canvas')
+          cv.width = cv.height = 1
+          const cx = cv.getContext('2d')!
+          cx.fillStyle = foundRaw
+          cx.fillRect(0, 0, 1, 1)
+          const [r, g, b] = cx.getImageData(0, 0, 1, 1).data
+          primaryColor.value = `rgb(${r}, ${g}, ${b})`
         }
         catch {
           primaryColor.value = foundRaw
         }
-        // try to resolve a secondary tint for the 'bantuan' series from the theme
-        try {
-          const found2 = (
-            ['--selaras-resolved-color-primary-subtle', '--selaras-color-primary-subtle', '--color-primary-300']
-              .map(k => style.getPropertyValue(k))
-              .find(v => v && v.trim()) || ''
-          ).trim()
-          if (found2) {
-            const tmp2 = document.createElement('div')
-            tmp2.style.color = found2
-            tmp2.style.display = 'none'
-            document.body.appendChild(tmp2)
-            const resolved2 = getComputedStyle(tmp2).color
-            document.body.removeChild(tmp2)
-            if (resolved2 && resolved2 !== 'rgba(0, 0, 0, 0)') secondaryColor.value = resolved2
-            else secondaryColor.value = found2
-          }
+      }
+
+      // Empty cells use the theme border color so "no work logged" reads as a
+      // neutral gap in both light and dark mode.
+      try {
+        const foundB = (
+          ['--selaras-resolved-border-default', '--selaras-resolved-border-muted']
+            .map(k => style.getPropertyValue(k))
+            .find(v => v && v.trim()) || ''
+        ).trim()
+        if (foundB) {
+          const cvB = document.createElement('canvas')
+          cvB.width = cvB.height = 1
+          const cxB = cvB.getContext('2d')!
+          cxB.fillStyle = foundB
+          cxB.fillRect(0, 0, 1, 1)
+          const [r2, g2, b2] = cxB.getImageData(0, 0, 1, 1).data
+          emptyCellColor.value = `rgb(${r2}, ${g2}, ${b2})`
         }
-        catch {
-          // ignore
-        }
+      }
+      catch {
+        // keep the fallback
       }
     }
     catch {
@@ -220,74 +203,111 @@ const recentRecapColumns = computed<TableColumnDef<any>[]>(() => [
   { header: t('admin.index.earlyHours'), accessorKey: 'earlyHours', size: 160 },
 ])
 
-// Chart color follows the resolved theme primary color. We populate `primaryColor` on mount.
-const chartOptions = computed(() => {
-  const isMobile = Boolean(windowWidth.value && windowWidth.value < 640)
+// Heatmap: one row per user, one column per day, color intensity = hours worked.
+// A single theme color with ApexCharts shades is the closest match to the
+// ui-thing heatmap example without hard-coding a ramp.
+const heatmapHeight = computed(() => {
+  const users = (normalizedRows.value || []).length
+  return Math.max(280, Math.min(560, users * 28 + 60))
+})
+
+function dayWorkedHours(row: any, d: string): number {
+  const cell = row.byDate?.[d]
+  if (!cell) return 0
+  const entries = attendanceTime.normalizeCell(cell)
+  const ms = entries.reduce((a: number, e: any) => {
+    if (!e?.clockIn || !e?.clockOut) return a
+    return a + (new Date(e.clockOut).getTime() - new Date(e.clockIn).getTime())
+  }, 0)
+  return Math.round((ms / 3600000) * 10) / 10
+}
+
+const heatmapSeries = computed(() => {
+  const days = data.value.days || []
+  return (normalizedRows.value || []).map((row: any) => ({
+    name: row.name || row.username || row.email,
+    data: days.map((d: string) => ({ x: d.split('-').pop(), y: dayWorkedHours(row, d) })),
+  }))
+})
+
+// Mix a resolved `rgb(r,g,b)` string toward white (light) or black (dark) by
+// `ratio` in [0,1]. Used to build a 3-step theme ramp for the heatmap.
+function mixColor(resolved: string, ratio: number, dark: boolean): string {
+  const m = resolved.match(/\d+(\.\d+)?/g)
+  if (!m || m.length < 3) return resolved
+  const [r, g, b] = m.slice(0, 3).map(Number)
+  const target = dark ? 0 : 255
+  const mix = (c: number) => Math.round(c + (target - c) * ratio)
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`
+}
+
+const heatmapOptions = computed(() => {
+  const dark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  const base = primaryColor.value
   return {
-    chart: { id: 'presence-chart', toolbar: { show: false }, stacked: true },
-    colors: [primaryColor.value, secondaryColor.value],
-    fill: { colors: [primaryColor.value, secondaryColor.value] },
+    chart: { toolbar: { show: false } },
+    colors: [base],
     plotOptions: {
-      bar: {
-        horizontal: false,
-        columnWidth: isMobile ? '70%' : '50%',
-      },
-    },
-    xaxis: {
-      categories: data.value.days?.map((d: string) => d.split('-').pop()) || [],
-      labels: {
-        rotate: isMobile ? -45 : 0,
-        hideOverlappingLabels: true,
-        trim: true,
-      },
-    },
-    yaxis: { title: { text: 'Users present' } },
-    dataLabels: { enabled: false },
-    stroke: { curve: 'smooth' as const },
-    responsive: [
-      {
-        breakpoint: 640,
-        options: {
-          legend: { position: 'bottom' },
-          plotOptions: { bar: { columnWidth: '70%' } },
+      heatmap: {
+        // Without this, ApexCharts re-shades every range colour with its own
+        // white/black ramp and the theme colours never reach the cells.
+        enableShades: false,
+        colorScale: {
+          ranges: [
+            { from: -1, to: 0, color: emptyCellColor.value, name: 'none' },
+            { from: 0.01, to: 4, color: mixColor(base, 0.8, dark), name: 'light' },
+            { from: 4.01, to: 8, color: mixColor(base, 0.45, dark), name: 'moderate' },
+            { from: 8.01, to: 24, color: base, name: 'full' },
+          ],
         },
       },
-    ],
+    },
+    dataLabels: { enabled: false },
+    stroke: { colors: ['var(--selaras-resolved-surface-elevated, #ffffff)'], width: 2 },
+    grid: { borderColor: 'var(--selaras-resolved-border-muted, #e5e7eb)' },
+    xaxis: {
+      position: 'top' as const,
+      labels: { rotate: -45, hideOverlappingLabels: true, trim: true },
+    },
+    yaxis: { labels: { trim: true } },
+    tooltip: { y: { formatter: (v: number) => `${v}h` } },
   }
 })
 
-// Produce two series: 'Harian' and 'Bantuan'. We assume attendance data rows aggregate shifts per day
-// by `workingShifts`, `harian`, and `bantuan` fields when present. Otherwise we fallback to counting entries.
-const chartSeries = computed(() => {
-  const days = data.value.days || []
-  const rows = normalizedRows.value || []
-  // Count present per day for each type
-  const harianCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
-    const cell = row.byDate?.[d]
-    if (!cell) return acc
-    if (typeof cell.harian === 'number') return acc + Number(cell.harian)
-    // fallback: count entries marked harian (entry.shiftType === 'harian')
-    const entries = attendanceTime.normalizeCell(cell)
-    return acc + entries.filter((e: any) => e?.shiftType === 'harian' && e?.clockIn).length
-  }, 0))
+const totalLateUserDays = computed(() =>
+  lateCountsPerUser.value.reduce((a: number, u: any) => a + (u.lateCount || 0), 0),
+)
 
-  const bantuanCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
-    const cell = row.byDate?.[d]
-    if (!cell) return acc
-    if (typeof cell.bantuan === 'number') return acc + Number(cell.bantuan)
-    const entries = attendanceTime.normalizeCell(cell)
-    return acc + entries.filter((e: any) => e?.shiftType === 'bantuan' && e?.clockIn).length
-  }, 0))
-
-  return [
-    { name: 'Harian', data: harianCounts },
-    { name: 'Bantuan', data: bantuanCounts },
-  ]
-})
-
-function formatPercent(v: number) {
-  return `${v}%`
-}
+const statCards = computed(() => [
+  {
+    key: 'users',
+    label: t('admin.index.totalUsers'),
+    value: String(totalUsers.value),
+    sub: t('admin.index.totalUsersSub'),
+    icon: 'i-heroicons-users',
+  },
+  {
+    key: 'days',
+    label: t('admin.index.daysInMonth'),
+    value: String(totalDays.value),
+    sub: t('admin.index.daysInMonthSub'),
+    icon: 'i-heroicons-calendar-days',
+  },
+  {
+    key: 'presence',
+    label: t('admin.index.presencePercent'),
+    value: `${percentPresent.value}%`,
+    sub: t('admin.index.presenceSub', { present: totalPresent.value, total: totalUsers.value * totalDays.value }),
+    icon: 'i-heroicons-check-badge',
+  },
+  {
+    key: 'late',
+    label: t('admin.index.avgLatePerUser'),
+    value: String(averageLatePerUser.value),
+    sub: t('admin.index.avgLateSub', { days: totalLateUserDays.value }),
+    icon: 'i-heroicons-clock',
+  },
+])
 
 // Helpers copied/kept lightweight for recap calculations
 
@@ -340,64 +360,47 @@ definePageMeta({
     </template>
 
     <div class="space-y-6 p-6">
-      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <SCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.totalUsers') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ totalUsers }}
-          </div>
-        </SCard>
-        <SCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.daysInMonth') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ totalDays }}
-          </div>
-        </SCard>
-        <SCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.presencePercent') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ formatPercent(percentPresent) }}
-          </div>
-        </SCard>
-        <SCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.avgLatePerUser') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ averageLatePerUser }}
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <SCard v-for="card in statCards" :key="card.key">
+          <div class="flex items-start gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)]">
+              <SIcon :name="card.icon" class="h-5 w-5 text-[var(--selaras-resolved-color-primary-fill,#2563eb)]" />
+            </div>
+            <div class="min-w-0">
+              <div class="text-sm text-muted">
+                {{ card.label }}
+              </div>
+              <div class="text-2xl font-semibold leading-tight">
+                {{ card.value }}
+              </div>
+              <div class="mt-0.5 text-xs text-muted">
+                {{ card.sub }}
+              </div>
+            </div>
           </div>
         </SCard>
       </div>
 
       <SCard>
-        <div class="mb-4">
-          <strong>{{ t('admin.index.dailyPresence') }}</strong>
+        <div class="mb-1 flex items-baseline justify-between">
+          <strong>{{ t('admin.index.heatmapTitle') }}</strong>
+        </div>
+        <div class="mb-4 text-xs text-muted">
+          {{ t('admin.index.heatmapDesc') }}
         </div>
         <div>
           <client-only>
             <div v-if="ApexChart" class="admin-presence-chart">
-              <!-- On mobile the inner container will be wider than the viewport so the chart can be scrolled horizontally -->
-              <div class="w-full overflow-x-auto" style="-webkit-overflow-scrolling: touch;">
-                <div :style="{ minWidth: typeof chartWidth === 'number' ? `${chartWidth}px` : chartWidth }">
-                  <component
-                    :is="ApexChart"
-                    type="bar"
-                    :options="chartOptions"
-                    :series="chartSeries"
-                    :height="chartHeight"
-                    :width="chartWidth"
-                  />
-                </div>
-              </div>
+              <component
+                :is="ApexChart"
+                type="heatmap"
+                :options="heatmapOptions"
+                :series="heatmapSeries"
+                :height="heatmapHeight"
+              />
             </div>
             <div v-else class="text-sm text-muted">
-              {{ t('admin.index.chartLoading') }}
+              {{ t('admin.index.heatmapLoading') }}
             </div>
           </client-only>
         </div>
@@ -405,8 +408,11 @@ definePageMeta({
 
       <div class="space-y-4">
         <SCard>
-          <div class="mb-3">
+          <div class="mb-1">
             <strong>{{ t('admin.index.userRecap') }}</strong>
+          </div>
+          <div class="mb-3 text-xs text-muted">
+            {{ t('admin.index.userRecapDesc') }}
           </div>
           <!-- Cells render the raw field value, which is TanStack default. The
                per-column size widths live in recentRecapColumns, so the :columns
