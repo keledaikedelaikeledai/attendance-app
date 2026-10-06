@@ -213,11 +213,22 @@
   "adminShifts": {
     "pageTitle": "Shifts",
     "add": "Add shift",
+    "list": {
+      "title": "Shifts",
+      "description": "Staff select a shift when they record attendance.",
+      "count": "no shifts | 1 shift | {count} shifts",
+      "activeCount": "no active | 1 active | {count} active"
+    },
+    "empty": {
+      "title": "No shifts yet",
+      "description": "Add a shift so staff can select it when they record attendance."
+    },
     "columns": {
       "code": "Code",
       "label": "Label",
-      "start": "Start",
-      "end": "End",
+      "time": "Time",
+      "duration": "{hours} h",
+      "nextDay": "Ends next day",
       "active": "Active",
       "order": "Order",
       "action": "Action"
@@ -231,9 +242,10 @@
       "delete": "Delete"
     },
     "actionsLabel": "Actions",
-    "modal": {
+    "drawer": {
       "add": "Add Shift",
       "edit": "Edit Shift",
+      "description": "A shift sets the working hours staff record attendance against.",
       "cancel": "Cancel",
       "save": "Save"
     },
@@ -245,7 +257,11 @@
       "start": "Start",
       "end": "End",
       "active": "Active",
-      "sortOrder": "Sort Order"
+      "sortOrder": "Sort Order",
+      "codeLockedHint": "The code identifies the shift and cannot be changed.",
+      "overnight": "This shift ends on the next day.",
+      "activeDescription": "Inactive shifts are hidden from clock-in and reports, and cannot be used for attendance.",
+      "sortOrderDescription": "Lower numbers come first."
     },
     "confirmations": {
       "delete": {

@@ -28,13 +28,49 @@ interface ShiftRow {
   sortOrder: number
 }
 
+/**
+ * A shift is a range, so `start`/`end` travel together on the row. `wraps` marks
+ * the ranges that run past midnight; `malam` runs 19:00 -> 07:00 and naive
+ * subtraction would report -12 h.
+ */
+interface ShiftSpan {
+  hours: number
+  wraps: boolean
+}
+
 const toast = useToast()
 const confirmation = useConfirmation()
 
 const { data: _data, pending, refresh } = await useFetch<ShiftRow[]>('/api/admin/shifts', { credentials: 'include' })
 const data = computed(() => _data.value || [])
 
-const modalOpen = ref(false)
+function parseMinutes(hhmm: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec((hhmm || '').trim())
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (hours > 23 || minutes > 59) return null
+  return hours * 60 + minutes
+}
+
+function shiftSpan(start: string, end: string): ShiftSpan | null {
+  const from = parseMinutes(start)
+  const to = parseMinutes(end)
+  if (from === null || to === null) return null
+
+  // `to <= from` means the end is on the next day. Equal times are read as a
+  // full 24 h shift, since a zero-length shift is never intended.
+  const raw = to - from
+  const wraps = raw <= 0
+  const minutes = wraps ? raw + 24 * 60 : raw
+  return { hours: Number((minutes / 60).toFixed(1)), wraps }
+}
+
+const rows = computed(() => data.value.map(s => ({ ...s, span: shiftSpan(s.start, s.end) })))
+const activeCount = computed(() => data.value.filter(s => s.active).length)
+const totalCount = computed(() => data.value.length)
+
+const formOpen = ref(false)
 const editing = ref<ShiftRow | null>(null)
 
 const { handleSubmit, isSubmitting } = useForm()
@@ -45,6 +81,8 @@ const { value: end } = useField('end', () => true, { initialValue: '15:00' })
 const active = useState('admin.shift.active', () => false)
 const { value: sortOrder } = useField('sortOrder', () => true, { initialValue: 0 })
 
+const formSpan = computed(() => shiftSpan(start.value, end.value))
+
 function openAdd() {
   editing.value = null
   code.value = ''
@@ -53,7 +91,7 @@ function openAdd() {
   end.value = '15:00'
   active.value = false
   sortOrder.value = 0
-  modalOpen.value = true
+  formOpen.value = true
 }
 
 function openEdit(s: ShiftRow) {
@@ -64,7 +102,7 @@ function openEdit(s: ShiftRow) {
   end.value = s.end
   active.value = Boolean(s.active)
   sortOrder.value = Number(s.sortOrder) || 0
-  modalOpen.value = true
+  formOpen.value = true
 }
 
 const onSubmit = handleSubmit(async () => {
@@ -84,7 +122,7 @@ const onSubmit = handleSubmit(async () => {
       credentials: 'include',
     })
     toast.add({ title: editing.value ? t('adminShifts.toasts.updated.title') : t('adminShifts.toasts.created.title'), description: editing.value ? t('adminShifts.toasts.updated.description', { code: code.value }) : t('adminShifts.toasts.created.description', { code: code.value }), color: 'success' })
-    modalOpen.value = false
+    formOpen.value = false
     await refresh()
   }
   catch (err: any) {
@@ -143,52 +181,121 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
       </SButton>
     </template>
 
-    <STable :data="data || []" :loading="pending === true">
-      <SColumn field="code" :header="t('adminShifts.columns.code')" />
-      <SColumn field="label" :header="t('adminShifts.columns.label')" />
-      <SColumn field="start" :header="t('adminShifts.columns.start')" />
-      <SColumn field="end" :header="t('adminShifts.columns.end')" />
-      <SColumn field="active" :header="t('adminShifts.columns.active')">
-        <template #default="{ value }">
-          <SBadge v-if="value" color="success">
-            {{ t('adminShifts.status.active') }}
-          </SBadge>
-          <SBadge v-else color="neutral" variant="outline">
-            {{ t('adminShifts.status.inactive') }}
-          </SBadge>
-        </template>
-      </SColumn>
-      <SColumn field="sortOrder" :header="t('adminShifts.columns.order')" />
-      <!-- `code` is reused as the identity for the actions column; its value is
-             never rendered, the slot supplies the whole cell. -->
-      <SColumn field="code" :header="t('adminShifts.columns.action')">
-        <template #default="{ row }">
-          <SDropdown
-            :items="[getDropdownActions(row)]"
-            :positioning="{ align: 'end' }"
-            :ui="{ content: 'w-40' }"
-          >
-            <SButton
-              icon="i-lucide-ellipsis-vertical"
-              color="neutral"
-              variant="ghost"
-              :aria-label="t('adminShifts.actionsLabel')"
-            />
-          </SDropdown>
-        </template>
-      </SColumn>
-    </STable>
+    <!-- `resolveSlot` concatenates classes instead of merging them, so the header's
+         `border-default` needs an important override to pick up `border-hover` (which
+         stays visible where `border-default` collapses into the elevated surface in
+         dark mode). The body drops its padding so the table fills the card, and the
+         table's own wrapper ring comes off, leaving the card as the only frame. -->
+    <SCard :ui="{ body: 'p-0', header: '!border-[var(--selaras-resolved-border-hover)]' }">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="text-sm font-medium">
+              {{ t('adminShifts.list.title') }}
+            </p>
+            <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              {{ t('adminShifts.list.description') }}
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <SBadge color="success" variant="soft">
+              {{ t('adminShifts.list.activeCount', activeCount, { count: activeCount }) }}
+            </SBadge>
+            <SBadge color="neutral" variant="outline">
+              {{ t('adminShifts.list.count', totalCount, { count: totalCount }) }}
+            </SBadge>
+          </div>
+        </div>
+      </template>
 
-    <SModal v-model:open="modalOpen" :title="editing ? t('adminShifts.modal.edit') : t('adminShifts.modal.add')">
+      <STable :data="rows" :ui="{ wrapper: 'overflow-x-auto' }" :loading="pending">
+        <template #empty>
+          <div class="flex flex-col items-center gap-1 py-10 text-center">
+            <span class="text-sm font-medium">
+              {{ t('adminShifts.empty.title') }}
+            </span>
+            <span class="max-w-sm text-xs text-[var(--selaras-resolved-text-muted)]">
+              {{ t('adminShifts.empty.description') }}
+            </span>
+          </div>
+        </template>
+
+        <SColumn field="code" :header="t('adminShifts.columns.code')" />
+        <SColumn field="label" :header="t('adminShifts.columns.label')" />
+        <!-- `start` identifies the column for sorting; the slot renders the whole
+             range so a shift reads as one time window, not two loose columns. -->
+        <SColumn field="start" :header="t('adminShifts.columns.time')">
+          <template #default="{ row }">
+            <div class="flex items-baseline gap-2 whitespace-nowrap">
+              <span class="tabular-nums font-medium">
+                {{ row.start }} &ndash; {{ row.end }}
+              </span>
+              <span v-if="row.span" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.columns.duration', { hours: row.span.hours }) }}
+              </span>
+            </div>
+            <span v-if="row.span?.wraps" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              {{ t('adminShifts.columns.nextDay') }}
+            </span>
+          </template>
+        </SColumn>
+        <SColumn field="active" :header="t('adminShifts.columns.active')">
+          <template #default="{ value }">
+            <SBadge v-if="value" color="success" variant="soft">
+              {{ t('adminShifts.status.active') }}
+            </SBadge>
+            <SBadge v-else color="neutral" variant="outline">
+              {{ t('adminShifts.status.inactive') }}
+            </SBadge>
+          </template>
+        </SColumn>
+        <!-- The stored value drives the order the API returns, so it is shown as a
+             position rather than a bare number. -->
+        <SColumn field="sortOrder" :header="t('adminShifts.columns.order')">
+          <template #default="{ value }">
+            <span class="tabular-nums text-[var(--selaras-resolved-text-muted)]">#{{ value }}</span>
+          </template>
+        </SColumn>
+        <!-- `code` is reused as the identity for the actions column; its value is
+             never rendered, the slot supplies the whole cell. -->
+        <SColumn field="code" :header="t('adminShifts.columns.action')">
+          <template #default="{ row }">
+            <SDropdown
+              :items="[getDropdownActions(row)]"
+              :positioning="{ align: 'end' }"
+              :ui="{ content: 'w-40' }"
+            >
+              <SButton
+                icon="i-lucide-ellipsis-vertical"
+                color="neutral"
+                variant="ghost"
+                :aria-label="t('adminShifts.actionsLabel')"
+              />
+            </SDropdown>
+          </template>
+        </SColumn>
+      </STable>
+    </SCard>
+
+    <SSlideover
+      v-model:open="formOpen"
+      side="right"
+      :title="editing ? t('adminShifts.drawer.edit') : t('adminShifts.drawer.add')"
+      :description="t('adminShifts.drawer.description')"
+    >
       <template #body>
-        <form class="space-y-3" @submit.prevent="onSubmit">
-          <SFormField :label="t('adminShifts.form.code')" label-mode="static">
+        <form class="space-y-4" @submit.prevent="onSubmit">
+          <SFormField
+            :label="t('adminShifts.form.code')"
+            :hint="editing ? t('adminShifts.form.codeLockedHint') : undefined"
+            label-mode="static"
+          >
             <SInput v-model="code" :disabled="!!editing" :placeholder="t('adminShifts.form.codePlaceholder')" />
           </SFormField>
           <SFormField :label="t('adminShifts.form.label')" label-mode="static">
             <SInput v-model="label" :placeholder="t('adminShifts.form.labelPlaceholder')" />
           </SFormField>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-2 gap-3">
             <SFormField :label="t('adminShifts.form.start')" label-mode="static">
               <SInput v-model="start" type="time" />
             </SFormField>
@@ -196,22 +303,41 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
               <SInput v-model="end" type="time" />
             </SFormField>
           </div>
-          <SFormField :label="t('adminShifts.form.active')" label-mode="static">
-            <SCheckbox v-model="active" />
-          </SFormField>
-          <SFormField :label="t('adminShifts.form.sortOrder')" label-mode="static">
+          <p v-if="formSpan?.wraps" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('adminShifts.form.overnight') }}
+          </p>
+
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium">
+                {{ t('adminShifts.form.active') }}
+              </p>
+              <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.form.activeDescription') }}
+              </p>
+            </div>
+            <ClientOnly>
+              <SSwitch v-model="active" :loading="isSubmitting" />
+            </ClientOnly>
+          </div>
+
+          <SFormField
+            :label="t('adminShifts.form.sortOrder')"
+            :description="t('adminShifts.form.sortOrderDescription')"
+            label-mode="static"
+          >
             <SInput v-model="sortOrder" type="number" />
           </SFormField>
         </form>
       </template>
       <template #footer>
-        <SButton variant="ghost" @click="modalOpen = false">
-          {{ t('adminShifts.modal.cancel') }}
+        <SButton variant="ghost" @click="formOpen = false">
+          {{ t('adminShifts.drawer.cancel') }}
         </SButton>
         <SButton :loading="isSubmitting" color="primary" @click="() => { void onSubmit() }">
-          {{ t('adminShifts.modal.save') }}
+          {{ t('adminShifts.drawer.save') }}
         </SButton>
       </template>
-    </SModal>
+    </SSlideover>
   </PageWrapper>
 </template>

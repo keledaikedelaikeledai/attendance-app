@@ -213,11 +213,22 @@
   "adminShifts": {
     "pageTitle": "Shift",
     "add": "Tambah shift",
+    "list": {
+      "title": "Shift",
+      "description": "Staf memilih shift saat mencatat absensi.",
+      "count": "tidak ada shift | 1 shift | {count} shift",
+      "activeCount": "tidak ada aktif | 1 aktif | {count} aktif"
+    },
+    "empty": {
+      "title": "Belum ada shift",
+      "description": "Tambahkan shift agar staf dapat memilihnya saat mencatat absensi."
+    },
     "columns": {
       "code": "Kode",
       "label": "Label",
-      "start": "Mulai",
-      "end": "Selesai",
+      "time": "Waktu",
+      "duration": "{hours} jam",
+      "nextDay": "Selesai hari berikutnya",
       "active": "Aktif",
       "order": "Urutan",
       "action": "Aksi"
@@ -231,9 +242,10 @@
       "delete": "Hapus"
     },
     "actionsLabel": "Aksi",
-    "modal": {
+    "drawer": {
       "add": "Tambah Shift",
       "edit": "Sunting Shift",
+      "description": "Shift menentukan jam kerja yang dipakai staf saat mencatat absensi.",
       "cancel": "Batal",
       "save": "Simpan"
     },
@@ -245,7 +257,11 @@
       "start": "Mulai",
       "end": "Selesai",
       "active": "Aktif",
-      "sortOrder": "Urutan"
+      "sortOrder": "Urutan",
+      "codeLockedHint": "Kode mengidentifikasi shift dan tidak dapat diubah.",
+      "overnight": "Shift ini berakhir pada hari berikutnya.",
+      "activeDescription": "Shift nonaktif disembunyikan dari absen dan laporan, dan tidak dapat dipakai untuk absensi.",
+      "sortOrderDescription": "Angka yang lebih kecil tampil lebih dulu."
     },
     "confirmations": {
       "delete": {
