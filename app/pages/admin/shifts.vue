@@ -70,7 +70,9 @@ const TIME_FORMAT: Intl.DateTimeFormatOptions = {
 }
 
 const toast = useToast()
-const confirmation = useConfirmation()
+// Selaras' `useConfirm` renders an SAlertDialog. Its `confirmColor` is a typed
+// ColorRole, so an invalid role like `error` can no longer reach the button.
+const { confirm } = useConfirm()
 
 const { data: _data, pending, refresh } = await useFetch<ShiftRow[]>('/api/admin/shifts', { credentials: 'include' })
 const data = computed(() => _data.value || [])
@@ -190,11 +192,13 @@ const onSubmit = handleSubmit(async () => {
 })
 
 async function doDelete(s: ShiftRow) {
-  const confirmed = await confirmation.confirm({
+  const confirmed = await confirm({
     icon: 'i-heroicons-trash',
     title: t('adminShifts.confirmations.delete.title'),
     description: t('adminShifts.confirmations.delete.description', { code: s.code }),
-    btnConfirmProps: { color: 'danger' },
+    confirmColor: 'danger',
+    confirmLabel: t('common.confirm.confirm'),
+    cancelLabel: t('common.confirm.cancel'),
   })
   if (!confirmed) return
 

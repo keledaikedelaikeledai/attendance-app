@@ -21,7 +21,11 @@
   "common": {
     "hello": "Halo",
     "profile": "Profil",
-    "signOut": "Keluar"
+    "signOut": "Keluar",
+    "confirm": {
+      "cancel": "Batal",
+      "confirm": "Konfirmasi"
+    }
   },
   "profile": {
     "header": "Profil",

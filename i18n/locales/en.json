@@ -21,7 +21,11 @@
   "common": {
     "hello": "Hello",
     "profile": "Profile",
-    "signOut": "Sign Out"
+    "signOut": "Sign Out",
+    "confirm": {
+      "cancel": "Cancel",
+      "confirm": "Confirm"
+    }
   },
   "profile": {
     "header": "Profile",

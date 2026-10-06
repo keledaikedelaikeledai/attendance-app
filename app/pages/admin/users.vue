@@ -39,7 +39,10 @@ interface AdminUser {
 
 interface Res { users: AdminUser[] }
 
-const confirmation = useConfirmation()
+// Selaras' `useConfirm` renders an SAlertDialog. Its `confirmColor` is a typed
+// ColorRole, so an invalid role like `error` can no longer reach the button, and
+// its icon carries no hardcoded colour.
+const { confirm } = useConfirm()
 const toast = useToast()
 
 const { data: _data, status, refresh } = await useFetch<Res>('/api/auth/admin/list-users', { credentials: 'include' })
@@ -124,11 +127,13 @@ function getDropdownActions(user: AdminUser) {
       value: 'make-admin',
       icon: 'i-heroicons-shield-check',
       async onSelect() {
-        const isConfirmed = await confirmation.confirm({
+        const isConfirmed = await confirm({
           icon: 'i-heroicons-shield-check',
           title: t('adminUsers.confirmations.makeAdmin.title'),
           description: t('adminUsers.confirmations.makeAdmin.description', { name: user.name }),
-          btnConfirmProps: { color: 'primary' },
+          confirmColor: 'primary',
+          confirmLabel: t('common.confirm.confirm'),
+          cancelLabel: t('common.confirm.cancel'),
         })
 
         if (!isConfirmed)
@@ -153,11 +158,13 @@ function getDropdownActions(user: AdminUser) {
       value: 'make-user',
       icon: 'i-heroicons-user',
       async onSelect() {
-        const isConfirmed = await confirmation.confirm({
+        const isConfirmed = await confirm({
           icon: 'i-heroicons-user',
           title: t('adminUsers.confirmations.makeUser.title'),
           description: t('adminUsers.confirmations.makeUser.description', { name: user.name }),
-          btnConfirmProps: { color: 'primary' },
+          confirmColor: 'primary',
+          confirmLabel: t('common.confirm.confirm'),
+          cancelLabel: t('common.confirm.cancel'),
         })
 
         if (!isConfirmed)
@@ -183,14 +190,13 @@ function getDropdownActions(user: AdminUser) {
     // `danger`, not `error` — see the ban/unban confirmation above.
     color: user.banned ? 'success' : 'danger',
     async onSelect() {
-      const isConfirmed = await confirmation.confirm({
+      const isConfirmed = await confirm({
         icon: user.banned ? 'i-heroicons-check-circle' : 'i-heroicons-no-symbol',
         title: user.banned ? t('adminUsers.confirmations.unban.title') : t('adminUsers.confirmations.ban.title'),
         description: user.banned ? t('adminUsers.confirmations.unban.description', { name: user.name }) : t('adminUsers.confirmations.ban.description', { name: user.name }),
-        // `danger`, not `error`: `error` is not a registered Selaras colour role, so
-        // it fell back to the default and the ban confirm button rendered teal.
-        btnConfirmProps: { color: user.banned ? 'success' : 'danger' },
-        iconClass: user.banned ? 'text-[var(--selaras-resolved-color-success)]' : 'text-[var(--selaras-resolved-color-danger)]',
+        confirmColor: user.banned ? 'success' : 'danger',
+        confirmLabel: t('common.confirm.confirm'),
+        cancelLabel: t('common.confirm.cancel'),
       })
 
       if (!isConfirmed)
@@ -215,11 +221,13 @@ function getDropdownActions(user: AdminUser) {
     icon: 'i-heroicons-trash',
     color: 'danger',
     async onSelect() {
-      const isConfirmed = await confirmation.confirm({
+      const isConfirmed = await confirm({
         icon: 'i-heroicons-trash',
         title: t('adminUsers.confirmations.delete.title'),
         description: t('adminUsers.confirmations.delete.description', { name: user.name }),
-        btnConfirmProps: { color: 'danger' },
+        confirmColor: 'danger',
+        confirmLabel: t('common.confirm.confirm'),
+        cancelLabel: t('common.confirm.cancel'),
       })
 
       if (!isConfirmed)
