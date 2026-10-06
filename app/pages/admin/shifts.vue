@@ -39,18 +39,6 @@ interface ShiftSpan {
   wraps: boolean
 }
 
-// `resolveSlot` passes a string override into the slot function, and tv
-// tailwind-merges it. An override therefore replaces the theme class
-// outright, so none of these need `!important`.
-
-// Selaras' `timeSection` slot carries `mt-3 border-t pt-3`, a divider meant to
-// separate the steppers from a date grid. In `time-only` mode there is no grid,
-// so it renders as a stray line with dead space above it. One slot serves both
-// layouts (see `DatePickerCalendarBody` vs `DatePickerTimeBody`), so it cannot be
-// suppressed per case upstream yet.
-// Remove once https://github.com/sewadahapp/selaras/issues/12 lands.
-const TIME_PICKER_UI = { timeSection: 'mt-0 border-t-0 pt-0' }
-
 // The table's own frame is off, so the card is the only frame. The wrapper
 // defaults to `rounded-md ring-1`.
 const TABLE_WRAPPER_UI = { wrapper: 'rounded-none ring-0 overflow-x-auto' }
@@ -370,7 +358,6 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
                 v-model="startTime"
                 time-only
                 trigger-mode="button"
-                :ui="TIME_PICKER_UI"
                 :hour-cycle="24"
                 :minute-step="TIME_PICKER_MINUTE_STEP"
                 :format="TIME_FORMAT"
@@ -381,7 +368,6 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
                 v-model="endTime"
                 time-only
                 trigger-mode="button"
-                :ui="TIME_PICKER_UI"
                 :hour-cycle="24"
                 :minute-step="TIME_PICKER_MINUTE_STEP"
                 :format="TIME_FORMAT"
