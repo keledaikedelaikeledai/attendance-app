@@ -4,6 +4,32 @@ import { useI18n } from 'vue-i18n'
 
 const route = useRoute()
 
+// Publish the header's real height as `--admin-header-h`, so a page that wants a
+// full-height surface can size against it instead of guessing. The header is not
+// a fixed height: its action row wraps to a second line on narrower viewports,
+// which measured 81px against 65px elsewhere, so any hardcoded value is wrong at
+// some width.
+const root = ref<HTMLElement | null>(null)
+
+function publishHeaderHeight() {
+  const header = root.value?.querySelector<HTMLElement>('[data-admin-header]')
+  if (header && root.value)
+    root.value.style.setProperty('--admin-header-h', `${Math.round(header.getBoundingClientRect().height)}px`)
+}
+
+let headerObserver: ResizeObserver | undefined
+
+onMounted(() => {
+  publishHeaderHeight()
+  const header = root.value?.querySelector<HTMLElement>('[data-admin-header]')
+  if (header) {
+    headerObserver = new ResizeObserver(publishHeaderHeight)
+    headerObserver.observe(header)
+  }
+})
+
+onBeforeUnmount(() => headerObserver?.disconnect())
+
 // locales available (kept in sync with nuxt.config i18n locales)
 const availableLocales = [
   { code: 'en', name: 'English' },
@@ -50,7 +76,7 @@ const localeItems = computed<DropdownItem[][]>(() => {
        scroll container now, so this wrapper only has to stack the header above
        the page content; giving it a height is what used to make it a second
        scroller. -->
-  <div>
+  <div ref="root">
     <!-- The single admin header, sticky because `main` scrolls. The toggle is
          always visible: on desktop it collapses the sidebar to a rail, on mobile
          it opens the sidebar drawer. The mobile drawer, user popover and
@@ -69,7 +95,7 @@ const localeItems = computed<DropdownItem[][]>(() => {
          border-default shares this bar's own elevated step and the line
          disappears. It is also the token the sidebar divider uses, so the two
          meet cleanly at the corner instead of stepping in lightness. -->
-    <HeaderColumn class="sticky top-0 z-10 flex-none border-b border-[var(--selaras-resolved-border-hover)] bg-[var(--selaras-resolved-surface-elevated)] px-4 py-3">
+    <HeaderColumn data-admin-header class="sticky top-0 z-10 flex-none border-b border-[var(--selaras-resolved-border-hover)] bg-[var(--selaras-resolved-surface-elevated)] px-4 py-3">
       <template #left>
         <SDashboardSidebarToggle class="w-8 h-8" />
         <h1 class="font-semibold text-lg">
