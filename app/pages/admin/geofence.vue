@@ -189,6 +189,78 @@ const ALL_POINT = 'geofence-all-point'
 const fillColor = computed(() => colorMode.value === 'dark' ? '#60a5fa' : '#2563eb')
 const strokeColor = computed(() => isActive.value ? fillColor.value : '#9ca3af')
 
+// Selecting a fence from the list and clicking it on the map must do the same
+// thing, so both go through here.
+function selectFence(fence: any) {
+  applyGeofence(fence, 'view')
+  flyToFence(fence)
+}
+
+// Frame the fence rather than jumping to its centroid: a polygon that is long
+// and thin, or a point with a 100 m radius, both read as "off screen" from a
+// centroid at a fixed zoom.
+function flyToFence(fence: any) {
+  const m = map
+  if (!m || !mapLib)
+    return
+  const bounds = new mapLib.LngLatBounds()
+
+  if (fence?.type === 'polygon' && Array.isArray(fence.polygon) && fence.polygon.length >= 3) {
+    for (const [lat, lng] of fence.polygon)
+      bounds.extend([lng, lat])
+  }
+  else if (typeof fence?.centerLat === 'number' && typeof fence?.centerLng === 'number') {
+    // 111320 m per degree of latitude; longitude shrinks with the cosine, so a
+    // radius near the poles would otherwise be framed far too tightly.
+    const r = Math.max(Number(fence.radiusMeters) || 0, 150)
+    const dLat = r / 111320
+    const dLng = r / (111320 * Math.cos(fence.centerLat * Math.PI / 180) || 1)
+    bounds.extend([fence.centerLng - dLng, fence.centerLat - dLat])
+    bounds.extend([fence.centerLng + dLng, fence.centerLat + dLat])
+  }
+  else {
+    return
+  }
+
+  m.fitBounds(bounds, { padding: 90, maxZoom: 18, duration: 900 })
+}
+
+// A point and its radius ring are two features, so a click can land on either.
+// Both carry the fence id, so the first hit resolves either way.
+function fenceIdAt(point: any): string | null {
+  if (!map)
+    return null
+  const hits = map.queryRenderedFeatures(point, { layers: [ALL_FILL, ALL_LINE, ALL_POINT] })
+  for (const hit of hits) {
+    const id = hit.properties?.id
+    if (typeof id === 'string' && id)
+      return id
+  }
+  return null
+}
+
+function onUnderlayClick(e: any) {
+  // Only claim the click when Terra Draw is idle. Drawing and vertex editing
+  // both need it. Note this is NOT `isReadOnly`: that is `mode === 'view'`,
+  // which is the normal browsing state and exactly when selection should work.
+  if (mapTool.value === 'add' || terraDraw?.getMode() !== 'render')
+    return
+  const id = fenceIdAt(e.point)
+  if (!id)
+    return
+  const fence = geofences.value.find(g => g.id === id)
+  if (fence)
+    selectFence(fence)
+}
+
+function onUnderlayHover(e: any) {
+  if (!map)
+    return
+  const drawing = mapTool.value === 'add' || terraDraw?.getMode() !== 'render'
+  const over = !drawing && !!fenceIdAt(e.point)
+  map.getCanvas().style.cursor = over ? 'pointer' : (mapTool.value === 'add' ? 'crosshair' : '')
+}
+
 function addGeofenceLayers() {
   const m = map
   if (!m)
@@ -258,7 +330,7 @@ const allFeatures = computed<GeoJSON.Feature[]>(() => {
     if (f.type === 'polygon' && Array.isArray(f.polygon) && f.polygon.length >= 3) {
       feats.push({
         type: 'Feature',
-        properties: { kind: 'polygon' },
+        properties: { kind: 'polygon', id: f.id },
         geometry: { type: 'Polygon', coordinates: [closed(f.polygon.map(([lat, lng]: [number, number]) => [lng, lat]))] },
       })
     }
@@ -267,13 +339,13 @@ const allFeatures = computed<GeoJSON.Feature[]>(() => {
       if (r > 0) {
         feats.push({
           type: 'Feature',
-          properties: { kind: 'ring' },
+          properties: { kind: 'ring', id: f.id },
           geometry: { type: 'Polygon', coordinates: [closed(circleRing(f.centerLat, f.centerLng, r))] },
         })
       }
       feats.push({
         type: 'Feature',
-        properties: { kind: 'point' },
+        properties: { kind: 'point', id: f.id },
         geometry: { type: 'Point', coordinates: [f.centerLng, f.centerLat] },
       })
     }
@@ -281,10 +353,14 @@ const allFeatures = computed<GeoJSON.Feature[]>(() => {
   return feats
 })
 
+// Do not gate these on `isStyleLoaded()`. With the OpenFreeMap vector styles it
+// is still false well after first paint, so the early return meant the sources
+// were created and never filled: the underlay showed nothing when zoomed out,
+// and a theme switch re-added the layers and then again refused to fill them.
+// `setData` only needs the source to exist; MapLibre paints once the style is
+// ready.
 function pushAllToMap() {
-  if (!map || !map.isStyleLoaded())
-    return
-  const source = map.getSource(ALL_SOURCE_ID) as import('maplibre-gl').GeoJSONSource | undefined
+  const source = map?.getSource(ALL_SOURCE_ID) as import('maplibre-gl').GeoJSONSource | undefined
   source?.setData({ type: 'FeatureCollection', features: allFeatures.value })
 }
 
@@ -613,11 +689,26 @@ function restartDraw() {
   }
 }
 
+// Frame the first fence once, on the map's first load. Selecting alone leaves
+// the map on the default centre, so the selection sits off screen. Guarded
+// because onMapReady also runs on every style.load.
+let initialFlyDone = false
+function flyToFirstFenceOnce() {
+  if (initialFlyDone || !geofences.value?.length)
+    return
+  const fence = geofences.value.find(g => g.id === selectedId.value) ?? geofences.value[0]
+  if (!fence)
+    return
+  initialFlyDone = true
+  flyToFence(fence)
+}
+
 // Both events: 'load' covers the first paint, 'style.load' covers the theme
 // switch that tears the adapter down again.
 function onMapReady() {
   addGeofenceLayers()
   restartDraw()
+  flyToFirstFenceOnce()
 }
 
 let initializing = false
@@ -669,6 +760,8 @@ async function initMap() {
   // handlers are idempotent.
   map.on('load', onMapReady)
   map.on('style.load', onMapReady)
+  map.on('click', onUnderlayClick)
+  map.on('mousemove', onUnderlayHover)
 
   try {
     const styles = drawStyles()
@@ -749,9 +842,7 @@ const drawnFeatures = computed<GeoJSON.Feature[]>(() => {
 })
 
 function pushToMap() {
-  if (!map || !map.isStyleLoaded())
-    return
-  const source = map.getSource(SOURCE_ID) as import('maplibre-gl').GeoJSONSource | undefined
+  const source = map?.getSource(SOURCE_ID) as import('maplibre-gl').GeoJSONSource | undefined
   source?.setData({ type: 'FeatureCollection', features: drawnFeatures.value })
 }
 
@@ -1143,7 +1234,7 @@ async function deleteGeofence() {
                   color="neutral"
                   class="h-auto min-w-0 flex-1 p-0"
                   :aria-current="fence.id === selectedId ? 'true' : undefined"
-                  @click="applyGeofence(fence, 'view')"
+                  @click="selectFence(fence)"
                 >
                   <!-- SButton centres its slot by default; the w-full wrapper
                        lays the row out instead of fighting it with a
