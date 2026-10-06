@@ -237,96 +237,100 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
          stays visible where `border-default` collapses into the elevated surface in
          dark mode). The body drops its padding so the table fills the card, and the
          table's own wrapper ring comes off, leaving the card as the only frame. -->
-    <SCard :ui="{ body: 'p-0', header: '!border-[var(--selaras-resolved-border-hover)]' }">
-      <template #header>
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p class="text-sm font-medium">
-              {{ t('adminShifts.list.title') }}
-            </p>
-            <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
-              {{ t('adminShifts.list.description') }}
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <SBadge color="success" variant="soft">
-              {{ t('adminShifts.list.activeCount', activeCount, { count: activeCount }) }}
-            </SBadge>
-            <SBadge color="neutral" variant="outline">
-              {{ t('adminShifts.list.count', totalCount, { count: totalCount }) }}
-            </SBadge>
-          </div>
-        </div>
-      </template>
-
-      <STable :data="rows" :ui="{ wrapper: 'overflow-x-auto' }" :loading="pending">
-        <template #empty>
-          <div class="flex flex-col items-center gap-1 py-10 text-center">
-            <span class="text-sm font-medium">
-              {{ t('adminShifts.empty.title') }}
-            </span>
-            <span class="max-w-sm text-xs text-[var(--selaras-resolved-text-muted)]">
-              {{ t('adminShifts.empty.description') }}
-            </span>
+    <!-- `p-6` on top of PageWrapper's `p-2`, matching the dashboard, so both pages
+         inset their content 32px from the panel edge. -->
+    <div class="p-6">
+      <SCard :ui="{ body: 'p-0', header: '!border-[var(--selaras-resolved-border-hover)]' }">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="text-sm font-medium">
+                {{ t('adminShifts.list.title') }}
+              </p>
+              <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.list.description') }}
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <SBadge color="success" variant="soft">
+                {{ t('adminShifts.list.activeCount', activeCount, { count: activeCount }) }}
+              </SBadge>
+              <SBadge color="neutral" variant="outline">
+                {{ t('adminShifts.list.count', totalCount, { count: totalCount }) }}
+              </SBadge>
+            </div>
           </div>
         </template>
 
-        <SColumn field="code" :header="t('adminShifts.columns.code')" />
-        <SColumn field="label" :header="t('adminShifts.columns.label')" />
-        <!-- `start` identifies the column for sorting; the slot renders the whole
-             range so a shift reads as one time window, not two loose columns. -->
-        <SColumn field="start" :header="t('adminShifts.columns.time')">
-          <template #default="{ row }">
-            <div class="flex items-baseline gap-2 whitespace-nowrap">
-              <span class="tabular-nums font-medium">
-                {{ row.start }} &ndash; {{ row.end }}
+        <STable :data="rows" :ui="{ wrapper: 'overflow-x-auto' }" :loading="pending">
+          <template #empty>
+            <div class="flex flex-col items-center gap-1 py-10 text-center">
+              <span class="text-sm font-medium">
+                {{ t('adminShifts.empty.title') }}
               </span>
-              <span v-if="row.span" class="text-xs text-[var(--selaras-resolved-text-muted)]">
-                {{ t('adminShifts.columns.duration', { hours: row.span.hours }) }}
+              <span class="max-w-sm text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.empty.description') }}
               </span>
             </div>
-            <span v-if="row.span?.wraps" class="text-xs text-[var(--selaras-resolved-text-muted)]">
-              {{ t('adminShifts.columns.nextDay') }}
-            </span>
           </template>
-        </SColumn>
-        <SColumn field="active" :header="t('adminShifts.columns.active')">
-          <template #default="{ value }">
-            <SBadge v-if="value" color="success" variant="soft">
-              {{ t('adminShifts.status.active') }}
-            </SBadge>
-            <SBadge v-else color="neutral" variant="outline">
-              {{ t('adminShifts.status.inactive') }}
-            </SBadge>
-          </template>
-        </SColumn>
-        <!-- The stored value drives the order the API returns, so it is shown as a
+
+          <SColumn field="code" :header="t('adminShifts.columns.code')" />
+          <SColumn field="label" :header="t('adminShifts.columns.label')" />
+          <!-- `start` identifies the column for sorting; the slot renders the whole
+             range so a shift reads as one time window, not two loose columns. -->
+          <SColumn field="start" :header="t('adminShifts.columns.time')">
+            <template #default="{ row }">
+              <div class="flex items-baseline gap-2 whitespace-nowrap">
+                <span class="tabular-nums font-medium">
+                  {{ row.start }} &ndash; {{ row.end }}
+                </span>
+                <span v-if="row.span" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                  {{ t('adminShifts.columns.duration', { hours: row.span.hours }) }}
+                </span>
+              </div>
+              <span v-if="row.span?.wraps" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.columns.nextDay') }}
+              </span>
+            </template>
+          </SColumn>
+          <SColumn field="active" :header="t('adminShifts.columns.active')">
+            <template #default="{ value }">
+              <SBadge v-if="value" color="success" variant="soft">
+                {{ t('adminShifts.status.active') }}
+              </SBadge>
+              <SBadge v-else color="neutral" variant="outline">
+                {{ t('adminShifts.status.inactive') }}
+              </SBadge>
+            </template>
+          </SColumn>
+          <!-- The stored value drives the order the API returns, so it is shown as a
              position rather than a bare number. -->
-        <SColumn field="sortOrder" :header="t('adminShifts.columns.order')">
-          <template #default="{ value }">
-            <span class="tabular-nums text-[var(--selaras-resolved-text-muted)]">#{{ value }}</span>
-          </template>
-        </SColumn>
-        <!-- `code` is reused as the identity for the actions column; its value is
+          <SColumn field="sortOrder" :header="t('adminShifts.columns.order')">
+            <template #default="{ value }">
+              <span class="tabular-nums text-[var(--selaras-resolved-text-muted)]">#{{ value }}</span>
+            </template>
+          </SColumn>
+          <!-- `code` is reused as the identity for the actions column; its value is
              never rendered, the slot supplies the whole cell. -->
-        <SColumn field="code" :header="t('adminShifts.columns.action')">
-          <template #default="{ row }">
-            <SDropdown
-              :items="[getDropdownActions(row)]"
-              :positioning="{ align: 'end' }"
-              :ui="{ content: 'w-40' }"
-            >
-              <SButton
-                icon="i-lucide-ellipsis-vertical"
-                color="neutral"
-                variant="ghost"
-                :aria-label="t('adminShifts.actionsLabel')"
-              />
-            </SDropdown>
-          </template>
-        </SColumn>
-      </STable>
-    </SCard>
+          <SColumn field="code" :header="t('adminShifts.columns.action')">
+            <template #default="{ row }">
+              <SDropdown
+                :items="[getDropdownActions(row)]"
+                :positioning="{ align: 'end' }"
+                :ui="{ content: 'w-40' }"
+              >
+                <SButton
+                  icon="i-lucide-ellipsis-vertical"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="t('adminShifts.actionsLabel')"
+                />
+              </SDropdown>
+            </template>
+          </SColumn>
+        </STable>
+      </SCard>
+    </div>
 
     <SSlideover
       v-model:open="formOpen"
