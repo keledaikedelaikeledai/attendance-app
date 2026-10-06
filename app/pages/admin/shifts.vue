@@ -45,7 +45,7 @@ interface ShiftSpan {
 // both layouts (see `DatePickerCalendarBody` vs `DatePickerTimeBody`), so it
 // cannot be suppressed per case upstream yet. `resolveSlot` concatenates classes
 // rather than merging them, hence the important flags.
-// Reported upstream against Selaras' `timeSection` slot.
+// Remove once https://github.com/sewadahapp/selaras/issues/12 lands.
 const TIME_PICKER_UI = { timeSection: '!mt-0 !border-t-0 !pt-0' }
 
 // 24-hour, zero padded, and locale independent. Without this the picker's
