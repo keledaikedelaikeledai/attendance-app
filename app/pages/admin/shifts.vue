@@ -48,6 +48,12 @@ interface ShiftSpan {
 // Remove once https://github.com/sewadahapp/selaras/issues/12 lands.
 const TIME_PICKER_UI = { timeSection: '!mt-0 !border-t-0 !pt-0' }
 
+// Every minute must be reachable, so the stepper runs at 1. In `trigger-mode="button"`
+// the trigger renders the value as plain button text, with no editable segments, so the
+// stepper is the only way to set a time: typing and arrow keys do nothing. Stepping by 5
+// here would silently lock out any time that is not a multiple of 5.
+const TIME_PICKER_MINUTE_STEP = 1
+
 // 24-hour, zero padded, and locale independent. Without this the picker's
 // default `timeStyle: 'short'` renders `07:00` under `en` but `07.00` under `id`.
 const TIME_FORMAT: Intl.DateTimeFormatOptions = {
@@ -352,7 +358,7 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
                 trigger-mode="button"
                 :ui="TIME_PICKER_UI"
                 :hour-cycle="24"
-                :minute-step="5"
+                :minute-step="TIME_PICKER_MINUTE_STEP"
                 :format="TIME_FORMAT"
               />
             </SFormField>
@@ -363,7 +369,7 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
                 trigger-mode="button"
                 :ui="TIME_PICKER_UI"
                 :hour-cycle="24"
-                :minute-step="5"
+                :minute-step="TIME_PICKER_MINUTE_STEP"
                 :format="TIME_FORMAT"
               />
             </SFormField>
