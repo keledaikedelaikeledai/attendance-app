@@ -140,6 +140,20 @@
   },
   "adminUsers": {
     "addUser": "Add user",
+    "list": {
+      "title": "Users",
+      "description": "People who can sign in and record attendance.",
+      "count": "no users | 1 user | {count} users",
+      "adminCount": "no admins | 1 admin | {count} admins",
+      "bannedCount": "no banned | 1 banned | {count} banned",
+      "search": "Search users"
+    },
+    "empty": {
+      "title": "No users yet",
+      "description": "Add a user so they can sign in and record attendance.",
+      "searchTitle": "No users match",
+      "searchDescription": "Try a different name, username or email."
+    },
     "columns": {
       "name": "Name",
       "username": "Username",
@@ -165,6 +179,7 @@
       "unban": "Unban",
       "delete": "Delete"
     },
+    "actionsLabel": "Actions",
     "confirmations": {
       "makeAdmin": {
         "title": "Make Admin",

@@ -46,6 +46,35 @@ const { data: _data, status, refresh } = await useFetch<Res>('/api/auth/admin/li
 
 const data = computed<AdminUser[]>(() => _data.value?.users || [])
 
+const adminCount = computed(() => data.value.filter(u => u.role === 'admin').length)
+const bannedCount = computed(() => data.value.filter(u => u.banned).length)
+
+const search = ref('')
+
+const PAGE_SIZE = 20
+
+// The card is the only frame, so the table drops its own radius and ring.
+const TABLE_UI = { wrapper: 'rounded-none ring-0' }
+
+// No user has a profile image, so every avatar is generated initials. The colour is
+// picked from the id so a given user keeps the same one, and only from roles that do
+// not carry state: a red or amber avatar would read as a warning about that person.
+const AVATAR_COLORS = ['primary', 'secondary', 'info', 'neutral'] as const
+
+function avatarColor(seed: string) {
+  let hash = 0
+  for (let i = 0; i < seed.length; i++)
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function initials(name: string) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
+
 // modal state for add/edit user
 const onAddModal = ref(false)
 const editUser = ref<AdminUser | null>(null)
@@ -151,14 +180,17 @@ function getDropdownActions(user: AdminUser) {
     label: user.banned ? t('adminUsers.actions.unban') : t('adminUsers.actions.ban'),
     value: user.banned ? 'unban' : 'ban',
     icon: user.banned ? 'i-heroicons-check-circle' : 'i-heroicons-no-symbol',
-    color: user.banned ? 'success' : 'error',
+    // `danger`, not `error` — see the ban/unban confirmation above.
+    color: user.banned ? 'success' : 'danger',
     async onSelect() {
       const isConfirmed = await confirmation.confirm({
         icon: user.banned ? 'i-heroicons-check-circle' : 'i-heroicons-no-symbol',
         title: user.banned ? t('adminUsers.confirmations.unban.title') : t('adminUsers.confirmations.ban.title'),
         description: user.banned ? t('adminUsers.confirmations.unban.description', { name: user.name }) : t('adminUsers.confirmations.ban.description', { name: user.name }),
-        btnConfirmProps: { color: user.banned ? 'success' : 'error' },
-        iconClass: user.banned ? 'text-green-500' : 'text-red-500',
+        // `danger`, not `error`: `error` is not a registered Selaras colour role, so
+        // it fell back to the default and the ban confirm button rendered teal.
+        btnConfirmProps: { color: user.banned ? 'success' : 'danger' },
+        iconClass: user.banned ? 'text-[var(--selaras-resolved-color-success)]' : 'text-[var(--selaras-resolved-color-danger)]',
       })
 
       if (!isConfirmed)
@@ -220,59 +252,122 @@ function getDropdownActions(user: AdminUser) {
       </SButton>
     </template>
 
-    <STable :data="data || []" :loading="status === 'pending'">
-      <SColumn field="name" :header="t('adminUsers.columns.name')" />
-      <SColumn field="username" :header="t('adminUsers.columns.username')" />
-      <SColumn field="email" :header="t('adminUsers.columns.email')" />
-      <SColumn field="role" :header="t('adminUsers.columns.role')">
-        <template #default="{ value }">
-          <SBadge v-if="value === 'admin'" color="success">
-            {{ t('adminUsers.role.admin') }}
-          </SBadge>
-          <SBadge v-else-if="value === 'user'" color="primary">
-            {{ t('adminUsers.role.user') }}
-          </SBadge>
+    <!-- `p-6` on top of PageWrapper's `p-2`, matching the dashboard and shifts. -->
+    <div class="p-6">
+      <SCard :ui="{ body: 'p-0', header: 'border-[var(--selaras-resolved-border-hover)]' }">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium">
+                {{ t('adminUsers.list.title') }}
+              </p>
+              <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminUsers.list.description') }}
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <SBadge v-if="bannedCount" color="danger" variant="soft">
+                {{ t('adminUsers.list.bannedCount', bannedCount, { count: bannedCount }) }}
+              </SBadge>
+              <SBadge color="primary" variant="soft">
+                {{ t('adminUsers.list.adminCount', adminCount, { count: adminCount }) }}
+              </SBadge>
+              <SBadge color="neutral" variant="outline">
+                {{ t('adminUsers.list.count', data.length, { count: data.length }) }}
+              </SBadge>
+              <SInput
+                v-model="search"
+                icon="i-heroicons-magnifying-glass"
+                :placeholder="t('adminUsers.list.search')"
+                :aria-label="t('adminUsers.list.search')"
+                class="w-full sm:w-64"
+              />
+            </div>
+          </div>
         </template>
-      </SColumn>
-      <SColumn field="banned" :header="t('adminUsers.columns.status')">
-        <template #default="{ value }">
-          <SBadge
-            v-if="value"
-            color="danger"
-            variant="outline"
-            icon="i-heroicons-no-symbol"
-          >
-            {{ t('adminUsers.status.banned') }}
-          </SBadge>
-          <SBadge
-            v-else
-            color="success"
-            variant="outline"
-            icon="i-heroicons-check-circle"
-          >
-            {{ t('adminUsers.status.active') }}
-          </SBadge>
-        </template>
-      </SColumn>
-      <!-- `name` is reused as the identity for the actions column; its value is
-           never rendered, the slot supplies the whole cell. -->
-      <SColumn field="name" :header="t('adminUsers.columns.action')">
-        <template #default="{ row }">
-          <SDropdown
-            :items="[getDropdownActions(row)]"
-            :positioning="{ align: 'end' }"
-            :ui="{ content: 'w-48' }"
-          >
-            <SButton
-              icon="i-lucide-ellipsis-vertical"
-              color="neutral"
-              variant="ghost"
-              :aria-label="t('adminUsers.columns.action')"
-            />
-          </SDropdown>
-        </template>
-      </SColumn>
-    </STable>
+
+        <STable
+          :data="data"
+          :global-filter="search"
+          :page-size="PAGE_SIZE"
+          :loading="status === 'pending'"
+          row-hover
+          :ui="TABLE_UI"
+        >
+          <template #empty>
+            <div class="flex flex-col items-center gap-1 py-10 text-center">
+              <span class="text-sm font-medium">
+                {{ search ? t('adminUsers.empty.searchTitle') : t('adminUsers.empty.title') }}
+              </span>
+              <span class="max-w-sm text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ search ? t('adminUsers.empty.searchDescription') : t('adminUsers.empty.description') }}
+              </span>
+            </div>
+          </template>
+
+          <SColumn field="name" :header="t('adminUsers.columns.name')">
+            <template #default="{ row }">
+              <div class="flex items-center gap-2">
+                <SAvatar :text="initials(row.name)" :color="avatarColor(row.id)" size="sm" />
+                <span class="truncate">
+                  {{ row.name }}
+                </span>
+              </div>
+            </template>
+          </SColumn>
+          <SColumn field="username" :header="t('adminUsers.columns.username')" />
+          <SColumn field="email" :header="t('adminUsers.columns.email')" />
+          <SColumn field="role" :header="t('adminUsers.columns.role')">
+            <template #default="{ value }">
+              <SBadge v-if="value === 'admin'" color="primary" variant="soft">
+                {{ t('adminUsers.role.admin') }}
+              </SBadge>
+              <SBadge v-else-if="value === 'user'" color="neutral" variant="soft">
+                {{ t('adminUsers.role.user') }}
+              </SBadge>
+            </template>
+          </SColumn>
+          <SColumn field="banned" :header="t('adminUsers.columns.status')">
+            <template #default="{ value }">
+              <SBadge
+                v-if="value"
+                color="danger"
+                variant="soft"
+                icon="i-heroicons-no-symbol"
+              >
+                {{ t('adminUsers.status.banned') }}
+              </SBadge>
+              <SBadge
+                v-else
+                color="success"
+                variant="soft"
+                icon="i-heroicons-check-circle"
+              >
+                {{ t('adminUsers.status.active') }}
+              </SBadge>
+            </template>
+          </SColumn>
+          <!-- `name` is reused as the identity for the actions column; its value is
+               never rendered, the slot supplies the whole cell. -->
+          <SColumn field="name" :header="t('adminUsers.columns.action')">
+            <template #default="{ row }">
+              <SDropdown
+                :items="[getDropdownActions(row)]"
+                :positioning="{ align: 'end' }"
+                :ui="{ content: 'w-48' }"
+              >
+                <SButton
+                  icon="i-lucide-ellipsis-vertical"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="t('adminUsers.actionsLabel')"
+                />
+              </SDropdown>
+            </template>
+          </SColumn>
+        </STable>
+      </SCard>
+    </div>
     <UserModalAdd v-model="onAddModal" :user="editUser ?? undefined" @refresh="refresh" />
     <UserModalChangePassword v-model="changePwdModal" :user="changePwdUser ?? undefined" @refresh="refresh" />
   </PageWrapper>

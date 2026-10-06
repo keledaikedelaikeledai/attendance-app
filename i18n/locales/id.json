@@ -140,6 +140,20 @@
   },
   "adminUsers": {
     "addUser": "Tambah pengguna",
+    "list": {
+      "title": "Pengguna",
+      "description": "Orang yang dapat masuk dan mencatat absensi.",
+      "count": "tidak ada pengguna | 1 pengguna | {count} pengguna",
+      "adminCount": "tidak ada admin | 1 admin | {count} admin",
+      "bannedCount": "tidak ada dilarang | 1 dilarang | {count} dilarang",
+      "search": "Cari pengguna"
+    },
+    "empty": {
+      "title": "Belum ada pengguna",
+      "description": "Tambahkan pengguna agar dapat masuk dan mencatat absensi.",
+      "searchTitle": "Tidak ada pengguna yang cocok",
+      "searchDescription": "Coba nama, username, atau email lain."
+    },
     "columns": {
       "name": "Nama",
       "username": "Username",
@@ -165,6 +179,7 @@
       "unban": "Batalkan blokir",
       "delete": "Hapus"
     },
+    "actionsLabel": "Aksi",
     "confirmations": {
       "makeAdmin": {
         "title": "Jadikan Admin",
