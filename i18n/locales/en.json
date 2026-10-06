@@ -336,7 +336,8 @@
       "editTitle": "Edit geofence",
       "viewTitle": "Geofence details",
       "description": "Configure shape, policy, and map coordinates.",
-      "configure": "Configure"
+      "configure": "Configure",
+      "missing": "That geofence no longer exists."
     },
     "form": {
       "name": {
@@ -391,6 +392,21 @@
     "confirm": {
       "deleteTitle": "Delete geofence?",
       "deleteBody": "This will permanently delete {name}."
+    },
+    "toasts": {
+      "created": {
+        "title": "Geofence created"
+      },
+      "updated": {
+        "title": "Geofence updated"
+      },
+      "deleted": {
+        "title": "Geofence deleted"
+      },
+      "error": {
+        "title": "Error",
+        "description": "{message}"
+      }
     }
   },
   "auth": {

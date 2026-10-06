@@ -27,6 +27,11 @@ export interface UseGeofenceMapOptions {
   selectedId: Ref<string | null>
   isActive: Ref<boolean>
   mapContainer: Ref<HTMLElement | null>
+  /**
+   * Called on the map's first load, after the layers exist. Fires again on every
+   * style.load, so a caller that only wants the first one has to guard itself.
+   */
+  onReady?: () => void
 }
 
 const SOURCE_ID = 'geofence-selected'
@@ -623,6 +628,7 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     addGeofenceLayers()
     if (editable)
       restartDraw()
+    options.onReady?.()
   }
 
   let initializing = false

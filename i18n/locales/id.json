@@ -336,7 +336,8 @@
       "editTitle": "Edit geofence",
       "viewTitle": "Detail geofence",
       "description": "Atur bentuk, kebijakan, dan koordinat peta.",
-      "configure": "Atur"
+      "configure": "Atur",
+      "missing": "Geofence tersebut sudah tidak ada."
     },
     "form": {
       "name": {
@@ -391,6 +392,21 @@
     "confirm": {
       "deleteTitle": "Hapus geofence?",
       "deleteBody": "Ini akan menghapus {name} secara permanen."
+    },
+    "toasts": {
+      "created": {
+        "title": "Geofence dibuat"
+      },
+      "updated": {
+        "title": "Geofence diperbarui"
+      },
+      "deleted": {
+        "title": "Geofence dihapus"
+      },
+      "error": {
+        "title": "Kesalahan",
+        "description": "{message}"
+      }
     }
   },
   "auth": {
