@@ -39,6 +39,15 @@ interface ShiftSpan {
   wraps: boolean
 }
 
+// Selaras' `timeSection` slot carries `mt-3 border-t pt-3`, which is a divider
+// meant to separate the steppers from a date grid. In `time-only` mode there is no
+// grid, so it renders as a stray line with dead space above it. One slot serves
+// both layouts (see `DatePickerCalendarBody` vs `DatePickerTimeBody`), so it
+// cannot be suppressed per case upstream yet. `resolveSlot` concatenates classes
+// rather than merging them, hence the important flags.
+// Reported upstream against Selaras' `timeSection` slot.
+const TIME_PICKER_UI = { timeSection: '!mt-0 !border-t-0 !pt-0' }
+
 // 24-hour, zero padded, and locale independent. Without this the picker's
 // default `timeStyle: 'short'` renders `07:00` under `en` but `07.00` under `id`.
 const TIME_FORMAT: Intl.DateTimeFormatOptions = {
@@ -341,6 +350,7 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
                 v-model="startTime"
                 time-only
                 trigger-mode="button"
+                :ui="TIME_PICKER_UI"
                 :hour-cycle="24"
                 :minute-step="5"
                 :format="TIME_FORMAT"
@@ -351,6 +361,7 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
                 v-model="endTime"
                 time-only
                 trigger-mode="button"
+                :ui="TIME_PICKER_UI"
                 :hour-cycle="24"
                 :minute-step="5"
                 :format="TIME_FORMAT"
