@@ -331,13 +331,16 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
           <SFormField :label="t('adminShifts.form.label')" label-mode="static">
             <SInput v-model="label" :placeholder="t('adminShifts.form.labelPlaceholder')" />
           </SFormField>
-          <!-- `time-only` mode drives hour + minute; the format is pinned rather
-               than left to `timeStyle: 'short'`, which renders 07.00 under `id`. -->
+          <!-- `time-only` mode drives hour + minute. `trigger-mode="button"` renders
+               the value as a button rather than a segmented field, which matches the
+               rest of the form. The format is pinned instead of leaving the default
+               `timeStyle: 'short'`, which renders 07.00 under `id` and 07:00 under `en`. -->
           <div class="grid grid-cols-2 gap-3">
             <SFormField :label="t('adminShifts.form.start')" label-mode="static">
               <SDatePicker
                 v-model="startTime"
                 time-only
+                trigger-mode="button"
                 :hour-cycle="24"
                 :minute-step="5"
                 :format="TIME_FORMAT"
@@ -347,6 +350,7 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
               <SDatePicker
                 v-model="endTime"
                 time-only
+                trigger-mode="button"
                 :hour-cycle="24"
                 :minute-step="5"
                 :format="TIME_FORMAT"
