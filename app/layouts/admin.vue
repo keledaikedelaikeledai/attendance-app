@@ -74,7 +74,11 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
                The rail is 64px and the wordmark does not fit it, which is why
                this slot used to render nothing at all when collapsed and the
                rail lost its branding. The mark is square and legible at 28px,
-               so it carries the identity on its own. -->
+               so it carries the identity on its own.
+
+               Cropped from the Airpro sprite (bottom row, third cell), wordmark
+               removed. WebP because this repo already ships logo-protokol.webp
+               and the same crop costs 21 kB as PNG against 4.6 kB here. -->
           <img
             v-if="!isCollapsed"
             src="/logo-app.png"
@@ -83,7 +87,7 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
           >
           <img
             v-else
-            src="/logo-mark.svg"
+            src="/logo-mark.webp"
             alt="App Logo"
             class="mx-auto w-7 h-auto"
           >
