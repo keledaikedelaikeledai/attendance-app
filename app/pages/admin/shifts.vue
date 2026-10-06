@@ -39,20 +39,21 @@ interface ShiftSpan {
   wraps: boolean
 }
 
-// Selaras' `timeSection` slot carries `mt-3 border-t pt-3`, which is a divider
-// meant to separate the steppers from a date grid. In `time-only` mode there is no
-// grid, so it renders as a stray line with dead space above it. One slot serves
-// both layouts (see `DatePickerCalendarBody` vs `DatePickerTimeBody`), so it
-// cannot be suppressed per case upstream yet. `resolveSlot` concatenates classes
-// rather than merging them, hence the important flags throughout this file.
-// Remove once https://github.com/sewadahapp/selaras/issues/12 lands.
-const TIME_PICKER_UI = { timeSection: '!mt-0 !border-t-0 !pt-0' }
+// `resolveSlot` passes a string override into the slot function, and tv
+// tailwind-merges it. An override therefore replaces the theme class
+// outright, so none of these need `!important`.
 
-// The table's own frame is off, so the card is the only frame. Its wrapper
-// defaults to `rounded-md ring-1`, which has to be neutralised rather than
-// replaced: `ui.wrapper` is appended to the theme classes, not merged with them,
-// so a plain `rounded-none` loses to `rounded-md` on stylesheet order.
-const TABLE_WRAPPER_UI = { wrapper: '!rounded-none !ring-0 overflow-x-auto' }
+// Selaras' `timeSection` slot carries `mt-3 border-t pt-3`, a divider meant to
+// separate the steppers from a date grid. In `time-only` mode there is no grid,
+// so it renders as a stray line with dead space above it. One slot serves both
+// layouts (see `DatePickerCalendarBody` vs `DatePickerTimeBody`), so it cannot be
+// suppressed per case upstream yet.
+// Remove once https://github.com/sewadahapp/selaras/issues/12 lands.
+const TIME_PICKER_UI = { timeSection: 'mt-0 border-t-0 pt-0' }
+
+// The table's own frame is off, so the card is the only frame. The wrapper
+// defaults to `rounded-md ring-1`.
+const TABLE_WRAPPER_UI = { wrapper: 'rounded-none ring-0 overflow-x-auto' }
 
 // Every minute must be reachable, so the stepper runs at 1. In `trigger-mode="button"`
 // the trigger renders the value as plain button text, with no editable segments, so the
@@ -238,16 +239,14 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
       </SButton>
     </template>
 
-    <!-- `resolveSlot` concatenates classes instead of merging them, so the header's
-         `border-default` needs an important override to pick up `border-hover` (which
-         stays visible where `border-default` collapses into the elevated surface in
-         dark mode). The body drops its padding so the table fills the card, and
-         TABLE_WRAPPER_UI drops the table's own radius and ring, leaving the card as
-         the only frame. -->
-    <!-- `p-6` on top of PageWrapper's `p-2`, matching the dashboard, so both pages
+    <!-- `border-hover` rather than the header's `border-default`, which stays visible
+         where `border-default` collapses into the elevated surface in dark mode. The
+         body drops its padding so the table fills the card, and TABLE_WRAPPER_UI drops
+         the table's own radius and ring, leaving the card as the only frame.
+         `p-6` on top of PageWrapper's `p-2`, matching the dashboard, so both pages
          inset their content 32px from the panel edge. -->
     <div class="p-6">
-      <SCard :ui="{ body: 'p-0', header: '!border-[var(--selaras-resolved-border-hover)]' }">
+      <SCard :ui="{ body: 'p-0', header: 'border-[var(--selaras-resolved-border-hover)]' }">
         <template #header>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
