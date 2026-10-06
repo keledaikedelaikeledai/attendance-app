@@ -9,6 +9,67 @@ const menus = computed<NavigationMenuItem[]>(() => [
   { label: 'Geofence', icon: 'i-heroicons-map-pin', to: '/admin/geofence' },
 ])
 
+const route = useRoute()
+
+// ---------------------------------------------------------------------------
+// Collapsed state (Selaras 0.6.0, sewadahapp/selaras#11).
+//
+// `SDashboardSidebar` used to own this outright, with no way in from outside. It
+// now takes `v-model:collapsed`: a defined value drives it, and it emits
+// `update:collapsed` whenever the real state diverges from that value, which is
+// how a user toggle comes back to us.
+//
+// undefined means "not driven from here", which is the state the sidebar starts
+// in and the one it persists under auto-save-id.
+// ---------------------------------------------------------------------------
+
+const sidebarCollapsed = ref<boolean | undefined>(undefined)
+
+// The last state the *user* chose, as opposed to one we forced. Seeded by the
+// sidebar's own emit once its panel is ready, which is also how the value it
+// restored from auto-save-id reaches us. Driving the prop from a template ref's
+// exposed computed was tried first and read a stale value whenever a navigation
+// landed mid-animation.
+let userCollapsed = false
+
+const isCanvasRoute = computed(() => route.path.startsWith('/admin/geofence'))
+let restoreCollapsedTo: boolean | null = null
+
+// The sidebar emits whenever its real state diverges from the value we last set,
+// which is how a user toggle arrives. The forced rail is only applied on entering
+// a canvas route, so a toggle made while there stands for the rest of the visit -
+// ignoring a deliberate click would be worse than letting them override it.
+function onCollapsedChange(value: boolean) {
+  userCollapsed = value
+  sidebarCollapsed.value = value
+}
+
+// Geofence is a canvas route: the edge list plus the map want the width, so the
+// sidebar is forced to the rail there and the fence gets the space.
+//
+// The user's own setting is captured on the way in and put back on the way out.
+// Forcing expansion on every other route would be wrong: it would overwrite a
+// deliberate choice and rewrite the saved layout on each navigation, which is
+// exactly what auto-save-id exists to avoid. A user who prefers the rail gets it
+// back the moment they leave the map.
+
+watch(isCanvasRoute, (canvas) => {
+  if (canvas) {
+    // Re-entering the route re-applies the rail. `restoreCollapsedTo` is only set
+    // while we are already on it, so this guard is about not recapturing.
+    if (restoreCollapsedTo === null) {
+      restoreCollapsedTo = userCollapsed
+      sidebarCollapsed.value = true
+    }
+    return
+  }
+  if (restoreCollapsedTo !== null) {
+    userCollapsed = restoreCollapsedTo
+    sidebarCollapsed.value = restoreCollapsedTo
+    restoreCollapsedTo = null
+  }
+}, { immediate: true })
+
 const { data: user } = await authClient.useSession(useFetch)
 
 // Better Auth's username plugin is optional, so fall back to the email. The @
@@ -67,7 +128,9 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
            neutral-700, 11.9), and it is the token the dashed frame already
            uses, so the two dividers match. -->
       <SDashboardSidebar
+        :collapsed="sidebarCollapsed"
         :ui="{ footer: 'border-[var(--selaras-resolved-border-hover)]' }"
+        @update:collapsed="onCollapsedChange"
       >
         <template #header="{ isCollapsed }">
           <!-- Expanded gets the full wordmark; collapsed gets the round mark.
@@ -93,10 +156,17 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
           >
         </template>
         <template #default="{ isCollapsed }">
+          <!-- `tooltip` (Selaras 0.6.0, sewadahapp/selaras#10) labels each item
+               in the collapsed rail, where the text is pushed to sr-only and the
+               icons carry nothing on their own. It only applies when the menu is
+               vertical and collapsed, so the expanded sidebar is unaffected, and
+               the text falls back to the item's own label. delayDuration is 0 so
+               it tracks the pointer instead of lagging half a second behind. -->
           <SNavigationMenu
             orientation="vertical"
             :items="menus"
             :collapsed="isCollapsed"
+            tooltip
           />
         </template>
         <template #footer="{ isCollapsed }">
