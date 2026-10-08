@@ -2,12 +2,14 @@ import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 // Everything about the map itself: the MapLibre instance, the layers, the
-// OpenFreeMap style swap, and - only when `editable` - the Terra Draw wiring
-// and the two-way mirror between the drawing store and plain Vue state.
+// OpenFreeMap style swap, the Terra Draw wiring and the two-way mirror between
+// the drawing store and plain Vue state.
 //
-// Extracted from the geofence page so the overview and the editor can share it.
-// The overview passes `editable: false` and gets no drawing library at all,
-// which is the point: a read-only page should not ship a drawing engine.
+// One map instance serves both browsing and editing on the single geofence
+// page. `editing` flips it between a read-only render of the selected fence and
+// a live drawing surface. Terra Draw is always present so the same store and
+// layers paint the shape in both states - there is deliberately no second map
+// inside the form, which is what made the old slideover attempt unworkable.
 
 export interface GeofenceShape {
   id: string
@@ -20,9 +22,11 @@ export interface GeofenceShape {
   polygon?: Array<[number, number]> | null
 }
 
+export type GeofenceTool = 'select' | 'point' | 'polygon'
+
 export interface UseGeofenceMapOptions {
-  /** Set false for the read-only overview: no Terra Draw, no vertex handles. */
-  editable?: boolean
+  /** True while the edit panel is open; false renders the fence read-only. */
+  editing: Ref<boolean>
   geofences: Ref<GeofenceShape[]>
   selectedId: Ref<string | null>
   isActive: Ref<boolean>
@@ -37,7 +41,6 @@ export interface UseGeofenceMapOptions {
 const SOURCE_ID = 'geofence-selected'
 const LAYER_FILL = 'geofence-selected-fill'
 const LAYER_LINE = 'geofence-selected-line'
-const SELECTED_POINT = 'geofence-selected-point'
 
 const ALL_SOURCE_ID = 'geofence-all'
 const ALL_FILL = 'geofence-all-fill'
@@ -62,25 +65,32 @@ const GUIDANCE_PROPS = [
 const defaultCenter: [number, number] = [-6.2, 106.816666]
 
 export function useGeofenceMap(options: UseGeofenceMapOptions) {
-  const editable = options.editable ?? true
-  const { geofences, selectedId, isActive, mapContainer } = options
+  const { editing, geofences, selectedId, isActive, mapContainer } = options
 
   const colorMode = useColorMode()
 
-  // Shape state. The overview reads these to render the selected fence; the
-  // editor writes them from the form and from Terra Draw.
+  // Shape state. The page reads these to render the form; Terra Draw writes them
+  // while drawing and reads them when the shape moves outside the store.
   const geofenceType = ref<'point' | 'polygon'>('point')
   const radiusMeters = ref<number | null>(100)
   const center = ref<{ lat: number, lng: number } | null>(null)
   const polygon = ref<Array<[number, number]>>([])
-  const mapTool = ref<'move' | 'add'>('move')
+
+  // The single interaction model. `select` manipulates an existing shape;
+  // `point` and `polygon` both arm a draw mode AND set the geofence type, so the
+  // tool on the map and the type in the form can never disagree.
+  const tool = ref<GeofenceTool>('select')
 
   const mapStyle = computed(() => colorMode.value === 'dark'
     ? 'https://tiles.openfreemap.org/styles/fiord'
     : 'https://tiles.openfreemap.org/styles/positron')
 
   const fillColor = computed(() => colorMode.value === 'dark' ? '#60a5fa' : '#2563eb')
-  const strokeColor = computed(() => isActive.value ? fillColor.value : '#9ca3af')
+  // Grey is the browse-time treatment for an inactive fence. While the editor is
+  // open, the shape is the thing being worked on and grey reads as disabled -
+  // the dot a fresh point click places was grey for exactly that reason, since
+  // new fences start inactive. Accent colour in both states instead.
+  const strokeColor = computed(() => (isActive.value || editing.value) ? fillColor.value : '#9ca3af')
 
   let mapLib: any = null
   let map: any = null
@@ -93,6 +103,14 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   // `flush: 'sync'`, so it still runs under this flag; the flag is dropped on
   // nextTick, after that flush.
   let suppressPush = false
+  // Set while the radius handle is being dragged, so the reposition watcher does
+  // not fight the pointer.
+  let draggingRadius = false
+  let radiusMarker: any = null
+  let radiusMarkerEl: HTMLElement | null = null
+  // Set by an explicit Finish so the mode-switch watcher does not raise a second
+  // synthetic Enter at a polygon that was already committed.
+  let justFinished = false
 
   // ---------------------------------------------------------------------------
   // Geometry helpers. Emits [lng, lat] for GeoJSON; storage stays [lat, lng].
@@ -114,13 +132,39 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     return ring
   }
 
+  // The east edge of a point fence's ring - where the draggable radius handle
+  // sits so a circle can be sized by eye instead of by typing a number.
+  function ringEdge(lat: number, lng: number, meters: number): [number, number] {
+    const earth = 6371000
+    const dLng = (meters / (earth * Math.cos((lat * Math.PI) / 180))) * (180 / Math.PI)
+    return [lng + dLng, lat]
+  }
+
+  function distanceMeters(a: [number, number], b: [number, number]) {
+    const R = 6371000
+    const toRad = (x: number) => (x * Math.PI) / 180
+    const dLat = toRad(b[0] - a[0])
+    const dLng = toRad(b[1] - a[1])
+    const lat1 = toRad(a[0])
+    const lat2 = toRad(b[0])
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+  }
+
+  // Normalize a ring to the closed form GeoJSON requires (first point repeated
+  // at the end). Callers hand us both forms - stored polygons come back open,
+  // circleRing already emits closed - and the output must always be closed:
+  // MapLibre's line bucket segments vertices pairwise and has no closure pass of
+  // its own, so it relies on the closing vertex being there. Stripping it (what
+  // this used to do for already-closed input) cost the outline its seam
+  // segment: a visibly cut circle.
   function closed(ring: [number, number][]): [number, number][] {
     if (ring.length < 3)
       return ring
     const [firstX, firstY] = ring[0]
     const [lastX, lastY] = ring[ring.length - 1]
     if (firstX === lastX && firstY === lastY)
-      return ring.slice(0, -1)
+      return ring
     return [...ring, [firstX, firstY]]
   }
 
@@ -143,60 +187,35 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     return Math.round(n * 1e9) / 1e9
   }
 
-  function parseMinutes(hhmm: string): number | null {
-    const match = /^(\d{1,2}):(\d{2})$/.exec((hhmm || '').trim())
-    if (!match) return null
-    const hours = Number(match[1])
-    const minutes = Number(match[2])
-    if (hours > 23 || minutes > 59) return null
-    return hours * 60 + minutes
-  }
-
   // ---------------------------------------------------------------------------
   // What to draw.
   // ---------------------------------------------------------------------------
 
-  // The shape the selected fence describes, drawn by our own layers. On the
-  // editable page Terra Draw paints the shape you are working on and this only
-  // supplies the radius ring, which follows the Radius field and is therefore
-  // derived state a drawing library cannot hold. On the read-only overview this
-  // is the whole selected shape.
+  // Only the radius ring lives here. Terra Draw is always present now, so it
+  // paints the centre dot and the polygon itself in every mode (render included);
+  // drawing those again from our own layers would double them up. The ring is
+  // derived state a drawing library cannot hold, so it stays ours.
   const selectedFeatures = computed<GeoJSON.Feature[]>(() => {
-    const feats: GeoJSON.Feature[] = []
-    if (geofenceType.value === 'point') {
-      if (!center.value)
-        return feats
-      const radius = radiusMeters.value ?? 0
-      if (radius > 0) {
-        feats.push({
-          type: 'Feature',
-          properties: { kind: 'ring' },
-          geometry: { type: 'Polygon', coordinates: [closed(circleRing(center.value.lat, center.value.lng, radius))] },
-        })
-      }
-      if (!editable) {
-        feats.push({
-          type: 'Feature',
-          properties: { kind: 'centre' },
-          geometry: { type: 'Point', coordinates: [center.value.lng, center.value.lat] },
-        })
-      }
-      return feats
-    }
-    if (polygon.value.length < 3)
-      return feats
-    if (editable)
-      return feats
-    feats.push({
+    if (geofenceType.value !== 'point' || !center.value)
+      return []
+    const radius = radiusMeters.value ?? 0
+    if (radius <= 0)
+      return []
+    return [{
       type: 'Feature',
-      properties: { kind: 'polygon' },
-      geometry: { type: 'Polygon', coordinates: [closed(polygon.value.map(([lat, lng]) => [lng, lat]))] },
-    })
-    return feats
+      properties: { kind: 'ring' },
+      geometry: { type: 'Polygon', coordinates: [closed(circleRing(center.value.lat, center.value.lng, radius))] },
+    }]
   })
 
   // Every fence at once, as a muted underlay, excluding the selected one.
+  // Hidden entirely while the edit panel is open: with everyone else's rings and
+  // polygons on screen it is hard to tell which shape is the one being edited or
+  // drawn, and a stray click can no longer land on the wrong fence anyway
+  // (underlay clicks are already suppressed while editing).
   const allFeatures = computed<GeoJSON.Feature[]>(() => {
+    if (editing.value)
+      return []
     const feats: GeoJSON.Feature[] = []
     for (const f of geofences.value ?? []) {
       if (!f || f.id === selectedId.value)
@@ -244,6 +263,16 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     return 12
   })
 
+  // A radius big enough to cover the drawn polygon, offered as a starting point
+  // when a polygon is converted to a point fence.
+  const suggestedRadius = computed<number | null>(() => {
+    if (geofenceType.value !== 'polygon' || polygon.value.length < 2)
+      return null
+    const [lng, lat] = mapCenter.value
+    const distances = polygon.value.map(([plat, plng]) => distanceMeters([lat, lng], [plat, plng]))
+    return Math.max(...distances)
+  })
+
   // ---------------------------------------------------------------------------
   // Layers.
   // ---------------------------------------------------------------------------
@@ -269,22 +298,6 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
         type: 'line',
         source: SOURCE_ID,
         paint: { 'line-color': strokeColor.value, 'line-width': 2 },
-      })
-    }
-    // The centre dot of a point fence. Only drawn when Terra Draw is not, since
-    // that paints its own point.
-    if (!editable && !m.getLayer(SELECTED_POINT)) {
-      m.addLayer({
-        id: SELECTED_POINT,
-        type: 'circle',
-        source: SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Point'],
-        paint: {
-          'circle-radius': 5,
-          'circle-color': strokeColor.value,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 1.5,
-        },
       })
     }
     if (!m.getSource(ALL_SOURCE_ID))
@@ -336,15 +349,72 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   }
 
   // ---------------------------------------------------------------------------
-  // Terra Draw. Only when editable.
+  // The radius handle. A draggable MapLibre marker on the ring's east edge.
+  // ---------------------------------------------------------------------------
+
+  function ensureRadiusMarker() {
+    const should = Boolean(map)
+      && editing.value
+      && geofenceType.value === 'point'
+      && Boolean(center.value)
+      && (radiusMeters.value ?? 0) > 0
+
+    if (!should) {
+      if (radiusMarker) {
+        radiusMarker.remove()
+        radiusMarker = null
+        radiusMarkerEl = null
+      }
+      return
+    }
+
+    if (!radiusMarker && mapLib && map) {
+      const el = document.createElement('div')
+      el.style.width = '14px'
+      el.style.height = '14px'
+      el.style.borderRadius = '50%'
+      el.style.background = '#ffffff'
+      el.style.border = `2px solid ${fillColor.value}`
+      el.style.boxShadow = '0 1px 4px rgba(0,0,0,0.35)'
+      el.style.cursor = 'ew-resize'
+      radiusMarkerEl = el
+      radiusMarker = new mapLib.Marker({ element: el, draggable: true, anchor: 'center' })
+      radiusMarker.on('drag', () => {
+        if (!center.value)
+          return
+        draggingRadius = true
+        const ll = radiusMarker.getLngLat()
+        radiusMeters.value = Math.max(1, Math.round(distanceMeters([center.value.lat, center.value.lng], [ll.lat, ll.lng])))
+      })
+      radiusMarker.on('dragend', () => {
+        draggingRadius = false
+      })
+      // Give the marker a position before attaching it. MapLibre's addTo runs a
+      // position update of its own, and that update dereferences the marker's
+      // lngLat unchecked. A marker attached without one throws inside addTo -
+      // aborting the render that follows the click - and then throws again from
+      // every map move event afterwards, because the marker listens to those.
+      if (center.value)
+        radiusMarker.setLngLat(ringEdge(center.value.lat, center.value.lng, radiusMeters.value ?? 0))
+      radiusMarker.addTo(map)
+    }
+
+    if (radiusMarker && center.value && !draggingRadius)
+      radiusMarker.setLngLat(ringEdge(center.value.lat, center.value.lng, radiusMeters.value ?? 0))
+  }
+
+  // ---------------------------------------------------------------------------
+  // Terra Draw.
   // ---------------------------------------------------------------------------
 
   const drawMode = computed<string>(() => {
-    if (!editable)
+    if (!editing.value)
       return 'render'
-    if (mapTool.value !== 'add')
-      return 'select'
-    return geofenceType.value === 'polygon' ? 'polygon' : 'point'
+    if (tool.value === 'point')
+      return 'point'
+    if (tool.value === 'polygon')
+      return 'polygon'
+    return 'select'
   })
 
   // Terra Draw paints these on top of its own layers, so they follow the theme
@@ -460,6 +530,8 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     })
     terraDraw.updateModeOptions('point', { styles: styles.point })
     terraDraw.updateModeOptions('select', { styles: styles.select, flags: drawFlags })
+    if (radiusMarkerEl)
+      radiusMarkerEl.style.border = `2px solid ${fillColor.value}`
   }
 
   // The two branches differ on purpose. For a polygon, geometry type alone is
@@ -547,14 +619,37 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   function readDrawIntoState() {
     if (!terraDraw || writingDraw)
       return
-    const [feature] = shapeFeatures(terraDraw.getSnapshot())
+    const features = shapeFeatures(terraDraw.getSnapshot())
     suppressPush = true
     if (geofenceType.value === 'point') {
+      // Point mode appends a feature on every click, so a click meant to move
+      // the pin used to leave the old dot behind - and this mirror kept the
+      // FIRST feature, so the centre never moved and strays piled up. A point
+      // fence has exactly one point: the newest click wins, older dots are
+      // deleted from the store here.
+      if (features.length > 1) {
+        const stale = features.slice(0, -1).map((f: any) => f.id).filter(Boolean)
+        if (stale.length) {
+          writingDraw = true
+          try {
+            terraDraw.removeFeatures(stale)
+          }
+          finally {
+            writingDraw = false
+          }
+        }
+      }
+      const feature = features[features.length - 1]
       const coordinates = feature?.geometry?.coordinates
       center.value = coordinates ? { lat: coordinates[1], lng: coordinates[0] } : null
+      // A click just placed the pin. Hand the pointer back to Select so the
+      // point is immediately draggable instead of being replaced by the next
+      // click - the single biggest friction in the old flow.
+      if (center.value && tool.value === 'point')
+        enterSelect()
     }
-    else if (feature) {
-      polygon.value = openRing(feature.geometry.coordinates[0])
+    else if (features[0]) {
+      polygon.value = openRing(features[0].geometry.coordinates[0])
         .map(([lng, lat]) => [lat, lng] as [number, number])
     }
     else {
@@ -571,14 +666,62 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   function finishPolygon() {
     if (!map || polygon.value.length < 3)
       return
+    justFinished = true
     map.getCanvas().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }))
+    enterSelect()
+  }
+
+  // Drop the pointer back to Select and, once the mode has actually switched,
+  // select the shape so its vertex / drag handles appear without a second click.
+  function enterSelect() {
+    tool.value = 'select'
+    nextTick(() => {
+      if (!terraDraw || !drawStarted || terraDraw.getMode() !== 'select')
+        return
+      // Select the feature the store actually holds. A fence loaded from the
+      // server keeps SHAPE_ID, but one drawn here (a fresh point click, a
+      // just-finished polygon) keeps Terra Draw's generated id - selecting the
+      // bare SHAPE_ID missed those, and select mode only drags the selected
+      // feature, so a freshly placed pin could not be moved until it had been
+      // clicked a second time.
+      const [shape] = shapeFeatures(terraDraw.getSnapshot())
+      if (!shape?.id)
+        return
+      try {
+        terraDraw.selectFeature(shape.id)
+      }
+      catch {
+        // Selecting is a convenience; a failure must not break the draw.
+      }
+    })
+  }
+
+  // Arm a draw tool. Choosing Point or Polygon is both the interaction and the
+  // geofence type, so the two can never disagree; it also clears the geometry of
+  // the other kind, matching what the old type radio did.
+  function setTool(next: GeofenceTool) {
+    if (next === 'point') {
+      geofenceType.value = 'point'
+      polygon.value = []
+    }
+    else if (next === 'polygon') {
+      geofenceType.value = 'polygon'
+      center.value = null
+      polygon.value = []
+    }
+    tool.value = next
   }
 
   function applyDrawMode() {
     if (!terraDraw || !drawStarted)
       return
     const next = drawMode.value
-    if (terraDraw.getMode() === 'polygon' && next !== 'polygon') {
+    if (justFinished) {
+      // The polygon was already committed by an explicit Finish; do not raise a
+      // second Enter at it. Consume the flag either way.
+      justFinished = false
+    }
+    else if (terraDraw.getMode() === 'polygon' && next !== 'polygon') {
       // Leaving Draw calls the mode's cleanUp, which deletes the polygon it had
       // not closed yet. Close it first; a run with too few vertices cannot be
       // closed and Terra Draw cannot store it either, so drop it here rather than
@@ -595,6 +738,7 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     applyDrawOptions()
     suppressPush = false
     pushStateIntoDraw()
+    ensureRadiusMarker()
   }
 
   // setStyle on a theme switch destroys the adapter's source and layers along
@@ -626,8 +770,8 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   // switch that tears the adapter down again.
   function onMapReady() {
     addGeofenceLayers()
-    if (editable)
-      restartDraw()
+    restartDraw()
+    ensureRadiusMarker()
     options.onReady?.()
   }
 
@@ -642,12 +786,10 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     try {
       // Dynamic: MapLibre touches window at import time, which SSR cannot do.
       mapLib = await import('maplibre-gl')
-      if (editable) {
-        ;[terraDrawModule, adapterModule] = await Promise.all([
-          import('terra-draw'),
-          import('terra-draw-maplibre-gl-adapter'),
-        ])
-      }
+      ;[terraDrawModule, adapterModule] = await Promise.all([
+        import('terra-draw'),
+        import('terra-draw-maplibre-gl-adapter'),
+      ])
       // Vite does not serve the worker where MapLibre expects it, so point it
       // at the bundled file. Without this every tile fails "Worker failed to
       // load". Must happen before the Map is constructed: the map spawns its
@@ -684,42 +826,40 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     map.on('load', onMapReady)
     map.on('style.load', onMapReady)
 
-    if (editable) {
-      try {
-        const styles = drawStyles()
-        terraDraw = new terraDrawModule.TerraDraw({
-          adapter: new adapterModule.TerraDrawMapLibreGLAdapter({ map }),
-          modes: [
-            // Render mode takes its identity from `modeName` and refuses to build
-            // without it - Terra Draw throws "Mode name is required for
-            // TerraDrawRenderMode". It is also the key setMode and
-            // updateModeOptions look a mode up by.
-            new terraDrawModule.TerraDrawRenderMode({ modeName: 'render', styles: styles.render }),
-            new terraDrawModule.TerraDrawPolygonMode({
-              styles: styles.polygon,
-              keyEvents: { cancel: 'Escape', finish: 'Enter' },
-              showCoordinatePoints: true,
-            }),
-            new terraDrawModule.TerraDrawPointMode({ styles: styles.point }),
-            new terraDrawModule.TerraDrawSelectMode({ styles: styles.select, flags: drawFlags }),
-          ],
-        })
-        terraDraw.on('change', (changes: any, origin: any) => {
-          // Terra Draw emits 'change' with origin 'styling' when paint styles are
-          // refreshed; the snapshot itself is untouched, so there is nothing to
-          // mirror. That event arrived on load with an empty store and, treated as
-          // "no shape", readDrawIntoState cleared the local polygon just before the
-          // first real push. Ignore empty/style-only sweeps.
-          if (origin === 'styling' || !Array.isArray(changes) || changes.length === 0)
-            return
-          readDrawIntoState()
-        })
-      }
-      catch (err) {
-        useErrorReporter().captureException(err, { context: 'geofence-draw-init' })
-        terraDraw = null
-        drawStarted = false
-      }
+    try {
+      const styles = drawStyles()
+      terraDraw = new terraDrawModule.TerraDraw({
+        adapter: new adapterModule.TerraDrawMapLibreGLAdapter({ map }),
+        modes: [
+          // Render mode takes its identity from `modeName` and refuses to build
+          // without it - Terra Draw throws "Mode name is required for
+          // TerraDrawRenderMode". It is also the key setMode and
+          // updateModeOptions look a mode up by.
+          new terraDrawModule.TerraDrawRenderMode({ modeName: 'render', styles: styles.render }),
+          new terraDrawModule.TerraDrawPolygonMode({
+            styles: styles.polygon,
+            keyEvents: { cancel: 'Escape', finish: 'Enter' },
+            showCoordinatePoints: true,
+          }),
+          new terraDrawModule.TerraDrawPointMode({ styles: styles.point }),
+          new terraDrawModule.TerraDrawSelectMode({ styles: styles.select, flags: drawFlags }),
+        ],
+      })
+      terraDraw.on('change', (changes: any, origin: any) => {
+        // Terra Draw emits 'change' with origin 'styling' when paint styles are
+        // refreshed; the snapshot itself is untouched, so there is nothing to
+        // mirror. That event arrived on load with an empty store and, treated as
+        // "no shape", readDrawIntoState cleared the local polygon just before the
+        // first real push. Ignore empty/style-only sweeps.
+        if (origin === 'styling' || !Array.isArray(changes) || changes.length === 0)
+          return
+        readDrawIntoState()
+      })
+    }
+    catch (err) {
+      useErrorReporter().captureException(err, { context: 'geofence-draw-init' })
+      terraDraw = null
+      drawStarted = false
     }
   }
 
@@ -732,8 +872,9 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   })
 
   // Map paint and source data sit outside Vue's reactivity, so repaint by hand
-  // whenever anything they read from changes.
-  watch([selectedFeatures, isActive], () => {
+  // whenever anything they read from changes. `editing` is in the list because
+  // the stroke colour follows it (accent while the editor is open).
+  watch([selectedFeatures, isActive, editing], () => {
     if (!map)
       return
     pushSelectedToMap()
@@ -743,8 +884,6 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     }
     if (map.getLayer(LAYER_LINE))
       map.setPaintProperty(LAYER_LINE, 'line-color', strokeColor.value)
-    if (map.getLayer(SELECTED_POINT))
-      map.setPaintProperty(SELECTED_POINT, 'circle-color', strokeColor.value)
   }, { deep: true })
 
   watch([allFeatures, isActive], () => {
@@ -765,7 +904,7 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     applyDrawOptions()
   })
 
-  watch([mapTool, geofenceType], () => {
+  watch([tool, geofenceType, editing], () => {
     applyDrawMode()
   })
 
@@ -775,6 +914,12 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
 
   watch(mapStyle, (style) => {
     map?.setStyle(style)
+  })
+
+  // Keep the handle glued to the ring edge as the radius or centre changes,
+  // except while the pointer is the thing moving it.
+  watch([editing, geofenceType, center, radiusMeters], () => {
+    ensureRadiusMarker()
   })
 
   // Frame the shape. Polygons use their bounds rather than a centroid, and a
@@ -822,9 +967,9 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   }
 
   function onUnderlayClick(e: any, onPick: (id: string) => void) {
-    // While the shape is being drawn the click belongs to Terra Draw, so do not
-    // steal it and re-select whatever happens to be under the cursor.
-    if (editable && (mapTool.value === 'add' || terraDraw?.getMode() !== 'render'))
+    // While editing, every click belongs to Terra Draw or to the shape being
+    // worked on; never steal it to re-select from the list underneath.
+    if (editing.value)
       return
     const id = fenceIdAt(e.point)
     if (id)
@@ -834,9 +979,12 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   function onUnderlayHover(e: any) {
     if (!map)
       return
-    const drawing = editable && (mapTool.value === 'add' || terraDraw?.getMode() !== 'render')
-    const over = !drawing && !!fenceIdAt(e.point)
-    map.getCanvas().style.cursor = over ? 'pointer' : (editable && mapTool.value === 'add' ? 'crosshair' : '')
+    if (editing.value) {
+      map.getCanvas().style.cursor = ''
+      return
+    }
+    const over = !!fenceIdAt(e.point)
+    map.getCanvas().style.cursor = over ? 'pointer' : ''
   }
 
   function bindMapEvents(onPick: (id: string) => void) {
@@ -866,18 +1014,19 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     radiusMeters,
     center,
     polygon,
-    mapTool,
-    // map
-    mapContainer,
+    tool,
+    // derived
     mapCenter,
     mapZoom,
+    suggestedRadius,
     // actions
+    setTool,
+    enterSelect,
     flyToShape,
     bindMapEvents,
     resize,
     finishPolygon,
     clearPolygon,
     undoVertex,
-    parseMinutes,
   }
 }

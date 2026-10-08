@@ -376,13 +376,17 @@
     "map": {
       "tool": {
         "label": "Map tool",
-        "move": "Move map",
-        "draw": "Draw",
-        "hint": "Drawing mode is active. Click the map to place a point or a polygon vertex."
+        "select": "Select and adjust",
+        "point": "Place point",
+        "polygon": "Draw polygon"
       },
-      "point": {
-        "hint": "Click the map to set the centre point. Drag the point to move it.",
-        "current": "Current"
+      "instruction": {
+        "selectEmpty": "Choose Place point or Draw polygon to start drawing.",
+        "selectPoint": "Drag the centre to move it. Drag the white handle on the edge to resize the radius.",
+        "selectPolygon": "Drag a point to move it. Click a midpoint on an edge to add a point.",
+        "point": "Click the map to place the centre.",
+        "polygonStart": "Click the map to add points. A polygon needs at least 3.",
+        "polygonFinish": "Click the first point, press Enter, or use Finish to close the polygon."
       },
       "polygon": {
         "hint": "Click the map to add vertices. A polygon needs at least 3 points. Click the first point to close it, or press Finish.",

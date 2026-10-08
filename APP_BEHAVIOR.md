@@ -336,13 +336,49 @@ name.
 | `/forgot-password` | `app/pages/forgot-password.vue` | `app/layouts/default.vue` | main app |
 | `/admin` | `app/pages/admin/index.vue` | `app/layouts/admin.vue` | admin |
 | `/admin/attendance` | `app/pages/admin/attendance.vue` | `app/layouts/admin.vue` | admin |
-| `/admin/geofence` | `app/pages/admin/geofence.vue` | `app/layouts/admin.vue` | admin |
+| `/admin/geofence` | `app/pages/admin/geofence/index.vue` | `app/layouts/admin.vue` | admin |
 | `/admin/profile` | `app/pages/admin/profile.vue` | `app/layouts/admin.vue` | admin |
 | `/admin/shifts` | `app/pages/admin/shifts.vue` | `app/layouts/admin.vue` | admin |
 | `/admin/users` | `app/pages/admin/users.vue` | `app/layouts/admin.vue` | admin |
 
 `/index`, `/index/profile`, and `/index/report` return 404. They are not URLs in
 this app.
+
+- **[CODE]** Geofence create and edit happen inline on `/admin/geofence`. A
+  docked form panel turns the single page map into the drawing surface; there is
+  no separate editor route. Do not reintroduce a second map inside the form - a
+  MapLibre canvas in an animated panel never gets a stable size and Terra Draw
+  ends up wired to the wrong map. Both panels animate in/out with Vue
+  `<Transition>`: the list slides (it overlays the map), the form's width
+  animates with a fixed-width inner column (so fields do not reflow), and
+  MapLibre's pixel-sized canvas is re-synced every frame while the form panel
+  animates (trackPanelResize in the page) so the map tracks the panel instead
+  of snapping at the end. While the panel is open the underlay of *other*
+  geofences is hidden (allFeatures returns empty): with every ring and polygon
+  on screen it is hard to tell which shape is being edited, and underlay clicks
+  are suppressed during editing anyway. The underlay returns when the panel
+  closes. A point fence has exactly one point: Terra Draw's point mode appends a
+  feature on every map click, so with the point tool armed clicking again moves
+  the centre and the stray dot is deleted in readDrawIntoState (newest click
+  wins). One form can never hold two dots. When a click places the pin the page
+  hands the pointer back to Select and pre-selects the point, so it is draggable
+  (or deletable) immediately instead of needing a second click. The radius
+  handle is positioned before it joins the map: MapLibre's Marker.addTo
+  dereferences the marker's own lngLat unchecked, so a handle attached without
+  coordinates throws inside addTo and keeps throwing from every later map move
+  event, which in Vue means the render after that click is lost.
+- **[CODE]** Rings are always pushed to MapLibre in closed GeoJSON form (first
+  vertex repeated at the end). Stored polygons come back open and `circleRing`
+  already emits closed; `closed()` normalizes both to closed. The line layer
+  relies on that closing vertex: its bucket segments vertices pairwise with no
+  closure pass of its own, so stripping the vertex for already-closed input
+  cost the outline its seam segment - a visibly cut circle. Never strip it.
+- **[CODE]** Shape colour is a state signal: grey is the browse-time treatment
+  for an inactive fence, and while the editor is open (create or edit) the
+  shape is drawn in the accent colour in both states - grey while editing
+  reads as disabled. A fresh point click used to place a grey dot only because
+  new fences start inactive. The paint-property watch lists `editing` as a
+  dependency for this reason; do not drop it.
 
 ### 9.5 The page folder convention
 

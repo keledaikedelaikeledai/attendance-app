@@ -376,13 +376,17 @@
     "map": {
       "tool": {
         "label": "Alat peta",
-        "move": "Geser peta",
-        "draw": "Gambar",
-        "hint": "Mode gambar aktif. Klik peta untuk membuat titik atau titik poligon."
+        "select": "Pilih dan sesuaikan",
+        "point": "Tempatkan titik",
+        "polygon": "Gambar poligon"
       },
-      "point": {
-        "hint": "Klik peta untuk menentukan titik pusat. Seret titiknya untuk memindah.",
-        "current": "Sekarang"
+      "instruction": {
+        "selectEmpty": "Pilih Tempatkan titik atau Gambar poligon untuk mulai menggambar.",
+        "selectPoint": "Seret titik pusat untuk memindah. Seret gagang putih di tepi untuk mengubah radius.",
+        "selectPolygon": "Seret titik untuk memindah. Klik titik tengah pada sisi untuk menambah titik.",
+        "point": "Klik peta untuk menempatkan titik pusat.",
+        "polygonStart": "Klik peta untuk menambah titik. Poligon minimal 3 titik.",
+        "polygonFinish": "Klik titik pertama, tekan Enter, atau gunakan Selesai untuk menutup poligon."
       },
       "polygon": {
         "hint": "Klik peta untuk menambah titik. Poligon minimal 3 titik. Klik titik pertama untuk menutup, atau tekan Selesai.",
