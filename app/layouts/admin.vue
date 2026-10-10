@@ -2,7 +2,6 @@
 import type { DropdownItem, NavigationMenuItem } from '@sewadah/selaras/types'
 
 const menus = computed<NavigationMenuItem[]>(() => [
-  { label: 'Ruang kerja', type: 'label' },
   { label: 'Dashboard', icon: 'i-heroicons-squares-2x2', to: '/admin' },
   { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
   { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
