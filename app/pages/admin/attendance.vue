@@ -70,19 +70,21 @@ const employees = computed<EmployeeStats[]>(() =>
           harianDays++
         else if (e.shiftType === 'bantuan')
           bantuanDays++
+      }
 
-        const late = attendanceTime.entryLateMs(e) > 0
-        const early = attendanceTime.entryEarlyMs(e) > 0
-        if (late)
-          lateCount++
-        if (early)
-          earlyCount++
+      // lateMs/earlyMs are aggregated on the day cell by the server; the
+      // individual shift entries do not carry them, so read the cell values.
+      const late = Number(cell?.lateMs) > 0
+      const early = Number(cell?.earlyMs) > 0
+      if (late)
+        lateCount++
+      if (early)
+        earlyCount++
 
-        if (date >= lastDate) {
-          lastDate = date
-          lastLate = late
-          lastEarly = early
-        }
+      if (date >= lastDate) {
+        lastDate = date
+        lastLate = late
+        lastEarly = early
       }
     }
 
