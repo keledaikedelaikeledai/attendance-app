@@ -206,10 +206,25 @@ interface DayPerson {
   bantuan: boolean
 }
 
-function initialsOf(name: string): string {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2)
-  const initials = parts.map(p => p.charAt(0).toUpperCase()).join('')
-  return initials || '?'
+// Avatars are generated initials (no profile images). The colour is hashed from
+// a stable seed so a given employee keeps the same one, and only from roles that
+// do not carry state.
+const AVATAR_COLORS = ['primary', 'secondary', 'info', 'neutral'] as const
+
+function avatarColor(seed: string) {
+  let hash = 0
+  for (let i = 0; i < seed.length; i++)
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
+function initials(name: string) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length)
+    return '?'
+  if (parts.length === 1)
+    return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
 }
 
 function personTitle(person: DayPerson): string {
@@ -233,7 +248,7 @@ const teamByDate = computed<Record<string, DayPerson[]>>(() => {
         map[date] = []
       map[date].push({
         name: emp.name,
-        initials: initialsOf(emp.name),
+        initials: initials(emp.name),
         harian: entries.some((e: any) => e.shiftType === 'harian'),
         bantuan: entries.some((e: any) => e.shiftType === 'bantuan'),
       })
@@ -248,6 +263,20 @@ const MAX_CHIPS = 6
 
 function peopleForDate(date: { toString: () => string }): DayPerson[] {
   return teamByDate.value[date.toString()] || []
+}
+
+// SAvatarGroup's `max`/overlap do not work with v-for children (the slot
+// compiles to a single Fragment vnode), so the day-cell stack is capped here.
+function visiblePeople(date: { toString: () => string }): DayPerson[] {
+  return peopleForDate(date).slice(0, MAX_CHIPS)
+}
+
+function overflowForDate(date: { toString: () => string }): number {
+  return Math.max(0, peopleForDate(date).length - MAX_CHIPS)
+}
+
+function overflowTitle(date: { toString: () => string }): string {
+  return peopleForDate(date).slice(MAX_CHIPS).map(personTitle).join(', ')
 }
 
 // Displays the selected month, kept in sync with the page month selector.
@@ -429,16 +458,13 @@ const calendarMonth = computed({
             >
               <!-- Employee -->
               <div class="flex min-w-0 flex-1 items-center gap-3">
-                <div class="relative shrink-0">
-                  <div class="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--selaras-color-primary-subtle)] text-xs font-medium text-[var(--selaras-color-primary-text)]">
-                    {{ emp.name.charAt(0).toUpperCase() }}
-                  </div>
-                  <span
-                    v-if="emp.lastLate || emp.lastEarly"
-                    class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--selaras-resolved-surface-elevated)]"
-                    :class="emp.lastLate ? 'bg-amber-500' : 'bg-sky-500'"
-                  />
-                </div>
+                <SAvatar
+                  :text="initials(emp.name)"
+                  :color="avatarColor(emp.key)"
+                  :status="emp.lastLate || emp.lastEarly"
+                  :status-color="emp.lastLate ? 'warning' : 'info'"
+                  size="md"
+                />
                 <div class="min-w-0">
                   <div class="truncate font-medium text-[var(--selaras-resolved-text-default)]">
                     {{ emp.name }}
@@ -576,35 +602,13 @@ const calendarMonth = computed({
 
       <!-- Team month overview -->
       <SCard>
-        <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold text-[var(--selaras-resolved-text-default)]">
-              {{ t('admin.attendance.monthOverview') }}
-            </h2>
-            <p class="mt-0.5 text-sm text-[var(--selaras-resolved-text-muted)]">
-              {{ t('admin.attendance.monthOverviewSubtitle') }}
-            </p>
-          </div>
-          <div class="flex flex-wrap items-center gap-4 text-xs text-[var(--selaras-resolved-text-muted)]">
-            <div class="flex items-center gap-1.5">
-              <SBadge
-                label="H"
-                color="primary"
-                variant="soft"
-                size="sm"
-              />
-              <span>{{ t('admin.attendance.harian') }}</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <SBadge
-                label="B"
-                color="info"
-                variant="soft"
-                size="sm"
-              />
-              <span>{{ t('admin.attendance.bantuan') }}</span>
-            </div>
-          </div>
+        <div class="mb-4">
+          <h2 class="text-lg font-semibold text-[var(--selaras-resolved-text-default)]">
+            {{ t('admin.attendance.monthOverview') }}
+          </h2>
+          <p class="mt-0.5 text-sm text-[var(--selaras-resolved-text-muted)]">
+            {{ t('admin.attendance.monthOverviewSubtitle') }}
+          </p>
         </div>
 
         <div class="overflow-x-auto">
@@ -629,22 +633,28 @@ const calendarMonth = computed({
             }"
           >
             <template #day-details="{ date }">
-              <SBadge
-                v-for="(person, index) in peopleForDate(date).slice(0, MAX_CHIPS)"
-                :key="person.name + index"
-                :color="person.bantuan && !person.harian ? 'info' : 'primary'"
-                variant="soft"
-                size="sm"
-                :title="personTitle(person)"
-              >
-                {{ person.initials }}
-              </SBadge>
-              <span
-                v-if="peopleForDate(date).length > MAX_CHIPS"
-                class="text-[10px] text-[var(--selaras-resolved-text-muted)]"
-              >
-                +{{ peopleForDate(date).length - MAX_CHIPS }}
-              </span>
+              <!-- SAvatarGroup's max/stacking do not work with v-for children
+                   (the slot compiles to a single Fragment vnode), so the stack
+                   is built here using the same classes AvatarGroup applies. -->
+              <div class="flex flex-row-reverse flex-wrap justify-center">
+                <span
+                  v-if="overflowForDate(date) > 0"
+                  :title="overflowTitle(date)"
+                  class="relative -me-1 flex size-6 items-center justify-center rounded-full bg-[var(--selaras-resolved-surface-elevated)] text-[10px] font-medium text-[var(--selaras-resolved-text-muted)] ring-1 ring-[var(--selaras-resolved-surface-default)]"
+                >
+                  +{{ overflowForDate(date) }}
+                </span>
+                <SAvatar
+                  v-for="person in visiblePeople(date)"
+                  :key="person.name"
+                  :text="person.initials"
+                  :color="avatarColor(person.name)"
+                  :title="personTitle(person)"
+                  :alt="personTitle(person)"
+                  size="sm"
+                  class="-me-1 ring-1 ring-[var(--selaras-resolved-surface-default)]"
+                />
+              </div>
             </template>
           </SCalendar>
         </div>
