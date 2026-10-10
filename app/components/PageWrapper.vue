@@ -87,13 +87,6 @@ const localeItems = computed<DropdownItem[][]>(() => {
       <div class="flex items-center gap-2 sm:gap-3 shrink-0">
         <slot name="navRight" />
 
-        <NuxtLink
-          to="/"
-          class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-neutral-800 transition-colors"
-        >
-          <SIcon name="i-heroicons-home" class="w-3.5 h-3.5 text-gray-500" />
-          <span>Situs web</span>
-        </NuxtLink>
 
         <ClientOnly>
           <SDropdown :items="localeItems" :positioning="{ align: 'end' }" :ui="{ content: 'w-40' }">
