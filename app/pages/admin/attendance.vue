@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { CalendarDate } from '@internationalized/date'
 import { useI18n } from 'vue-i18n'
 
 import * as attendanceTime from '~/composables/useAttendanceTime'
@@ -192,6 +193,73 @@ const monthOptions = computed(() => {
 const monthLabel = computed(
   () => monthOptions.value.find(o => o.value === month.value)?.label ?? month.value,
 )
+
+// ---------------------------------------------------------------------------
+// Team overview calendar
+// ---------------------------------------------------------------------------
+interface DayPerson {
+  name: string
+  initials: string
+  harian: boolean
+  bantuan: boolean
+}
+
+function initialsOf(name: string): string {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2)
+  const initials = parts.map(p => p.charAt(0).toUpperCase()).join('')
+  return initials || '?'
+}
+
+function personTitle(person: DayPerson): string {
+  const types: string[] = []
+  if (person.harian)
+    types.push(t('admin.attendance.harian'))
+  if (person.bantuan)
+    types.push(t('admin.attendance.bantuan'))
+  return types.length ? `${person.name} · ${types.join(' + ')}` : person.name
+}
+
+const teamByDate = computed<Record<string, DayPerson[]>>(() => {
+  const map: Record<string, DayPerson[]> = {}
+  for (const emp of employees.value) {
+    for (const [date, cell] of Object.entries(emp.byDate)) {
+      const entries = attendanceTime.normalizeCell(cell).filter((e: any) => e?.clockIn)
+      if (!entries.length)
+        continue
+
+      if (!map[date])
+        map[date] = []
+      map[date].push({
+        name: emp.name,
+        initials: initialsOf(emp.name),
+        harian: entries.some((e: any) => e.shiftType === 'harian'),
+        bantuan: entries.some((e: any) => e.shiftType === 'bantuan'),
+      })
+    }
+  }
+  for (const date of Object.keys(map))
+    map[date].sort((a, b) => a.name.localeCompare(b.name))
+  return map
+})
+
+const MAX_CHIPS = 6
+
+function peopleForDate(date: { toString: () => string }): DayPerson[] {
+  return teamByDate.value[date.toString()] || []
+}
+
+// Displays the selected month, kept in sync with the page month selector.
+const calendarMonth = computed({
+  get: () => {
+    const [y, m] = month.value.split('-').map(Number)
+    return new CalendarDate(y, m, 1)
+  },
+  set: (value) => {
+    if (!value)
+      return
+    month.value = `${value.year}-${String(value.month).padStart(2, '0')}`
+  },
+})
 </script>
 
 <template>
@@ -502,6 +570,82 @@ const monthLabel = computed(
             <span>{{ employees.length }} {{ t('admin.attendance.employees') }}</span>
           </div>
         </template>
+      </SCard>
+
+      <!-- Team month overview -->
+      <SCard>
+        <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold text-[var(--selaras-resolved-text-default)]">
+              {{ t('admin.attendance.monthOverview') }}
+            </h2>
+            <p class="mt-0.5 text-sm text-[var(--selaras-resolved-text-muted)]">
+              {{ t('admin.attendance.monthOverviewSubtitle') }}
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-4 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <div class="flex items-center gap-1.5">
+              <SBadge
+                label="H"
+                color="primary"
+                variant="soft"
+                size="sm"
+              />
+              <span>{{ t('admin.attendance.harian') }}</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <SBadge
+                label="B"
+                color="info"
+                variant="soft"
+                size="sm"
+              />
+              <span>{{ t('admin.attendance.bantuan') }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <SCalendar
+            v-model:placeholder="calendarMonth"
+            :week-starts-on="1"
+            class="w-full"
+            style="min-width: 44rem"
+            :calendar-label="t('admin.attendance.monthOverview')"
+            :ui="{
+              grids: 'block',
+              grid: { class: 'w-full', style: { tableLayout: 'fixed' } },
+              headCell: { style: { width: '14.285714%' } },
+              cell: {
+                class: 'border border-[var(--selaras-resolved-border-muted)] p-1 align-top',
+                style: { height: '6.5rem' },
+              },
+              dayDetails: {
+                class: 'flex flex-wrap content-start justify-center gap-0.5 overflow-hidden pt-1',
+                style: { maxHeight: '5rem' },
+              },
+            }"
+          >
+            <template #day-details="{ date }">
+              <SBadge
+                v-for="(person, index) in peopleForDate(date).slice(0, MAX_CHIPS)"
+                :key="person.name + index"
+                :color="person.bantuan && !person.harian ? 'info' : 'primary'"
+                variant="soft"
+                size="sm"
+                :title="personTitle(person)"
+              >
+                {{ person.initials }}
+              </SBadge>
+              <span
+                v-if="peopleForDate(date).length > MAX_CHIPS"
+                class="text-[10px] text-[var(--selaras-resolved-text-muted)]"
+              >
+                +{{ peopleForDate(date).length - MAX_CHIPS }}
+              </span>
+            </template>
+          </SCalendar>
+        </div>
       </SCard>
     </div>
   </PageWrapper>

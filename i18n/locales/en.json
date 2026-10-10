@@ -45,7 +45,9 @@
       "bantuan": "Bantuan",
       "absent": "Absent",
       "lateCount": "Late",
-      "earlyCount": "Early"
+      "earlyCount": "Early",
+      "monthOverview": "Month Overview",
+      "monthOverviewSubtitle": "Who worked on each day this month."
     }
   },
   "common": {

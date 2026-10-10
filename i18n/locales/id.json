@@ -45,7 +45,9 @@
       "bantuan": "Bantuan",
       "absent": "Tidak hadir",
       "lateCount": "Telat",
-      "earlyCount": "Pulang cepat"
+      "earlyCount": "Pulang cepat",
+      "monthOverview": "Ringkasan Bulanan",
+      "monthOverviewSubtitle": "Siapa yang bekerja di setiap hari bulan ini."
     }
   },
   "common": {
