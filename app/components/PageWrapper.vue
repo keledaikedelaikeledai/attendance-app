@@ -87,7 +87,6 @@ const localeItems = computed<DropdownItem[][]>(() => {
       <div class="flex items-center gap-2 sm:gap-3 shrink-0">
         <slot name="navRight" />
 
-
         <ClientOnly>
           <SDropdown :items="localeItems" :positioning="{ align: 'end' }" :ui="{ content: 'w-40' }">
             <button
@@ -107,7 +106,7 @@ const localeItems = computed<DropdownItem[][]>(() => {
     </header>
 
     <!-- Main scrollable content inside rounded card -->
-    <main class="flex-1 min-h-0 overflow-y-auto flex flex-col">
+    <main class="flex-1 min-h-0 overflow-y-auto flex flex-col bg-gray-100 dark:bg-neutral-950">
       <slot />
     </main>
   </div>
