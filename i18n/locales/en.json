@@ -22,6 +22,30 @@
       "heatmapDesc": "One row per user, one column per day. Darker cells mean more hours worked.",
       "heatmapLoading": "Chart loading...",
       "userRecapDesc": "Monthly totals per user for the selected period."
+    },
+    "attendance": {
+      "title": "Attendance",
+      "refresh": "Refresh",
+      "totalEmployees": "Total Employees",
+      "totalWorkingDays": "Total Working Days",
+      "lowAttendance": "Low Attendance",
+      "lateHigh": "High Late Count",
+      "needsAttention": "Needs attention",
+      "followUp": "Follow up",
+      "employee": "Employee",
+      "worked": "Worked",
+      "status": "Status",
+      "thisMonth": "This Month",
+      "loading": "Loading...",
+      "emptyTitle": "No attendance data",
+      "emptySubtitle": "There are no entries for this month.",
+      "onTime": "On time",
+      "employees": "employees",
+      "harian": "Harian",
+      "bantuan": "Bantuan",
+      "absent": "Absent",
+      "lateCount": "Late",
+      "earlyCount": "Early"
     }
   },
   "common": {

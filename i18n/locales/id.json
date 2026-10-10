@@ -22,6 +22,30 @@
       "heatmapDesc": "Satu baris per pengguna, satu kolom per hari. Sel lebih gelap berarti jam kerja lebih panjang.",
       "heatmapLoading": "Grafik dimuat...",
       "userRecapDesc": "Total bulanan per pengguna untuk periode terpilih."
+    },
+    "attendance": {
+      "title": "Kehadiran",
+      "refresh": "Muat Ulang",
+      "totalEmployees": "Total Karyawan",
+      "totalWorkingDays": "Total Hari Kerja",
+      "lowAttendance": "Kehadiran Rendah",
+      "lateHigh": "Jumlah Telat Tinggi",
+      "needsAttention": "Perlu perhatian",
+      "followUp": "Tindak lanjut",
+      "employee": "Karyawan",
+      "worked": "Hadir",
+      "status": "Status",
+      "thisMonth": "Bulan Ini",
+      "loading": "Memuat...",
+      "emptyTitle": "Tidak ada data kehadiran",
+      "emptySubtitle": "Tidak ada entri untuk bulan ini.",
+      "onTime": "Tepat waktu",
+      "employees": "karyawan",
+      "harian": "Harian",
+      "bantuan": "Bantuan",
+      "absent": "Tidak hadir",
+      "lateCount": "Telat",
+      "earlyCount": "Pulang cepat"
     }
   },
   "common": {
