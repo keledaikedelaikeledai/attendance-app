@@ -43,7 +43,7 @@ async function changeMyPassword() {
 
 <template>
   <PageWrapper>
-    <div class="max-w-lg mx-auto">
+    <div class="max-w-lg mx-auto py-6 px-4">
       <h2 class="text-xl font-semibold mb-4">
         My profile
       </h2>

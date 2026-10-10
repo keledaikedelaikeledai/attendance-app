@@ -353,11 +353,10 @@ const panelTitle = computed(() => isCreate.value
       </SButton>
     </template>
 
-    <!-- The map fills what is left below the header. -m-2 cancels PageWrapper's
-         p-2 so the canvas runs to the panel edge, matching the header above it.
+    <!-- The map fills what is left below the header inside the card container.
          The list (browsing) or the form (editing) docks beside it; neither ever
          covers the drawing surface. -->
-    <div class="relative -m-2 flex h-[calc(100dvh-var(--admin-header-h,5rem))] min-h-[440px]">
+    <div class="relative flex flex-1 h-full min-h-[440px]">
       <!-- Browse: left-edge list, flush to the panel edge. Wrapped in a
            Transition because it overlays the map: the animation is a pure
            transform slide, nothing reflows, and the canvas never resizes. -->

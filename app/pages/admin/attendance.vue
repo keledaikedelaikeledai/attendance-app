@@ -1484,7 +1484,9 @@ definePageMeta({
         </SButton>
       </div>
     </template>
-    <AttendanceGrid v-if="activeType === 'grid'" :data="normalizedData" :loading="status === 'pending'" />
-    <AttendanceTable v-else :data="normalizedData" :loading="status === 'pending'" />
+    <div class="p-6">
+      <AttendanceGrid v-if="activeType === 'grid'" :data="normalizedData" :loading="status === 'pending'" />
+      <AttendanceTable v-else :data="normalizedData" :loading="status === 'pending'" />
+    </div>
   </PageWrapper>
 </template>
