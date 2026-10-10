@@ -81,7 +81,7 @@ const policyItems = computed(() => [
 const basemapItems = computed<DropdownItem[][]>(() => [[
   { label: t('adminGeofence.map.basemap.openfreemap'), icon: 'i-lucide-layers', onSelect: () => { tileSource.value = 'openfreemap' } },
   { label: t('adminGeofence.map.basemap.osm'), icon: 'i-lucide-map', onSelect: () => { tileSource.value = 'osm' } },
-  { label: t('adminGeofence.map.basemap.carto'), icon: 'i-lucide-map-pinned', onSelect: () => { tileSource.value = 'carto' } },
+  { label: t('adminGeofence.map.basemap.streets'), icon: 'i-lucide-map-pinned', onSelect: () => { tileSource.value = 'streets' } },
   { label: t('adminGeofence.map.basemap.satellite'), icon: 'i-lucide-satellite', onSelect: () => { tileSource.value = 'satellite' } },
 ]])
 

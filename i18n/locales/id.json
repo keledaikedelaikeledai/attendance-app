@@ -426,7 +426,7 @@
         "label": "Gaya peta",
         "openfreemap": "Default",
         "osm": "OpenStreetMap",
-        "carto": "Carto Voyager",
+        "streets": "Jalan",
         "satellite": "Satelit"
       },
       "loading": "Memuat peta...",

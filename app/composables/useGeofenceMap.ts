@@ -68,7 +68,7 @@ const defaultCenter: [number, number] = [-6.2, 106.816666]
 // the only source that follows the light/dark theme; the raster sources are
 // there for how much more they put on the map (street names, POIs, buildings,
 // imagery) when the minimal vector style is too bare to place a fence against.
-export type GeofenceTileSource = 'openfreemap' | 'osm' | 'carto' | 'satellite'
+export type GeofenceTileSource = 'openfreemap' | 'osm' | 'streets' | 'satellite'
 
 // A minimal MapLibre raster style around one tile set. `maxzoom` is where the
 // source stops; MapLibre overzooms past it, so deep zooms stay painted instead
@@ -113,15 +113,13 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
           '© OpenStreetMap contributors',
           19,
         )
-      case 'carto':
-        // MapLibre has no Leaflet-style `{s}` placeholder, so Carto's
-        // subdomains are spelled out and it balances tiles across them. `@2x`
-        // keeps the raster crisp on retina displays.
+      case 'streets':
+        // Esri World Street Map: detailed street cartography, no API key, and
+        // the same ArcGIS host and `{z}/{y}/{x}` order as the satellite source.
+        // It replaces Carto Voyager, whose basemap expects an API key.
         return rasterStyle([
-          'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-          'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-          'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-        ], '© OpenStreetMap contributors © CARTO', 20)
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        ], 'Powered by Esri — Source: Esri, HERE, Garmin, © OpenStreetMap contributors, and the GIS User Community', 19)
       case 'satellite':
         // ArcGIS World Imagery orders the path `{z}/{y}/{x}`, not `{z}/{x}/{y}`.
         return rasterStyle([
