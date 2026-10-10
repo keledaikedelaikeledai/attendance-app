@@ -64,6 +64,26 @@ const GUIDANCE_PROPS = [
 
 const defaultCenter: [number, number] = [-6.2, 106.816666]
 
+// Basemaps offered on the geofence map. OpenFreeMap is the vector default and
+// the only source that follows the light/dark theme; the raster sources are
+// there for how much more they put on the map (street names, POIs, buildings,
+// imagery) when the minimal vector style is too bare to place a fence against.
+export type GeofenceTileSource = 'openfreemap' | 'osm' | 'carto' | 'satellite'
+
+// A minimal MapLibre raster style around one tile set. `maxzoom` is where the
+// source stops; MapLibre overzooms past it, so deep zooms stay painted instead
+// of going blank. There are no symbol layers in this app's geofence styling, so
+// the style needs no `glyphs` URL.
+function rasterStyle(tiles: string[], attribution: string, maxzoom: number) {
+  return {
+    version: 8,
+    sources: {
+      basemap: { type: 'raster', tiles, tileSize: 256, maxzoom, attribution },
+    },
+    layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
+  }
+}
+
 export function useGeofenceMap(options: UseGeofenceMapOptions) {
   const { editing, geofences, selectedId, isActive, mapContainer } = options
 
@@ -81,9 +101,40 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   // tool on the map and the type in the form can never disagree.
   const tool = ref<GeofenceTool>('select')
 
-  const mapStyle = computed(() => colorMode.value === 'dark'
-    ? 'https://tiles.openfreemap.org/styles/fiord'
-    : 'https://tiles.openfreemap.org/styles/positron')
+  // Kept across visits with useState so the basemap a user picks survives
+  // browsing away and back, instead of snapping to the default each time.
+  const tileSource = useState<GeofenceTileSource>('geofence-tile-source', () => 'openfreemap')
+
+  const mapStyle = computed<any>(() => {
+    switch (tileSource.value) {
+      case 'osm':
+        return rasterStyle(
+          ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          '© OpenStreetMap contributors',
+          19,
+        )
+      case 'carto':
+        // MapLibre has no Leaflet-style `{s}` placeholder, so Carto's
+        // subdomains are spelled out and it balances tiles across them. `@2x`
+        // keeps the raster crisp on retina displays.
+        return rasterStyle([
+          'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+          'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+          'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+        ], '© OpenStreetMap contributors © CARTO', 20)
+      case 'satellite':
+        // ArcGIS World Imagery orders the path `{z}/{y}/{x}`, not `{z}/{x}/{y}`.
+        return rasterStyle([
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        ], 'Powered by Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community', 19)
+      default:
+        // Only the vector source reads the colour mode, so a theme switch does
+        // not needlessly reload a raster basemap.
+        return colorMode.value === 'dark'
+          ? 'https://tiles.openfreemap.org/styles/fiord'
+          : 'https://tiles.openfreemap.org/styles/positron'
+    }
+  })
 
   const fillColor = computed(() => colorMode.value === 'dark' ? '#60a5fa' : '#2563eb')
   // Grey is the browse-time treatment for an inactive fence. While the editor is
@@ -1015,6 +1066,8 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     center,
     polygon,
     tool,
+    // basemap
+    tileSource,
     // derived
     mapCenter,
     mapZoom,

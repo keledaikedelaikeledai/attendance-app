@@ -422,6 +422,13 @@
         "clear": "Clear",
         "radiusNote": "Radius is fixed to 0 while using polygons."
       },
+      "basemap": {
+        "label": "Map style",
+        "openfreemap": "Default",
+        "osm": "OpenStreetMap",
+        "carto": "Carto Voyager",
+        "satellite": "Satellite"
+      },
       "loading": "Loading map...",
       "empty": "No coordinates set yet."
     },

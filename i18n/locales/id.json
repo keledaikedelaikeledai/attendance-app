@@ -422,6 +422,13 @@
         "clear": "Hapus",
         "radiusNote": "Radius dikunci di 0 saat memakai poligon."
       },
+      "basemap": {
+        "label": "Gaya peta",
+        "openfreemap": "Default",
+        "osm": "OpenStreetMap",
+        "carto": "Carto Voyager",
+        "satellite": "Satelit"
+      },
       "loading": "Memuat peta...",
       "empty": "Belum ada koordinat."
     },

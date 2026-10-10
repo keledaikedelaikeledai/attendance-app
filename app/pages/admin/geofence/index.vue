@@ -67,6 +67,7 @@ const {
   clearPolygon,
   undoVertex,
   enterSelect,
+  tileSource,
 } = geo
 
 const policyItems = computed(() => [
@@ -74,6 +75,17 @@ const policyItems = computed(() => [
   { label: t('adminGeofence.form.policy.allow'), value: 'allow' },
   { label: t('adminGeofence.form.policy.allowWithComment'), value: 'allow_with_comment' },
 ])
+
+// Basemap choices for the map overlay. The current source is named on the
+// trigger button rather than shown as an icon, so the label is the state.
+const basemapItems = computed<DropdownItem[][]>(() => [[
+  { label: t('adminGeofence.map.basemap.openfreemap'), icon: 'i-lucide-layers', onSelect: () => { tileSource.value = 'openfreemap' } },
+  { label: t('adminGeofence.map.basemap.osm'), icon: 'i-lucide-map', onSelect: () => { tileSource.value = 'osm' } },
+  { label: t('adminGeofence.map.basemap.carto'), icon: 'i-lucide-map-pinned', onSelect: () => { tileSource.value = 'carto' } },
+  { label: t('adminGeofence.map.basemap.satellite'), icon: 'i-lucide-satellite', onSelect: () => { tileSource.value = 'satellite' } },
+]])
+
+const basemapLabel = computed(() => t(`adminGeofence.map.basemap.${tileSource.value}`))
 
 const hasShape = computed(() => geofenceType.value === 'point'
   ? Boolean(center.value)
@@ -531,6 +543,25 @@ const panelTitle = computed(() => isCreate.value
           >
             {{ t('adminGeofence.map.polygon.clear') }}
           </SButton>
+        </div>
+
+        <!-- Basemap picker. What the map shows is a reading preference, not part
+             of browsing or editing, so it stays on screen in both states. Placed
+             last in the overlay stack so it paints above the instruction pill;
+             that pill is pointer-events-none, so it never steals the click. -->
+        <div class="absolute right-3 top-3 z-20">
+          <SDropdown :items="basemapItems" :positioning="{ align: 'end' }">
+            <SButton
+              size="sm"
+              variant="soft"
+              color="neutral"
+              icon="i-lucide-layers"
+              :title="t('adminGeofence.map.basemap.label')"
+              :aria-label="t('adminGeofence.map.basemap.label')"
+            >
+              <span class="hidden sm:inline">{{ basemapLabel }}</span>
+            </SButton>
+          </SDropdown>
         </div>
       </div>
 
