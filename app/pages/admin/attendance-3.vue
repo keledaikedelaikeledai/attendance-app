@@ -471,7 +471,7 @@ const tableUi = {
   wrapper: 'relative rounded-none ring-0 overflow-x-auto',
   th: 'text-xs px-4 py-3',
   td: 'text-[13px] px-4 py-3 whitespace-nowrap',
-  expandedCell: 'p-0',
+  expandedCell: 'p-3 bg-(--selaras-resolved-surface-default)',
 }
 function arrivalColor(entry: Entry, date: string): 'success' | 'warning' | 'neutral' {
   const value = arrival(entry, date)
@@ -690,9 +690,9 @@ function exportCsv() {
               v-model:expanded="tableExpanded"
               :data="tableRows"
               :get-row-id="(row: Employee) => row.userId"
+              :row-class="() => 'transition-colors hover:bg-(--selaras-resolved-surface-elevated)'"
               :ui="tableUi"
               expandable
-              row-hover
               class="employee-table"
               @row-click="onEmployeeRowClick"
             >
@@ -796,15 +796,15 @@ function exportCsv() {
                 </SColumn>
               </template>
               <template #expanded="{ row }">
-                <div class="detail-content px-6 pt-5 pb-6">
-                  <div class="detail-heading flex items-center justify-between gap-4 mb-3.5 [&_h4]:font-semibold [&_h4_span]:font-normal [&_h4_span]:text-(--selaras-resolved-text-muted)">
+                <div class="detail-content rounded-xl bg-primary-50 px-6 pt-5 pb-6 shadow-[inset_0_2px_5px_rgb(0_0_0/0.08)] dark:bg-primary-950 dark:shadow-[inset_0_2px_5px_rgb(0_0_0/0.24)]">
+                  <div class="detail-heading flex items-center justify-between gap-4 mb-3.5 [&_h4]:font-semibold [&_h4_span]:font-normal [&_h4_span]:text-primary-700 dark:[&_h4_span]:text-primary-300">
                     <h4>{{ name(row) }} <span>· {{ view === 'daily' ? formatDate(selectedDate) : monthLabel }}</span></h4>
-                    <span class="text-(--selaras-resolved-text-muted)">{{ detailRecords(row).length }} {{ c.records }}</span>
+                    <span class="text-primary-700 dark:text-primary-300">{{ detailRecords(row).length }} {{ c.records }}</span>
                   </div>
-                  <p v-if="!detailRecords(row).length" class="text-(--selaras-resolved-text-muted)">
+                  <p v-if="!detailRecords(row).length" class="text-primary-700 dark:text-primary-300">
                     {{ view === 'daily' ? c.noEntries : c.noMonthEntries }}
                   </p>
-                  <div v-for="{ entry, date } in detailRecords(row)" :key="`${date}-${entry.shiftType}`" class="detail-record border-t border-(--selaras-resolved-border-default) py-4 last:pb-0">
+                  <div v-for="{ entry, date } in detailRecords(row)" :key="`${date}-${entry.shiftType}`" class="detail-record border-t border-primary-200 dark:border-primary-800 py-4 last:pb-0">
                     <div class="detail-shift flex items-center gap-2.5 mb-3.5 flex-wrap [&>strong]:font-[550]">
                       <SButton
                         v-if="view === 'recap'"
@@ -820,11 +820,11 @@ function exportCsv() {
                         {{ entry.shiftType }}
                       </SBadge>
                       <strong>{{ shiftLabel(entry) }}</strong>
-                      <span class="text-(--selaras-resolved-text-muted)">{{ schedule(entry, date) }}</span>
+                      <span class="text-primary-700 dark:text-primary-300">{{ schedule(entry, date) }}</span>
                     </div>
-                    <dl class="detail-values grid grid-cols-5 gap-4 [&_dt]:text-[11px] [&_dt]:text-(--selaras-resolved-text-muted) [&_dt]:mb-[5px] [&_dd]:text-[13px] [&_dd]:tabular-nums max-[640px]:grid-cols-2">
+                    <dl class="detail-values grid grid-cols-5 gap-4 [&_dt]:text-[11px] [&_dt]:text-primary-700 dark:[&_dt]:text-primary-300 [&_dt]:mb-[5px] [&_dd]:text-[13px] [&_dd]:tabular-nums max-[640px]:grid-cols-2">
                       <div><dt>{{ c.clockIn }}</dt><dd>{{ time(entry.clockIn) }}</dd></div>
-                      <div><dt>{{ c.clockOut }}</dt><dd>{{ time(entry.clockOut) }}<span v-if="entry.clockOut && getCalendarDate(new Date(entry.clockOut), timezone).toString() !== date" class="text-(--selaras-resolved-text-muted)"> · {{ formatDate(getCalendarDate(new Date(entry.clockOut), timezone).toString()) }}</span></dd></div>
+                      <div><dt>{{ c.clockOut }}</dt><dd>{{ time(entry.clockOut) }}<span v-if="entry.clockOut && getCalendarDate(new Date(entry.clockOut), timezone).toString() !== date" class="text-primary-700 dark:text-primary-300"> · {{ formatDate(getCalendarDate(new Date(entry.clockOut), timezone).toString()) }}</span></dd></div>
                       <div>
                         <dt>{{ c.attendance }}</dt><dd>
                           <SBadge :color="arrivalColor(entry, date)" variant="soft">

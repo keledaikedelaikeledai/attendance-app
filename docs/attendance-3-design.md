@@ -48,6 +48,8 @@ Tailwind utilities handle report layout, responsive spacing, tabular numerals, a
 
 Expanded shift records use Selaras semantic badges: green for on-time arrival and completed departure, amber for late arrival and early departure, red for overdue check-outs or incomplete records, and blue for active attendance. Shift types and recap date actions also use colored library treatments. Status text remains explicit. Clicking any non-interactive cell toggles employee details; name and chevron buttons retain their keyboard behavior, and nested controls do not toggle the row twice.
 
+Expanded details sit inside a padded table cell, with rounded corners and a subtle inset shadow. The inner section uses the shared primary-50 surface in light mode and primary-950 in dark mode. Supporting labels and separators use the primary ramp to distinguish the detail region while maintaining readable contrast and the existing status badge colors. Hover styling applies only to employee rows; expanded sections retain their background on hover.
+
 ## Validation
 
 - `bun run build` passed (existing bundle-size and missing Sentry-token warnings).
