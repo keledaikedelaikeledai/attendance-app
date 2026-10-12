@@ -44,6 +44,7 @@ const showDelete = ref(false)
 
 const isLoading = computed(() => Boolean(pending.value))
 const mapContainer = ref<HTMLElement | null>(null)
+let mapEventsBound = false
 
 const geo = useGeofenceMap({
   editing,
@@ -51,6 +52,7 @@ const geo = useGeofenceMap({
   selectedId,
   isActive,
   mapContainer,
+  onReady: onMapReady,
 })
 const {
   geofenceType,
@@ -69,6 +71,15 @@ const {
   enterSelect,
   tileSource,
 } = geo
+
+function onMapReady() {
+  if (!mapEventsBound) {
+    bindMapEvents(id => selectFence(geofences.value.find(g => g.id === id)))
+    flyToShape({ duration: 0 })
+    mapEventsBound = true
+  }
+  resize()
+}
 
 const policyItems = computed(() => [
   { label: t('adminGeofence.form.policy.disallow'), value: 'disallow' },
@@ -147,6 +158,7 @@ watch(
       return
     if (!selectedId.value || !list.some(g => g.id === selectedId.value)) {
       applyGeofence(list[0] ?? null)
+      nextTick(() => flyToShape())
     }
   },
   { immediate: true },
@@ -161,14 +173,6 @@ function selectFence(fence: any) {
   flyToShape()
 }
 
-// Once the map is up, wire underlay clicks to selection.
-watch(mapContainer, (el) => {
-  if (!el)
-    return
-  bindMapEvents(id => selectFence(geofences.value.find(g => g.id === id)))
-  nextTick(() => resize())
-})
-
 // The edit panel animates its width, and MapLibre sizes its canvas in exact
 // pixels - it never follows a CSS width change on its own. Resyncing only at
 // the start and end of the animation leaves the canvas clipped mid-slide and
@@ -177,6 +181,7 @@ watch(mapContainer, (el) => {
 // missed end hook); the Transition's after-enter/after-leave hooks settle
 // the final frame.
 let panelResizeRaf = 0
+onBeforeUnmount(() => cancelAnimationFrame(panelResizeRaf))
 function trackPanelResize() {
   cancelAnimationFrame(panelResizeRaf)
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -189,6 +194,13 @@ function trackPanelResize() {
     panelResizeRaf = performance.now() < deadline ? requestAnimationFrame(tick) : 0
   }
   panelResizeRaf = requestAnimationFrame(tick)
+}
+
+function settleEditorLayout() {
+  resize()
+  // Fit against the final canvas width, so the docked form cannot hide the
+  // point's radius handle or the polygon's outer vertices.
+  if (editing.value && editingId.value) flyToShape({ duration: 0 })
 }
 
 watch(editing, () => {
@@ -208,7 +220,7 @@ function openCreate() {
   editing.value = true
   // Arm the point tool so the very first click on the map places the centre -
   // no separate "switch to draw" step.
-  nextTick(() => setTool('point'))
+  setTool('point')
 }
 
 function openEdit(fence: any) {
@@ -229,10 +241,10 @@ function openEdit(fence: any) {
     ? { lat: fence.centerLat, lng: fence.centerLng }
     : null
   polygon.value = Array.isArray(fence?.polygon) ? fence.polygon : []
+  tool.value = 'select'
   editing.value = true
   nextTick(() => {
     enterSelect()
-    flyToShape()
   })
 }
 
@@ -449,7 +461,7 @@ const panelTitle = computed(() => isCreate.value
       <!-- The single map. It is the drawing surface in both states. -->
       <div
         class="relative min-w-0 flex-1 overflow-hidden"
-        :class="editing && tool !== 'select' ? 'cursor-crosshair' : ''"
+        :class="editing && tool !== 'select' ? '[&_.maplibregl-canvas]:cursor-crosshair!' : ''"
       >
         <ClientOnly>
           <div class="absolute inset-0">
@@ -571,7 +583,7 @@ const panelTitle = computed(() => isCreate.value
            otherwise reflow on every animation frame. MapLibre sizes its canvas
            in pixels, so trackPanelResize re-syncs it every frame while the
            animation runs and the after hooks settle the last one. -->
-      <Transition name="edit-panel" @after-enter="resize" @after-leave="resize">
+      <Transition name="edit-panel" @after-enter="settleEditorLayout" @after-leave="resize">
         <aside
           v-if="editing"
           class="edit-panel flex shrink-0 flex-col overflow-hidden bg-[var(--selaras-resolved-surface-default)]"
