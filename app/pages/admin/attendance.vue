@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { CellStatus } from '~/utils/attendance-status'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { parseBusinessDate } from '~~/shared/utils/attendance-date'
+import { entryEarlyMinutes as entryEarlyMinutesShared, entryLateMinutes as entryLateMinutesShared, resolveCellStatus, resolveEntryStatus } from '~/utils/attendance-status'
 
 definePageMeta({ title: 'Attendance', pageTitle: 'Attendance - Admin - Attendance App' })
 
@@ -80,6 +82,13 @@ const copy = {
     errorTitle: 'Could not load the report',
     errorHelp: 'Please try refreshing.',
     emptyFiltered: 'No employees match the current search or filters.',
+    exportPdf: 'Export PDF',
+    pdfTitle: 'Attendance Report',
+    pdfGenerated: 'Generated',
+    pdfDetail: 'Daily detail',
+    pdfColType: 'Shift type',
+    pdfPage: 'Page',
+    pdfFailed: 'Could not build the PDF',
   },
   id: {
     title: 'Papan kehadiran',
@@ -128,6 +137,13 @@ const copy = {
     errorTitle: 'Gagal memuat laporan',
     errorHelp: 'Silakan coba muat ulang.',
     emptyFiltered: 'Tidak ada karyawan yang cocok dengan pencarian atau filter.',
+    exportPdf: 'Ekspor PDF',
+    pdfTitle: 'Laporan Kehadiran',
+    pdfGenerated: 'Dibuat',
+    pdfDetail: 'Rincian harian',
+    pdfColType: 'Jenis shift',
+    pdfPage: 'Halaman',
+    pdfFailed: 'Gagal membuat PDF',
   },
 }
 const c = computed(() => copy[locale.value === 'id' ? 'id' : 'en'])
@@ -193,31 +209,12 @@ const dayHead = computed(() => days.value.map((date) => {
   }
 }))
 
-type CellStatus = 'onTime' | 'late' | 'early' | 'missing' | 'none'
-
 // One status per employee-day from the already-reconciled server cells.
 // Missing check-out outranks late, which outranks a short shift: a red cell
 // says "someone never closed the shift", which is the thing most worth
 // spotting from across the room.
 function cellStatus(cell: DayCell | undefined, future: boolean): CellStatus {
-  if (!cell?.grouped)
-    return 'none'
-  const entries = Object.entries(cell.grouped).filter(([st]) => shiftType.value === 'all' || st === shiftType.value)
-  if (!entries.length)
-    return 'none'
-  if (future)
-    return entries.some(([, e]) => e.clockIn || e.clockOut) ? 'onTime' : 'none'
-  let late = false
-  let early = false
-  for (const [, e] of entries) {
-    if (e.clockIn && !e.clockOut)
-      return 'missing'
-    if (e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso))
-      late = true
-    if (e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso))
-      early = true
-  }
-  return late ? 'late' : early ? 'early' : 'onTime'
+  return resolveCellStatus(cell, future, shiftType.value)
 }
 
 const statusDot: Record<CellStatus, string> = {
@@ -308,21 +305,17 @@ const summary = computed(() => {
 // shift-type / status filters. Labels come from the copy table so the file
 // follows the UI language.
 function recordStatus(e: ShiftEntry): CellStatus {
-  if (e.clockIn && !e.clockOut)
-    return 'missing'
-  const late = !!(e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso))
-  const early = !!(e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso))
-  return late ? 'late' : early ? 'early' : 'onTime'
+  return resolveEntryStatus(e)
 }
 function statusLabel(status: CellStatus) {
   // 'early' has no direct copy key - the label lives in earlyLeave.
   return c.value[status === 'early' ? 'earlyLeave' : status]
 }
 function entryLateMinutes(e: ShiftEntry) {
-  return e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso) ? Math.round((Date.parse(e.clockIn) - Date.parse(e.shiftStartIso)) / 60_000) : ''
+  return entryLateMinutesShared(e) ?? ''
 }
 function entryEarlyMinutes(e: ShiftEntry) {
-  return e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso) ? Math.round((Date.parse(e.shiftEndIso) - Date.parse(e.clockOut)) / 60_000) : ''
+  return entryEarlyMinutesShared(e) ?? ''
 }
 function exportRecords() {
   return filtered.value.flatMap((employee) => {
@@ -380,6 +373,55 @@ async function exportXlsx() {
   link.download = `attendance-board-${month.value}.xlsx`
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+// PDF export: the document always covers the whole month for every
+// employee regardless of on-screen filters, so a printed report tells one
+// consistent story. Statuses and colors come from the shared
+// attendance-status util - the same machinery behind the board's matrix -
+// so a printed cell means what the screen shows.
+async function exportPdf() {
+  try {
+    const { buildAttendancePdf } = await import('~/utils/attendance-pdf')
+    const doc = buildAttendancePdf(
+      { month: month.value, days: days.value, rows: employees.value },
+      {
+        copy: {
+          title: c.value.pdfTitle,
+          generatedAt: c.value.pdfGenerated,
+          detailTitle: c.value.pdfDetail,
+          colType: c.value.pdfColType,
+          page: c.value.pdfPage,
+          colDate: c.value.colDate,
+          colShift: c.value.colShift,
+          colIn: c.value.colIn,
+          colOut: c.value.colOut,
+          colStatus: c.value.colStatus,
+          employee: c.value.employee,
+          totalDays: c.value.totalDays,
+          totalLate: c.value.totalLate,
+          totalMissing: c.value.totalMissing,
+          colLateMin: c.value.colLateMin,
+          colEarlyMin: c.value.colEarlyMin,
+          onTime: c.value.onTime,
+          late: c.value.late,
+          earlyLeave: c.value.earlyLeave,
+          missing: c.value.missing,
+          none: c.value.none,
+        },
+        monthLabel: monthLabel.value,
+        generatedAt: new Intl.DateTimeFormat(language.value, { dateStyle: 'medium', timeStyle: 'short', timeZone: timezone }).format(new Date()),
+        timezone,
+        language: language.value,
+        todayYmd: today.value,
+      },
+    )
+    doc.save(`attendance-${month.value}.pdf`)
+  }
+  catch (err) {
+    useToast().add({ title: c.value.pdfFailed, description: err instanceof Error ? err.message : String(err), color: 'danger' })
+    useErrorReporter().captureException(err, { context: 'attendance-pdf-export' })
+  }
 }
 
 // Drill-down drawer: a clicked cell focuses one day, a clicked name focuses
@@ -503,6 +545,15 @@ const statusItems = computed(() => [
             @click="exportXlsx()"
           >
             {{ c.export }}
+          </SButton>
+          <SButton
+            color="neutral"
+            variant="outline"
+            icon="i-heroicons-document-arrow-down"
+            :disabled="pending || !!error || !employees.length"
+            @click="exportPdf()"
+          >
+            {{ c.exportPdf }}
           </SButton>
         </div>
       </header>
