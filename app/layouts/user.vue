@@ -21,49 +21,75 @@ const items = computed(() => [
     to: '/profile',
   },
 ])
+
+// Same session fetch pattern as layouts/admin.vue: awaited at setup, never
+// inside onMounted. Feeds the mobile greeting strip.
+const { data: session } = await authClient.useSession(useFetch)
+const user = computed(() => session.value?.user ?? null)
+const displayName = computed(() => user.value?.displayName ?? user.value?.username ?? '')
+const firstName = computed(() => displayName.value.split(/\s+/).filter(Boolean)[0] ?? '')
+
+// Up to two initials as the avatar fallback, matching the profile page.
+const initials = computed(() => displayName.value
+  .split(/\s+/)
+  .filter(Boolean)
+  .slice(0, 2)
+  .map(part => part[0]?.toUpperCase() ?? '')
+  .join(''))
+
+// Time-of-day buckets follow the business clock ( Asia/Jakarta ), not the
+// browser's: an employee's phone in another timezone still greets the shift
+// they are working. 4-10 pagi, 11-14 siang, 15-18 sore, otherwise malam.
+const greetingKey = computed(() => {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Jakarta' }).format(new Date()))
+  if (hour >= 4 && hour <= 10) return 'greeting_morning'
+  if (hour >= 11 && hour <= 14) return 'greeting_afternoon'
+  if (hour >= 15 && hour <= 18) return 'greeting_evening'
+  return 'greeting_night'
+})
+const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
 </script>
 
 <template>
   <div class="min-h-screen">
-    <!-- Desktop: sticky full-width header with logo, navigation and the
-         locale/theme controls. Hidden on mobile, where the floating pill
-         replaces it. z-20 sits below the bottom bar (30) and the modal
-         overlay (40), so dialogs always cover it. -->
+    <!-- Desktop: sticky header with logo and navigation. Theme and language
+         controls live on the profile page in every viewport, so they are
+         deliberately not here. z-20 sits below the bottom bar (30) and the
+         modal overlay (40), so dialogs always cover it. -->
     <header class="sticky top-0 z-20 hidden md:block border-b border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-default)]/85 backdrop-blur">
       <SContainer class="flex h-16 items-center justify-between gap-4">
         <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="h-9 w-auto">
-        <div class="flex items-center gap-3">
-          <!-- No `highlight`: with variant="pill" the library renders both a
-               background and an underline for the active item, which reads as
-               two signals for one state. Pill alone is the single treatment. -->
-          <SNavigationMenu :items="items" />
-          <div class="h-6 w-px bg-[var(--selaras-resolved-border-muted)]" aria-hidden="true" />
-          <LocaleSwitcher />
-          <SColorModeToggle />
-        </div>
+        <!-- No `highlight`: with variant="pill" the library renders both a
+             background and an underline for the active item, which reads as
+             two signals for one state. Pill alone is the single treatment. -->
+        <SNavigationMenu :items="items" />
       </SContainer>
     </header>
 
-    <!-- Mobile: a floating pill mirroring the bottom bar's card style - the two
-         ends of the app read as one family. Carries the small logo plus the
-         locale/theme controls the old mobile header dropped. Fixed, not
-         sticky, so the page background scrolls behind it; z-20 keeps it under
-         the bottom bar (30) and modal overlays (40). -->
-    <div class="fixed inset-x-0 top-0 z-20 md:hidden">
-      <SContainer class="py-2">
-        <div class="flex h-11 items-center justify-between gap-2 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]/95 px-3 shadow-[var(--selaras-resolved-shadow-md)] backdrop-blur">
-          <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="h-6 w-auto">
-          <div class="flex items-center gap-1">
-            <LocaleSwitcher />
-            <SColorModeToggle />
-          </div>
+    <!-- Mobile: an identity strip instead of a brand bar. It confirms whose
+         session is active - the clock page can be used on shared devices - and
+         happens to be friendlier than a logo. It is not sticky, so it costs no
+         space once the user scrolls. -->
+    <SContainer class="py-6 md:py-8">
+      <div class="mb-4 flex items-center gap-3 md:hidden">
+        <SAvatar
+          v-if="firstName"
+          :src="user?.image || userAvatarUri(user?.id) || undefined"
+          :text="initials"
+          :alt="displayName"
+          size="md"
+          class="shrink-0"
+        />
+        <div class="min-w-0">
+          <p class="text-xs leading-tight text-[var(--selaras-resolved-text-muted)]">
+            {{ greeting }}
+          </p>
+          <p class="truncate text-base font-semibold leading-tight tracking-tight text-[var(--selaras-resolved-text-default)]">
+            {{ firstName || t('profile.loading') }}
+          </p>
         </div>
-      </SContainer>
-    </div>
+      </div>
 
-    <!-- pt-20 clears the fixed pill on mobile (44px pill + padding + air);
-         md gets the sticky header back, so normal padding resumes. -->
-    <SContainer class="pb-6 pt-20 md:py-8">
       <!-- pb-28 clears the fixed bottom bar on mobile. -->
       <div class="pb-28 md:pb-0">
         <slot />

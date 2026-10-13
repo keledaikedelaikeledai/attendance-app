@@ -122,7 +122,11 @@
       "home": "Beranda",
       "reports": "Laporan",
       "profile": "Profil",
-      "logoAlt": "Logo Aplikasi"
+      "logoAlt": "Logo Aplikasi",
+      "greeting_morning": "Selamat pagi,",
+      "greeting_afternoon": "Selamat siang,",
+      "greeting_evening": "Selamat sore,",
+      "greeting_night": "Selamat malam,"
     }
   },
   "adminUsers": {
