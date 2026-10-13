@@ -59,18 +59,6 @@ const PAGE_SIZE = 20
 // The card is the only frame, so the table drops its own radius and ring.
 const TABLE_UI = { wrapper: 'rounded-none ring-0' }
 
-// No user has a profile image, so every avatar is generated initials. The colour is
-// picked from the id so a given user keeps the same one, and only from roles that do
-// not carry state: a red or amber avatar would read as a warning about that person.
-const AVATAR_COLORS = ['primary', 'secondary', 'info', 'neutral'] as const
-
-function avatarColor(seed: string) {
-  let hash = 0
-  for (let i = 0; i < seed.length; i++)
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
-}
-
 function initials(name: string) {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return '?'
@@ -316,7 +304,7 @@ function getDropdownActions(user: AdminUser) {
           <SColumn field="name" :header="t('adminUsers.columns.name')">
             <template #default="{ row }">
               <div class="flex items-center gap-2">
-                <SAvatar :text="initials(row.name)" :color="avatarColor(row.id)" size="sm" />
+                <SAvatar :src="personaAvatarUri(row.id)" :text="initials(row.name)" size="sm" />
                 <span class="truncate">
                   {{ row.name }}
                 </span>

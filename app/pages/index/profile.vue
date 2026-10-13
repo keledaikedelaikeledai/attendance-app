@@ -126,12 +126,12 @@ const onSubmit = handleSubmit(async (values) => {
              class instead - SAvatar merges the consumer class into its base. -->
         <SAvatar
           v-if="!loading && (user?.user?.displayName || user?.user?.username)"
+          :src="user?.user?.image || personaAvatarUri(user?.user?.id) || undefined"
+          :text="initials"
           :alt="user?.user?.displayName ?? user?.user?.username"
           size="lg"
           class="size-16 text-xl"
-        >
-          {{ initials }}
-        </SAvatar>
+        />
         <div
           v-else
           class="grid size-16 place-items-center rounded-full border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-elevated)] text-[var(--selaras-resolved-text-muted)]"

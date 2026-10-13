@@ -94,7 +94,7 @@ const onSubmit = handleSubmit(async (values) => {
         <div class="shrink-0">
           <SAvatar
             v-if="user && (user.image || displayName !== '-')"
-            :src="user.image || undefined"
+            :src="user.image || personaAvatarUri(user.id) || undefined"
             :text="initials"
             :alt="displayName"
             size="lg"

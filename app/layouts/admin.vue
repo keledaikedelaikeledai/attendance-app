@@ -142,7 +142,7 @@ const userMenuItems = computed<DropdownItem[][]>(() => [
                 :class="isCollapsed ? 'justify-center px-0' : 'justify-start px-2'"
               >
                 <SAvatar
-                  :src="user?.user.image || undefined"
+                  :src="user?.user.image || personaAvatarUri(user?.user.id) || undefined"
                   :text="userInitials"
                   :alt="user?.user.username || 'User Avatar'"
                   :size="isCollapsed ? 'sm' : 'md'"
