@@ -3,6 +3,8 @@
     "hello": "Halo",
     "profile": "Profil",
     "signOut": "Keluar",
+    "showPassword": "Tampilkan sandi",
+    "hidePassword": "Sembunyikan sandi",
     "confirm": {
       "cancel": "Batal",
       "confirm": "Konfirmasi"

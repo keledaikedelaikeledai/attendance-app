@@ -71,13 +71,11 @@ const errors = useFormErrors()
       <!-- Hide password input in edit mode (initial provided). Password can be omitted to keep existing password. -->
       <div v-if="!props.initial" class="space-y-2">
         <SFormField label="Password" :error="errors.password" label-mode="static">
-          <SInput
+          <PasswordField
             v-model="password"
             size="lg"
-            type="password"
             placeholder="••••••••"
             icon="i-heroicons-lock-closed"
-            class="w-full"
           />
         </SFormField>
       </div>

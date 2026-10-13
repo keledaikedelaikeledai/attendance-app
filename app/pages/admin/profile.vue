@@ -187,29 +187,23 @@ const onSubmit = handleSubmit(async (values) => {
 
         <form class="space-y-4" @submit.prevent="onSubmit">
           <SFormField :label="t('profile.currentPassword')" :error="errors.currentPassword" label-mode="static">
-            <SInput
+            <PasswordField
               v-model="currentPassword"
-              type="password"
               :placeholder="t('profile.currentPassword')"
-              class="w-full"
             />
           </SFormField>
 
           <SFormField :label="t('profile.newPassword')" :error="errors.newPassword" label-mode="static">
-            <SInput
+            <PasswordField
               v-model="newPassword"
-              type="password"
               :placeholder="t('profile.newPassword')"
-              class="w-full"
             />
           </SFormField>
 
           <SFormField :label="t('profile.confirmNewPassword')" :error="errors.confirmPassword" label-mode="static">
-            <SInput
+            <PasswordField
               v-model="confirmPassword"
-              type="password"
               :placeholder="t('profile.confirmNewPassword')"
-              class="w-full"
             />
           </SFormField>
 

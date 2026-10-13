@@ -96,25 +96,21 @@ definePageMeta({
           </div>
           <div class="space-y-2">
             <SFormField label="Password" :error="errors.password" label-mode="static">
-              <SInput
+              <PasswordField
                 v-model="password"
                 size="lg"
-                type="password"
                 placeholder="••••••••"
                 icon="i-heroicons-lock-closed"
-                class="w-full"
               />
             </SFormField>
           </div>
           <div class="space-y-2">
             <SFormField label="Confirm Password" :error="errors.confirmPassword" label-mode="static">
-              <SInput
+              <PasswordField
                 v-model="confirmPassword"
                 size="lg"
-                type="password"
                 placeholder="••••••••"
                 icon="i-heroicons-lock-closed"
-                class="w-full"
               />
             </SFormField>
           </div>

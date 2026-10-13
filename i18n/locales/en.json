@@ -3,6 +3,8 @@
     "hello": "Hello",
     "profile": "Profile",
     "signOut": "Sign Out",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
     "confirm": {
       "cancel": "Cancel",
       "confirm": "Confirm"

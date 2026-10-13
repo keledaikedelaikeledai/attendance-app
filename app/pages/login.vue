@@ -13,7 +13,6 @@ const { t } = useI18n()
 const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: '' })
 const { value: password } = useField('password', toTypedSchema(z.string().min(6, 'Password must be at least 6 characters')), { initialValue: '' })
 const remember = useState('auth.remember', () => false)
-const showPassword = ref(false)
 
 // The form is dead before hydration - a click raced against it and silently
 // went nowhere, and text typed before hydration was wiped when the SSR
@@ -87,30 +86,13 @@ definePageMeta({
           </div>
           <div class="space-y-2">
             <SFormField :label="t('auth.login.password')" :error="errors.password" label-mode="static">
-              <SInput
-                id="login-password"
+              <PasswordField
                 v-model="password"
                 size="lg"
-                :type="showPassword ? 'text' : 'password'"
                 :placeholder="t('auth.login.passwordPlaceholder')"
                 icon="i-heroicons-lock-closed"
                 :disabled="!ready"
-                class="w-full"
-                :ui="{ trailing: 'pe-1' }"
-              >
-                <template #trailing>
-                  <SButton
-                    color="neutral"
-                    variant="text"
-                    size="sm"
-                    :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                    :aria-label="showPassword ? 'Hide password' : 'Show password'"
-                    :aria-pressed="showPassword"
-                    aria-controls="login-password"
-                    @click="() => { showPassword = !showPassword }"
-                  />
-                </template>
-              </SInput>
+              />
             </SFormField>
           </div>
           <SCheckbox v-model="remember" :label="t('auth.login.remember')" />

@@ -207,30 +207,15 @@ const onSubmit = handleSubmit(async (values) => {
 
       <form class="space-y-4" @submit.prevent="onSubmit">
         <SFormField :label="t('profile.currentPassword')" :error="errors.currentPassword" label-mode="static">
-          <SInput
-            v-model="currentPassword"
-            type="password"
-            :placeholder="t('profile.currentPassword')"
-            class="w-full"
-          />
+          <PasswordField v-model="currentPassword" :placeholder="t('profile.currentPassword')" />
         </SFormField>
 
         <SFormField :label="t('profile.newPassword')" :error="errors.newPassword" label-mode="static">
-          <SInput
-            v-model="newPassword"
-            type="password"
-            :placeholder="t('profile.newPassword')"
-            class="w-full"
-          />
+          <PasswordField v-model="newPassword" :placeholder="t('profile.newPassword')" />
         </SFormField>
 
         <SFormField :label="t('profile.confirmNewPassword')" :error="errors.confirmPassword" label-mode="static">
-          <SInput
-            v-model="confirmPassword"
-            type="password"
-            :placeholder="t('profile.confirmNewPassword')"
-            class="w-full"
-          />
+          <PasswordField v-model="confirmPassword" :placeholder="t('profile.confirmNewPassword')" />
         </SFormField>
 
         <SSwitch v-model="revokeOtherSessions" :label="t('profile.revokeOtherSessions')" />

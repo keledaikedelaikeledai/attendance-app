@@ -61,22 +61,18 @@ async function submit() {
     <template #body>
       <div class="space-y-4">
         <SFormField label="New password" label-mode="static">
-          <SInput
+          <PasswordField
             v-model="newPassword"
-            type="password"
             placeholder="New password"
             size="lg"
-            class="w-full"
           />
         </SFormField>
 
         <SFormField label="Confirm password" label-mode="static">
-          <SInput
+          <PasswordField
             v-model="confirmPassword"
-            type="password"
             placeholder="Confirm password"
             size="lg"
-            class="w-full"
           />
         </SFormField>
       </div>
