@@ -359,6 +359,7 @@ watch(mapStyle, (style) => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
   marker?.remove()
   marker = null
   map?.remove()
@@ -479,6 +480,11 @@ async function onConfirmClockOut() {
   geofenceComment.value = ''
 }
 
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible')
+    refresh().catch(() => {})
+}
+
 function onCancelClockOut() {
   showConfirmOut.value = false
   // reset the early reason when the user cancels to avoid leftover text
@@ -489,6 +495,10 @@ function onCancelClockOut() {
 }
 
 onMounted(async () => {
+  // Wake resync: a backgrounded tab freezes its status and duration, and a
+  // stale session state makes every button retry a request the server will
+  // 409. Resync when the tab becomes visible again.
+  document.addEventListener('visibilitychange', onVisibilityChange)
   await refresh()
   // Only ask for a fix when there is no cached one. A revisit renders the
   // cached position instantly instead of resetting and re-requesting.

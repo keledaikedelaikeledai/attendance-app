@@ -116,6 +116,10 @@
       "locationRequired": {
         "title": "Location required",
         "description": "Please allow location permission to clock in/out"
+      },
+      "clockFailed": {
+        "title": "Clock action failed",
+        "description": "Couldn't record attendance. Check your connection and try again."
       }
     }
   },

@@ -49,6 +49,24 @@ function pickClosestShiftFromShifts(now = new Date()) {
 }
 
 const clockedIn = ref<boolean>(false)
+// Ticks every 30s while a session is open so durationMs recomputes - Date.now()
+// alone is not reactive, and without a tick the displayed duration freezes at
+// whatever the page load time made it.
+const nowForDuration = ref(Date.now())
+let durationTicker: ReturnType<typeof setInterval> | null = null
+if (import.meta.client) {
+  watch(clockedIn, (active) => {
+    if (active && !durationTicker) {
+      durationTicker = setInterval(() => {
+        nowForDuration.value = Date.now()
+      }, 30_000)
+    }
+    else if (!active && durationTicker) {
+      clearInterval(durationTicker)
+      durationTicker = null
+    }
+  }, { immediate: true })
+}
 const clockInTime = ref<string | undefined>()
 const clockOutTime = ref<string | undefined>()
 // True while a clock-in or clock-out POST is in flight. The page binds it to
@@ -90,7 +108,7 @@ async function refresh() {
 
 const durationMs = computed(() => {
   if (!clockInTime.value) return 0
-  const end = clockedIn.value ? Date.now() : (clockOutTime.value ? Date.parse(clockOutTime.value) : Date.now())
+  const end = clockedIn.value ? nowForDuration.value : (clockOutTime.value ? Date.parse(clockOutTime.value) : nowForDuration.value)
   return end - Date.parse(clockInTime.value)
 })
 
@@ -155,6 +173,26 @@ async function ensureDefaultShift() {
 }
 
 interface ClockInOptions { coords?: GeolocationCoordinates, shiftCode?: ShiftCode | undefined, geofenceComment?: string, geofenceId?: string, geofenceName?: string }
+
+// A rejected clock POST used to be an unhandled rejection and nothing else:
+// the UI kept its stale session state and every retry died the same way -
+// the "second device clocked in behind this tab" case answered 409 with
+// total silence. Resync from the server instead so the page displays the
+// session that actually exists, and surface the server's message.
+async function reportClockFailure(err: unknown) {
+  try {
+    const toastInstance = (typeof useToast === 'function') ? useToast() : null
+    if (toastInstance) {
+      const i18n = (typeof useNuxtApp === 'function') ? (useNuxtApp() as any)?.$i18n : null
+      const title = i18n ? i18n.t('index.toast.clockFailed.title') : 'Clock action failed'
+      const statusMessage = (err as any)?.data?.statusMessage || (err as any)?.message
+      const description = statusMessage || (i18n ? i18n.t('index.toast.clockFailed.description') : 'Please try again.')
+      toastInstance.add({ title, description, color: 'danger' })
+    }
+  }
+  catch {}
+}
+
 async function clockIn(opts?: ClockInOptions) {
   if (submitting.value) return
   if (clockedIn.value) return
@@ -203,6 +241,10 @@ async function clockIn(opts?: ClockInOptions) {
     }
     await refresh()
   }
+  catch (err) {
+    await refresh().catch(() => {})
+    await reportClockFailure(err)
+  }
   finally {
     submitting.value = false
   }
@@ -232,6 +274,10 @@ async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | 
       clockOutTime.value = new Date().toISOString()
     }
     await refresh()
+  }
+  catch (err) {
+    await refresh().catch(() => {})
+    await reportClockFailure(err)
   }
   finally {
     submitting.value = false

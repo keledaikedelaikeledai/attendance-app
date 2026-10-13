@@ -116,6 +116,10 @@
       "locationRequired": {
         "title": "Lokasi diperlukan",
         "description": "Silakan izinkan akses lokasi untuk clock in/out"
+      },
+      "clockFailed": {
+        "title": "Absen gagal",
+        "description": "Gagal mencatat absensi. Periksa koneksi dan coba lagi."
       }
     }
   },
