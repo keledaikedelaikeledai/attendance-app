@@ -424,5 +424,13 @@
       "cardText": "For security reasons password resets are handled by an administrator. Reach out to your admin to request a reset.",
       "back": "Back to Login"
     }
+  },
+  "weather": {
+    "clear": "Clear",
+    "cloudy": "Cloudy",
+    "partly": "Partly cloudy",
+    "rain": "Rain",
+    "snow": "Snow",
+    "storm": "Thunderstorm"
   }
 }

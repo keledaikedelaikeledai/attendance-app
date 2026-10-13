@@ -59,10 +59,15 @@ const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
     <header class="sticky top-0 z-20 hidden md:block border-b border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-default)]/85 backdrop-blur">
       <SContainer class="flex h-16 items-center justify-between gap-4">
         <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="h-9 w-auto">
-        <!-- No `highlight`: with variant="pill" the library renders both a
-             background and an underline for the active item, which reads as
-             two signals for one state. Pill alone is the single treatment. -->
-        <SNavigationMenu :items="items" />
+        <div class="flex items-center gap-4">
+          <!-- No `highlight`: with variant="pill" the library renders both a
+               background and an underline for the active item, which reads as
+               two signals for one state. Pill alone is the single treatment. -->
+          <SNavigationMenu :items="items" />
+          <ClientOnly>
+            <WeatherChip />
+          </ClientOnly>
+        </div>
       </SContainer>
     </header>
 
@@ -80,7 +85,7 @@ const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
           size="md"
           class="shrink-0"
         />
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1">
           <p class="text-xs leading-tight text-[var(--selaras-resolved-text-muted)]">
             {{ greeting }}
           </p>
@@ -88,6 +93,9 @@ const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
             {{ firstName || t('profile.loading') }}
           </p>
         </div>
+        <ClientOnly>
+          <WeatherChip />
+        </ClientOnly>
       </div>
 
       <!-- pb-28 clears the fixed bottom bar on mobile. -->

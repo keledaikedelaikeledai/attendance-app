@@ -424,5 +424,13 @@
       "cardText": "Untuk alasan keamanan, reset kata sandi ditangani oleh administrator. Hubungi admin Anda untuk meminta reset.",
       "back": "Kembali ke Login"
     }
+  },
+  "weather": {
+    "clear": "Cerah",
+    "cloudy": "Berawan",
+    "partly": "Cerah berawan",
+    "rain": "Hujan",
+    "snow": "Salju",
+    "storm": "Hujan badai"
   }
 }
