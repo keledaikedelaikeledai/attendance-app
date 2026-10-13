@@ -4,10 +4,7 @@ import { createError, readBody } from 'h3'
 import { geoFence } from '~~/server/database/schemas'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
-
-type GeofenceType = 'point' | 'polygon'
-
-type InteractionMode = 'disallow' | 'allow' | 'allow_with_comment'
+import { parseGeofenceInput } from '../../utils/geofence-input'
 
 function isAllowedAdmin(email?: string | null) {
   const raw = process.env.NUXT_ADMIN_EMAILS || ''
@@ -19,11 +16,6 @@ function isAllowedAdmin(email?: string | null) {
   return list.includes(String(email).toLowerCase())
 }
 
-function toNumberOrNull(v: any) {
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
   const session = await auth.api.getSession({ headers: event.node.req.headers as any })
@@ -33,45 +25,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
 
   const body = await readBody<any>(event)
-  const isActive = Boolean(body?.isActive)
-  const interactionMode: InteractionMode = body?.interactionMode === 'allow_with_comment'
-    ? 'allow_with_comment'
-    : body?.interactionMode === 'allow'
-      ? 'allow'
-      : 'disallow'
-  const name = typeof body?.name === 'string' && body.name.trim() ? body.name.trim() : 'Untitled geofence'
-  const type: GeofenceType = body?.type === 'polygon' ? 'polygon' : 'point'
-  const radiusMeters = toNumberOrNull(body?.radiusMeters)
-  const centerLat = toNumberOrNull(body?.centerLat)
-  const centerLng = toNumberOrNull(body?.centerLng)
-  const polygonRaw = Array.isArray(body?.polygon) ? body.polygon : []
-
-  let polygon: Array<[number, number]> = []
-  if (polygonRaw.length) {
-    polygon = polygonRaw
-      .map((p: any) => Array.isArray(p) && p.length >= 2 ? [Number(p[0]), Number(p[1])] as [number, number] : null)
-      .filter((p: any) => Array.isArray(p) && p.every(q => Number.isFinite(q))) as Array<[number, number]>
-  }
-
-  if (type === 'point' && (centerLat == null || centerLng == null)) {
-    throw createError({ statusCode: 400, statusMessage: 'Center lat/lng are required for point mode' })
-  }
-  if (type === 'polygon' && polygon.length < 3) {
-    throw createError({ statusCode: 400, statusMessage: 'Polygon requires at least 3 points' })
-  }
+  const input = parseGeofenceInput(body)
 
   const now = new Date()
   const db = useDb()
   const payload = {
     id: randomUUID(),
-    name,
-    isActive,
-    interactionMode,
-    type,
-    centerLat: type === 'point' ? centerLat : null,
-    centerLng: type === 'point' ? centerLng : null,
-    radiusMeters: radiusMeters ?? null,
-    polygon: type === 'polygon' ? polygon : null,
+    ...input,
     createdAt: now,
     updatedAt: now,
   }
@@ -79,8 +39,8 @@ export default defineEventHandler(async (event) => {
   await db.insert(geoFence).values(payload)
 
   const log = useLogger()
-  log.info({ name, type, isActive, interactionMode }, 'Geofence created')
-  trackServerEvent('admin.geofence.create', { name, type })
+  log.info({ name: input.name, type: input.type, isActive: input.isActive, interactionMode: input.interactionMode }, 'Geofence created')
+  trackServerEvent('admin.geofence.create', { name: input.name, type: input.type })
 
   return { geofence: payload }
 })
