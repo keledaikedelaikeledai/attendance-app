@@ -72,7 +72,8 @@
     "onTime": "On time",
     "missingOut": "Missing check-out",
     "dayDetail": "Day detail",
-    "minutes": "min"
+    "minutes": "min",
+    "running": "In progress"
   },
   "index": {
     "clockedIn": "Clocked In",

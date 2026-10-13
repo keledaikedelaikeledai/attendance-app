@@ -72,7 +72,8 @@
     "onTime": "Tepat waktu",
     "missingOut": "Belum absen keluar",
     "dayDetail": "Detail hari",
-    "minutes": "mnt"
+    "minutes": "mnt",
+    "running": "Sedang bekerja"
   },
   "index": {
     "clockedIn": "Sudah Masuk",

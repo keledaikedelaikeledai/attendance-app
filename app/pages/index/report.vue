@@ -2,7 +2,7 @@
 import type { CellStatus } from '~/utils/attendance-status'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { earlyShortfallMs, lateDelayMs } from '~~/shared/utils/attendance-grace'
+import { ATTENDANCE_GRACE_MS, earlyShortfallMs, lateDelayMs } from '~~/shared/utils/attendance-grace'
 
 interface ReportSummary {
   month: string
@@ -29,6 +29,7 @@ interface DaySummary {
   clockOutLng?: number | null
   clockOutAccuracy?: number | null
   lateMs?: number
+  running?: boolean
   logs?: Array<any>
 }
 
@@ -257,6 +258,21 @@ async function fetchReport() {
             }
           }
 
+          // Open shift: running while inside the expected window, missing
+          // after - same rule as the aggregated path on the server.
+          let running = false
+          if (clockIn && !clockOut) {
+            const runningDef = chosenShiftCode ? shiftMap.get(chosenShiftCode) : undefined
+            if (runningDef) {
+              const { endMs: runningEnd } = computeShiftSpanFromDate(date, runningDef.start, runningDef.end)
+              running = Date.now() < runningEnd + ATTENDANCE_GRACE_MS
+            }
+            else {
+              const todayYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(Date.now())
+              running = date === todayYmd
+            }
+          }
+
           if (st === 'harian') totalHarian++
           if (st === 'bantuan') totalBantuan++
 
@@ -274,6 +290,7 @@ async function fetchReport() {
             clockOutAccuracy: clockOut?.accuracy ?? null,
             lateMs,
             earlyMs,
+            running,
             logs: groupLogs,
           })
         }
@@ -372,22 +389,30 @@ function nextMonth() {
 
 // One status per day, same precedence as the admin board: a day missing its
 // check-out is the loudest signal, then late, then early. The report endpoint
-// hands us per-shift lateMs/earlyMs directly, so no shift-time math happens
-// here - only the ranking.
+// hands us per-shift lateMs/earlyMs and the running flag for open shifts, so
+// no shift-time math happens here - only the ranking.
 function dayStatus(day: DaySummary): CellStatus {
   const shifts = day.shifts ?? []
   let recorded = false
   let late = false
   let early = false
   let missing = false
+  let running = false
   for (const s of shifts) {
     const hasIn = !!s.clockIn
     const hasOut = !!s.clockOut
     if (!hasIn && !hasOut)
       continue
     recorded = true
-    if (hasIn && !hasOut)
-      missing = true
+    if (hasIn && !hasOut) {
+      // Open shift: the endpoint marks it running while the expected window
+      // is still open - a mid-shift worker is not a missed check-out.
+      if (s.running)
+        running = true
+      else
+        missing = true
+      continue
+    }
     if ((s.lateMs ?? 0) > 0)
       late = true
     if ((s.earlyMs ?? 0) > 0)
@@ -401,6 +426,8 @@ function dayStatus(day: DaySummary): CellStatus {
     return 'late'
   if (early)
     return 'early'
+  if (running)
+    return 'running'
   return 'onTime'
 }
 
@@ -409,6 +436,7 @@ const statusDot: Record<CellStatus, string> = {
   late: 'bg-amber-500 dark:bg-amber-400',
   early: 'bg-violet-500 dark:bg-violet-400',
   missing: 'bg-red-500 dark:bg-red-400',
+  running: 'bg-sky-500 dark:bg-sky-400',
   none: 'bg-gray-200 dark:bg-neutral-700',
 }
 
@@ -422,6 +450,8 @@ function statusLabelKey(status: CellStatus) {
     return 'report.early'
   if (status === 'missing')
     return 'report.missingOut'
+  if (status === 'running')
+    return 'report.running'
   return 'report.noShifts'
 }
 
@@ -643,6 +673,14 @@ watch(selectedMonth, fetchReport)
                   size="sm"
                 >
                   {{ t('report.missingOut') }}
+                </SBadge>
+                <SBadge
+                  v-else-if="dayStatus(d) === 'running'"
+                  color="info"
+                  variant="soft"
+                  size="sm"
+                >
+                  {{ t('report.running') }}
                 </SBadge>
                 <SBadge
                   v-else-if="dayStatus(d) === 'late'"

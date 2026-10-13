@@ -6,7 +6,7 @@
 
 import { earlyMinutes as earlyMinutesGrace, lateMinutes as lateMinutesGrace } from '../../shared/utils/attendance-grace'
 
-export type CellStatus = 'onTime' | 'late' | 'early' | 'missing' | 'none'
+export type CellStatus = 'onTime' | 'late' | 'early' | 'missing' | 'running' | 'none'
 
 export interface AttendanceShiftEntryLike {
   clockIn?: string | null
@@ -25,12 +25,17 @@ export interface AttendanceEntryStatusLike {
   clockOut?: string | null
   shiftStartIso?: string | null
   shiftEndIso?: string | null
+  // Server-side flag: an open shift (clock-in, no clock-out) whose expected
+  // shift window has not ended yet. Without it, open = missing.
+  running?: boolean
 }
 
 // One status per employee-day from the already-reconciled server cells.
 // Missing check-out outranks late, which outranks a short shift: a red cell
 // says "someone never closed the shift", which is the thing most worth
-// spotting from across the room.
+// spotting from across the room. An open shift that is still inside its
+// expected window is "running" instead - someone mid-shift is not a problem,
+// and coloring it red would cry wolf every day.
 export function resolveCellStatus(
   cell: AttendanceDayCellLike | undefined,
   future: boolean,
@@ -45,22 +50,27 @@ export function resolveCellStatus(
     return entries.some(([, e]) => e.clockIn || e.clockOut) ? 'onTime' : 'none'
   let late = false
   let early = false
+  let hasRunning = false
   for (const [, e] of entries) {
-    if (e.clockIn && !e.clockOut)
-      return 'missing'
+    if (e.clockIn && !e.clockOut) {
+      if (!e.running)
+        return 'missing'
+      hasRunning = true
+      continue
+    }
     if (lateMinutesGrace(e.clockIn, e.shiftStartIso) != null)
       late = true
     if (earlyMinutesGrace(e.clockOut, e.shiftEndIso) != null)
       early = true
   }
-  return late ? 'late' : early ? 'early' : 'onTime'
+  return late ? 'late' : early ? 'early' : hasRunning ? 'running' : 'onTime'
 }
 
 // Per-shift-record status for row-level exports (Excel, PDF detail sheets):
 // no session-level aggregation, just this entry's in/out vs its snapshot.
 export function resolveEntryStatus(e: AttendanceEntryStatusLike): Exclude<CellStatus, 'none'> {
   if (e.clockIn && !e.clockOut)
-    return 'missing'
+    return e.running ? 'running' : 'missing'
   const late = lateMinutesGrace(e.clockIn, e.shiftStartIso) != null
   const early = earlyMinutesGrace(e.clockOut, e.shiftEndIso) != null
   return late ? 'late' : early ? 'early' : 'onTime'
