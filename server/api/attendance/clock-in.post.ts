@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, or, sql } from 'drizzle-orm'
+import { and, desc, eq, or, sql } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { addBusinessDays, formatBusinessDate, getCalendarDate, parseBusinessDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { validateAttendanceShiftDefinition, validateAttendanceShiftType } from '../../utils/attendance-shift-validation'
 import { useDb } from '../../utils/db'
+import { normalizeTimestampRaw } from '../../utils/time'
 
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
@@ -48,13 +49,14 @@ export default defineEventHandler(async (event) => {
       : calendarDate
     const previousDate = formatBusinessDate(addBusinessDays(parseBusinessDate(targetDate), -1))
 
+    // One open session per user across ALL dates: a session left open days
+    // ago must be clocked out (clock-out can close any open session now),
+    // not silently orphaned by starting a new one.
+    const recentLogs = await tx.select().from(attendanceLog).where(eq(attendanceLog.userId, userId)).orderBy(desc(attendanceLog.timestamp)).limit(500)
+    const allLogsAscending = [...recentLogs].sort((a, b) => normalizeTimestampRaw(a.timestamp) - normalizeTimestampRaw(b.timestamp))
+    if (findOpenClockIn(allLogsAscending)) throw createError({ statusCode: 409, statusMessage: 'Attendance session is already open' })
+
     const existingLogs = await tx.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, targetDate), eq(attendanceLog.date, previousDate)))).orderBy(attendanceLog.timestamp)
-    let openClockIn: typeof existingLogs[number] | undefined
-    for (const log of existingLogs) {
-      if (log.type === 'clock-in') openClockIn = log
-      else if (log.type === 'clock-out' && openClockIn) openClockIn = undefined
-    }
-    if (openClockIn) throw createError({ statusCode: 409, statusMessage: 'Attendance session is already open' })
 
     // A business date may contain one completed Harian session and one completed
     // Bantuan session, but never two sessions of the same type. Older logs with a

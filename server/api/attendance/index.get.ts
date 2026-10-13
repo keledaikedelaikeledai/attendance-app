@@ -46,13 +46,9 @@ export default defineEventHandler(async (event) => {
   // A valid open session may belong to the previous business date after midnight.
   if (!clockIn || clockOut) {
     try {
-      const recentLogs = await db.select().from(attendanceLog).where(eq(attendanceLog.userId, userId)).orderBy(desc(attendanceLog.timestamp)).limit(200)
+      const recentLogs = await db.select().from(attendanceLog).where(eq(attendanceLog.userId, userId)).orderBy(desc(attendanceLog.timestamp)).limit(500)
       const asc = [...recentLogs].sort((a, b) => normalizeTimestampRaw(a.timestamp) - normalizeTimestampRaw(b.timestamp)) as Log[]
-      let openClockIn: Log | undefined
-      for (const log of asc) {
-        if (log.type === 'clock-in') openClockIn = log
-        else if (log.type === 'clock-out' && openClockIn) openClockIn = undefined
-      }
+      const openClockIn = findOpenClockIn(asc)
 
       if (openClockIn?.date) {
         const openDateLogs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, openClockIn.date))).orderBy(desc(attendanceLog.timestamp)) as Log[]

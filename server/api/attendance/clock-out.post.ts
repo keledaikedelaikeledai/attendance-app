@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, or, sql } from 'drizzle-orm'
+import { and, desc, eq, sql } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
-import { addBusinessDays, formatBusinessDate, getCalendarDate, parseBusinessDate } from '~~/shared/utils/attendance-date'
+import { formatBusinessDate, getCalendarDate } from '~~/shared/utils/attendance-date'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { useDb } from '../../utils/db'
+import { normalizeTimestampRaw } from '../../utils/time'
 
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
@@ -35,19 +36,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Invalid timeZone' })
   }
   const currentDateText = formatBusinessDate(currentDate)
-  const previousDateText = formatBusinessDate(addBusinessDays(parseBusinessDate(currentDateText), -1))
 
   const result = await db.transaction(async (tx) => {
     // Serialize attendance mutations per user so concurrent clock-out/in requests see one state.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`)
 
-    const candidateLogs = await tx.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, currentDateText), eq(attendanceLog.date, previousDateText)))).orderBy(attendanceLog.timestamp)
+    // The open session is searched across ALL of the user's logs: a session
+    // left open days ago must still be closeable, and its clock-out belongs
+    // to the day the clock-in belongs to (targetDate below).
+    const recentLogs = await tx.select().from(attendanceLog).where(eq(attendanceLog.userId, userId)).orderBy(desc(attendanceLog.timestamp)).limit(500)
+    const candidateLogs = [...recentLogs].sort((a, b) => normalizeTimestampRaw(a.timestamp) - normalizeTimestampRaw(b.timestamp))
 
-    let openClockIn: typeof candidateLogs[number] | undefined
-    for (const log of candidateLogs) {
-      if (log.type === 'clock-in') openClockIn = log
-      else if (log.type === 'clock-out' && openClockIn) openClockIn = undefined
-    }
+    const openClockIn = findOpenClockIn(candidateLogs)
     if (!openClockIn) throw createError({ statusCode: 409, statusMessage: 'No open attendance session' })
 
     const targetDate = openClockIn.date || currentDateText
