@@ -704,11 +704,9 @@ const panelTitle = computed(() => isCreate.value
     <SModal
       v-model:open="showDelete"
       :title="t('adminGeofence.confirm.deleteTitle')"
+      :description="t('adminGeofence.confirm.deleteBody', { name: name || fenceName(geofences.find(g => g.id === editingId)) })"
     >
       <template #body>
-        <p class="text-sm text-[var(--selaras-resolved-text-default)]">
-          {{ t('adminGeofence.confirm.deleteBody', { name: name || fenceName(geofences.find(g => g.id === editingId)) }) }}
-        </p>
         <div class="flex justify-end gap-2 mt-4">
           <SButton color="neutral" variant="soft" @click="showDelete = false">
             {{ t('common.confirm.cancel') }}

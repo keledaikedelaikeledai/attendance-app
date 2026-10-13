@@ -310,13 +310,17 @@ async function initMap() {
     // at the bundled file explicitly. Without this every tile fails with
     // "Worker failed to load".
     setWorkerUrl(mapWorkerUrl)
+    // transformStyle is a setStyle-only option (the constructor accepts none),
+    // so the map starts style-less and the fetched style JSON is sanitized
+    // before it is committed - the basemap's null-fragile feature comparisons
+    // can then no longer warn per parsed tile.
     map = new MLMap({
       container: mapContainer.value,
-      style: mapStyle.value,
       center: [coords.value.lng ?? 106.8, coords.value.lat ?? -6.49],
       zoom: hasLocation.value ? 17 : 14,
       attributionControl: { compact: true },
     })
+    map.setStyle(mapStyle.value, { transformStyle: sanitizedMapStyleTransform })
     marker = new MLMarker()
     if (hasLocation.value)
       marker.setLngLat([coords.value.lng!, coords.value.lat!]).addTo(map)
@@ -348,9 +352,10 @@ watch(coords, (c) => {
 })
 
 // A theme change re-styles in place. Markers are DOM overlays, not style
-// layers, so they survive setStyle untouched.
+// layers, so they survive setStyle untouched. The transform keeps the
+// null-comparison sanitizing applied across basemap swaps too.
 watch(mapStyle, (style) => {
-  map?.setStyle(style)
+  map?.setStyle(style, { transformStyle: sanitizedMapStyleTransform })
 })
 
 onBeforeUnmount(() => {
@@ -717,13 +722,9 @@ onMounted(async () => {
       </ClientOnly>
     </SCard>
 
-    <SModal v-model:open="showConfirmOut" :title="t('index.modal.title')">
+    <SModal v-model:open="showConfirmOut" :title="t('index.modal.title')" :description="confirmOutMessage">
       <template #body>
-        <p class="text-sm text-[var(--selaras-resolved-text-muted)]">
-          {{ confirmOutMessage }}
-        </p>
-
-        <div v-if="isEarlyOut" class="mt-3">
+        <div v-if="isEarlyOut">
           <SFormField :label="t('index.modal.reasonLabel')" label-mode="static">
             <STextarea
               v-model="earlyReason"
@@ -755,11 +756,12 @@ onMounted(async () => {
       </template>
     </SModal>
 
-    <SModal v-model:open="geofenceBlocked" title="Outside allowed area">
+    <SModal
+      v-model:open="geofenceBlocked"
+      title="Outside allowed area"
+      :description="geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.'"
+    >
       <template #body>
-        <p class="text-sm text-[var(--selaras-resolved-text-muted)]">
-          {{ geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.' }}
-        </p>
         <div class="flex justify-end gap-2 mt-4">
           <SButton color="primary" variant="solid" @click="() => { geofenceBlocked = false }">
             OK
@@ -768,12 +770,13 @@ onMounted(async () => {
       </template>
     </SModal>
 
-    <SModal v-model:open="geofenceCommentModalOpen" title="Comment required">
+    <SModal
+      v-model:open="geofenceCommentModalOpen"
+      title="Comment required"
+      :description="geofenceBlockedMessage || 'You are outside the allowed area. Please add a comment to continue.'"
+    >
       <template #body>
-        <p class="text-sm text-[var(--selaras-resolved-text-muted)]">
-          {{ geofenceBlockedMessage || 'You are outside the allowed area. Please add a comment to continue.' }}
-        </p>
-        <div class="mt-3">
+        <div>
           <SFormField label="Comment" label-mode="static">
             <STextarea
               v-model="geofenceComment"

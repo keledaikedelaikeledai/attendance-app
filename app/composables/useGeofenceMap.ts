@@ -1,6 +1,7 @@
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { geofenceShapeFeatures } from '~/utils/geofence-draw-state'
 import { GEOFENCE_DRAW_PREFIX, preserveGeofenceOverlays } from '~/utils/geofence-map-style'
+import { sanitizeMapStyle } from '~/utils/map-style'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 // Everything about the map itself: the MapLibre instance, the layers, the
@@ -916,13 +917,17 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
       // load". Must happen before the Map is constructed: the map spawns its
       // worker immediately, so setting it afterwards leaves a blank canvas.
       mapLib.setWorkerUrl(mapWorkerUrl)
+      // transformStyle is a setStyle-only option (the constructor accepts
+      // none), so the map starts style-less; the fetched style is sanitized
+      // before it is committed. The draw-overlay preservation still runs on
+      // later swaps (setStyle below) with the sanitizer applied first.
       map = new mapLib.Map({
         container: mapContainer.value,
-        style: mapStyle.value,
         center: mapCenter.value,
         zoom: mapZoom.value,
         attributionControl: { compact: true },
       })
+      map.setStyle(mapStyle.value, { transformStyle: sanitizedMapStyleTransform })
     }
     catch (err) {
       // Display-only, but a failure here must not block editing: report it and
@@ -1035,7 +1040,10 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   })
 
   watch(mapStyle, (style) => {
-    map?.setStyle(style, { transformStyle: preserveGeofenceOverlays })
+    map?.setStyle(style, {
+      transformStyle: (previous, next) =>
+        preserveGeofenceOverlays(previous, sanitizeMapStyle(next)),
+    })
   })
 
   // Keep the handle glued to the ring edge as the radius or centre changes,
