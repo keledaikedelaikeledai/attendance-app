@@ -48,6 +48,12 @@ const greetingKey = computed(() => {
   return 'greeting_night'
 })
 const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
+
+// The profile page opens with its own full identity card, so the greeting
+// strip would repeat the same avatar one card apart. It slides out of the
+// way there and returns on every other page.
+const route = useRoute()
+const showGreeting = computed(() => route.path !== '/profile')
 </script>
 
 <template>
@@ -71,32 +77,35 @@ const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
       </SContainer>
     </header>
 
-    <!-- Mobile: an identity strip instead of a brand bar. It confirms whose
+    <!-- Mobile: an identity card instead of a brand bar. It confirms whose
          session is active - the clock page can be used on shared devices - and
          happens to be friendlier than a logo. It is not sticky, so it costs no
-         space once the user scrolls. -->
+         space once the user scrolls, and it slides away on the profile page,
+         whose own identity card would repeat it. -->
     <SContainer class="py-6 md:py-8">
-      <div class="mb-4 flex items-center gap-3 md:hidden">
-        <SAvatar
-          v-if="firstName"
-          :src="user?.image || userAvatarUri(user?.id) || undefined"
-          :text="initials"
-          :alt="displayName"
-          size="md"
-          class="shrink-0"
-        />
-        <div class="min-w-0 flex-1">
-          <p class="text-xs leading-tight text-[var(--selaras-resolved-text-muted)]">
-            {{ greeting }}
-          </p>
-          <p class="truncate text-base font-semibold leading-tight tracking-tight text-[var(--selaras-resolved-text-default)]">
-            {{ firstName || t('profile.loading') }}
-          </p>
-        </div>
-        <ClientOnly>
-          <WeatherChip />
-        </ClientOnly>
-      </div>
+      <Transition name="greeting-slide">
+        <SCard v-if="showGreeting" class="mb-4 md:hidden" :ui="{ body: 'flex items-center gap-3 p-4' }">
+          <SAvatar
+            v-if="firstName"
+            :src="user?.image || userAvatarUri(user?.id) || undefined"
+            :text="initials"
+            :alt="displayName"
+            size="md"
+            class="shrink-0"
+          />
+          <div class="min-w-0 flex-1">
+            <p class="text-xs leading-tight text-[var(--selaras-resolved-text-muted)]">
+              {{ greeting }}
+            </p>
+            <p class="truncate text-base font-semibold leading-tight tracking-tight text-[var(--selaras-resolved-text-default)]">
+              {{ firstName || t('profile.loading') }}
+            </p>
+          </div>
+          <ClientOnly>
+            <WeatherChip />
+          </ClientOnly>
+        </SCard>
+      </Transition>
 
       <!-- pb-28 clears the fixed bottom bar on mobile. -->
       <div class="pb-28 md:pb-0">
@@ -131,3 +140,27 @@ const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The greeting card folds away on the profile page and unfolds back
+   elsewhere: max-height + margin collapse so content below slides up
+   smoothly, translateY + opacity for the "dice down/out" feel. */
+.greeting-slide-enter-active,
+.greeting-slide-leave-active {
+  transition:
+    max-height 0.3s ease,
+    margin-bottom 0.3s ease,
+    opacity 0.3s ease,
+    transform 0.3s ease;
+  max-height: 6rem;
+  overflow: hidden;
+}
+
+.greeting-slide-enter-from,
+.greeting-slide-leave-to {
+  max-height: 0;
+  margin-bottom: 0 !important;
+  opacity: 0;
+  transform: translateY(-0.5rem);
+}
+</style>
