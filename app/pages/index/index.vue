@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import type { ShiftDef } from '~/types/shifts'
-import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
+// Served from public/maplibre/ (kept version-locked with the installed
+// maplibre-gl by scripts/sync-maplibre-worker.cjs). The dist worker imports
+// './maplibre-gl-shared.mjs', which Vite does NOT emit for ?url imports -
+// pointing at /_nuxt killed every map with "Worker failed to load" in prod.
+const mapWorkerUrl = '/maplibre/maplibre-gl-worker.mjs'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { evaluateGeofence as evaluateGeofenceAt, formatDistance } from '~~/shared/utils/geofence-geo'

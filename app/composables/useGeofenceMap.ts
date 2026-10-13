@@ -1,4 +1,8 @@
-import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
+// Served from public/maplibre/ (kept version-locked with the installed
+// maplibre-gl by scripts/sync-maplibre-worker.cjs). The dist worker imports
+// './maplibre-gl-shared.mjs', which Vite does NOT emit for ?url imports -
+// pointing at /_nuxt killed every map with "Worker failed to load" in prod.
+const mapWorkerUrl = '/maplibre/maplibre-gl-worker.mjs'
 import { geofenceShapeFeatures } from '~/utils/geofence-draw-state'
 import { GEOFENCE_DRAW_PREFIX, preserveGeofenceOverlays } from '~/utils/geofence-map-style'
 import { sanitizeMapStyle } from '~/utils/map-style'

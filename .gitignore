@@ -35,3 +35,6 @@ baseline-audit.txt
 # Sentry Config File
 .env.sentry-build-plugin
 .mimocode
+
+# maplibre worker pair - synced from node_modules by scripts/sync-maplibre-worker.cjs
+/public/maplibre/
