@@ -109,6 +109,44 @@ function getDropdownActions(user: AdminUser) {
     },
   })
 
+  // Impersonation is session-swapping, so it gets a confirmation like the
+  // role changes. Hidden on admin rows: the default admin role has the
+  // `impersonate` permission but not `impersonate-admins`, so the server
+  // would reject those anyway.
+  if (user.role !== 'admin') {
+    actions.push({
+      label: t('adminUsers.actions.impersonate'),
+      value: 'impersonate',
+      icon: 'i-heroicons-arrows-right-left',
+      async onSelect() {
+        const isConfirmed = await confirm({
+          icon: 'i-heroicons-arrows-right-left',
+          title: t('adminUsers.confirmations.impersonate.title'),
+          description: t('adminUsers.confirmations.impersonate.description', { name: user.name }),
+          confirmColor: 'primary',
+          confirmLabel: t('common.confirm.confirm'),
+          cancelLabel: t('common.confirm.cancel'),
+        })
+
+        if (!isConfirmed)
+          return
+
+        try {
+          const { error } = await authClient.admin.impersonateUser({ userId: user.id })
+          if (error) throw error
+          // The session cookie now belongs to the target user. Hard
+          // navigation reboots every client cache (useSession, layout
+          // guards) as them; the return trip is handled by
+          // ImpersonationBanner in the user layout.
+          window.location.assign('/')
+        }
+        catch (err: any) {
+          toast.add({ title: t('adminUsers.toasts.error.title'), description: err?.message || t('adminUsers.toasts.error.description', { message: 'Failed to impersonate user' }), color: 'danger' })
+        }
+      },
+    })
+  }
+
   if (user.role !== 'admin') {
     actions.push({
       label: t('adminUsers.actions.makeAdmin'),
