@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const items = computed(() => [
   {
@@ -37,16 +37,14 @@ const initials = computed(() => displayName.value
   .map(part => part[0]?.toUpperCase() ?? '')
   .join(''))
 
-// Time-of-day buckets follow the business clock ( Asia/Jakarta ), not the
+// Time-of-day greeting per the business clock ( Asia/Jakarta ), not the
 // browser's: an employee's phone in another timezone still greets the shift
-// they are working. 4-10 pagi, 11-14 siang, 15-18 sore, otherwise malam.
-const greetingKey = computed(() => {
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Jakarta' }).format(new Date()))
-  if (hour >= 4 && hour <= 10) return 'greeting_morning'
-  if (hour >= 11 && hour <= 14) return 'greeting_afternoon'
-  if (hour >= 15 && hour <= 18) return 'greeting_evening'
-  return 'greeting_night'
-})
+// they are working. Bucket boundaries are language-specific - see
+// app/utils/greeting.ts.
+const greetingKey = computed(() => greetingKeyFor(
+  Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Jakarta' }).format(new Date())),
+  locale.value,
+))
 const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
 
 // The profile page opens with its own full identity card, so the greeting
