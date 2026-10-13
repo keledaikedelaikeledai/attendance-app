@@ -1,1492 +1,836 @@
 <script setup lang="ts">
-import type { DropdownItem } from '@sewadah/selaras/types'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { parseBusinessDate } from '~~/shared/utils/attendance-date'
 
-import * as attendanceTime from '~/composables/useAttendanceTime'
+definePageMeta({ title: 'Attendance', pageTitle: 'Attendance - Admin - Attendance App' })
 
-const toast = useToast()
+interface ShiftEntry {
+  clockIn?: string | null
+  clockOut?: string | null
+  shiftCode?: string | null
+  shiftStartIso?: string | null
+  shiftEndIso?: string | null
+  earlyReason?: string | null
+}
+interface DayCell {
+  entries: unknown[]
+  grouped?: Record<string, ShiftEntry>
+  lateMs?: number
+  earlyMs?: number
+  workingShifts?: number
+}
+interface Employee {
+  userId: string
+  email?: string | null
+  name?: string | null
+  username?: string | null
+  byDate: Record<string, DayCell>
+}
+interface Report { month: string, days: string[], rows: Employee[] }
 
-const month = ref<string>(new Date().toISOString().slice(0, 7)) // YYYY-MM
+const { locale } = useI18n()
+const timezone = 'Asia/Jakarta'
 
-const { data, refresh, status } = await useFetch('/api/admin/attendance', {
-  query: { month },
-  credentials: 'include',
+const copy = {
+  en: {
+    title: 'Attendance board',
+    intro: 'Every employee against every day of the month. Click a cell for that shift\'s detail, a name for the whole month.',
+    refresh: 'Refresh',
+    export: 'Export Excel',
+    today: 'Today',
+    prev: 'Previous month',
+    next: 'Next month',
+    close: 'Close',
+    search: 'Search name, username or email…',
+    searchLabel: 'Search employees',
+    allShifts: 'All shifts',
+    allStatuses: 'All statuses',
+    onTime: 'On time',
+    late: 'Late',
+    earlyLeave: 'Left early',
+    missing: 'Missing check-out',
+    none: 'No record',
+    employee: 'Employee',
+    days: 'Days',
+    lateCol: 'Late',
+    dayDetails: 'Day detail',
+    monthSummary: 'Month summary',
+    showMonth: 'Show month summary',
+    in: 'In',
+    out: 'Out',
+    minutes: 'min',
+    early: 'left early by',
+    note: 'Note',
+    noRecords: 'No records for this day.',
+    futureDay: 'Not yet recorded - day is in the future.',
+    colDate: 'Date',
+    colEmail: 'Email',
+    colShift: 'Shift',
+    colCode: 'Code',
+    colIn: 'Clock in',
+    colOut: 'Clock out',
+    colStatus: 'Status',
+    colLateMin: 'Late (min)',
+    colEarlyMin: 'Left early (min)',
+    colReason: 'Reason',
+    totalDays: 'Days worked',
+    totalLate: 'Late arrivals',
+    totalMissing: 'Missing check-outs',
+    errorTitle: 'Could not load the report',
+    errorHelp: 'Please try refreshing.',
+    emptyFiltered: 'No employees match the current search or filters.',
+  },
+  id: {
+    title: 'Papan kehadiran',
+    intro: 'Setiap karyawan terhadap setiap hari dalam bulan. Klik sel untuk detail shift, klik nama untuk rekap bulanan.',
+    refresh: 'Muat ulang',
+    export: 'Ekspor Excel',
+    today: 'Hari ini',
+    prev: 'Bulan sebelumnya',
+    next: 'Bulan berikutnya',
+    close: 'Tutup',
+    search: 'Cari nama, nama pengguna, atau email…',
+    searchLabel: 'Cari karyawan',
+    allShifts: 'Semua shift',
+    allStatuses: 'Semua status',
+    onTime: 'Tepat waktu',
+    late: 'Terlambat',
+    earlyLeave: 'Pulang awal',
+    missing: 'Belum absen keluar',
+    none: 'Tanpa catatan',
+    employee: 'Karyawan',
+    days: 'Hari',
+    lateCol: 'Telat',
+    dayDetails: 'Detail hari',
+    monthSummary: 'Ringkasan bulan',
+    showMonth: 'Lihat ringkasan bulan',
+    in: 'Masuk',
+    out: 'Keluar',
+    minutes: 'mnt',
+    early: 'pulang awal',
+    note: 'Catatan',
+    noRecords: 'Tidak ada catatan untuk hari ini.',
+    futureDay: 'Belum tercatat - hari belum terjadi.',
+    colDate: 'Tanggal',
+    colEmail: 'Email',
+    colShift: 'Shift',
+    colCode: 'Kode',
+    colIn: 'Jam masuk',
+    colOut: 'Jam keluar',
+    colStatus: 'Status',
+    colLateMin: 'Telat (mnt)',
+    colEarlyMin: 'Pulang awal (mnt)',
+    colReason: 'Alasan',
+    totalDays: 'Hari kerja',
+    totalLate: 'Datang terlambat',
+    totalMissing: 'Belum absen keluar',
+    errorTitle: 'Gagal memuat laporan',
+    errorHelp: 'Silakan coba muat ulang.',
+    emptyFiltered: 'Tidak ada karyawan yang cocok dengan pencarian atau filter.',
+  },
+}
+const c = computed(() => copy[locale.value === 'id' ? 'id' : 'en'])
+
+// Business calendar helpers. Dates arrive as YYYY-MM-DD strings keyed to the
+// business timezone; the vetted shared utils exist, but only two tiny things
+// are needed here - the local today string and weekday letters - and both are
+// pure Intl, so the page computes them inline.
+const language = computed(() => locale.value === 'id' ? 'id-ID' : 'en-GB')
+const now = ref(new Date())
+let clock: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  clock = setInterval(() => (now.value = new Date()), 60_000)
 })
+onBeforeUnmount(() => clearInterval(clock))
+const today = computed(() => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now.value))
 
-export type AttendanceData = typeof data.value
+// Month state. Pure UTC Date math on YYYY-MM strings - no Temporal needed to
+// step one month back or forward.
+const month = ref(today.value.slice(0, 7))
+const monthDate = computed(() => new Date(`${month.value}-01T00:00:00Z`))
+const currentMonth = computed(() => today.value.slice(0, 7))
+function stepMonth(amount: number) {
+  const d = monthDate.value
+  month.value = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + amount, 1)).toISOString().slice(0, 7)
+}
+const monthLabel = computed(() => new Intl.DateTimeFormat(language.value, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(monthDate.value))
+const canGoNext = computed(() => month.value < currentMonth.value)
 
-const monthOptions = computed(() => {
-  // Provide last 12 months including current
-  const arr: Array<{ label: string, value: string }> = []
-  const now = new Date()
-  for (let i = 0; i < 12; i++) {
-    const dt = new Date(now)
-    dt.setMonth(now.getMonth() - i)
-    const val = dt.toISOString().slice(0, 7)
-    const label = dt.toLocaleDateString([], { year: 'numeric', month: 'long' })
-    arr.push({ label, value: val })
-  }
-  return arr
+// Direct month jump: the Selaras date picker in month granularity models the
+// selection as a day-1 calendar date, so bridge it to the YYYY-MM string the
+// board and the endpoint speak. Future months are not pickable.
+const monthPickerValue = computed({
+  get: () => parseBusinessDate(`${month.value}-01`),
+  set: (value) => {
+    if (!value)
+      return
+    month.value = String(value.toString()).slice(0, 7)
+  },
 })
-
-const monthItems = computed<DropdownItem[][]>(() => {
-  const group = monthOptions.value.map((m) => {
-    return {
-      label: m.label,
-      // Selaras has no checkbox item type; the selected month is marked with a
-      // trailing check icon and switching happens on select.
-      onSelect() {
-        if (m.value === month.value) return
-        month.value = m.value
-      },
-    }
-  })
-  return [group]
-})
-function onRefresh() {
-  refresh()
+function isMonthDisabled(date: { toString: () => string }) {
+  return date.toString().slice(0, 7) > currentMonth.value
 }
 
-interface SimpleTab { label: string, icon?: string, value: string }
-const type = ref<SimpleTab[]>([
-  {
-    label: 'Grid',
-    icon: 'lucide:layout-grid',
-    value: 'grid',
-  },
-  {
-    label: 'Table',
-    icon: 'lucide:table',
-    value: 'table',
-  },
-])
-const activeType = ref<'table' | 'grid'>('grid')
+const search = ref('')
+const shiftType = ref<'all' | 'harian' | 'bantuan'>('all')
+const statusFilter = ref<'all' | CellStatus>('all')
 
-const iconOnlyType = computed(() => {
-  // Map to a minimal plain object (same shape as SimpleTab but empty label)
-  return (type.value || []).map(t => ({
-    icon: t.icon,
-    value: t.value,
-    label: '',
-  }))
-})
-
-const normalizedRows = computed(() => attendanceTime.normalizeRowsCrossday((data.value?.rows || []) as any[], data.value?.days || []))
-const normalizedData = computed(() => ({
-  ...(data.value || { month: '', days: [], rows: [] }),
-  rows: normalizedRows.value,
+const { data, status, error, refresh } = await useFetch<Report>('/api/admin/attendance', { query: { month }, credentials: 'include' })
+const pending = computed(() => status.value === 'pending')
+// Guard against a stale response rendering over a freshly selected month.
+const employees = computed(() => data.value?.month === month.value ? data.value.rows : [])
+const days = computed(() => data.value?.month === month.value ? (data.value.days ?? []) : [])
+const dayHead = computed(() => days.value.map((date) => {
+  const d = new Date(`${date}T00:00:00Z`)
+  return {
+    date,
+    num: d.getUTCDate(),
+    weekday: new Intl.DateTimeFormat(language.value, { weekday: 'narrow', timeZone: 'UTC' }).format(d),
+    weekend: d.getUTCDay() === 0 || d.getUTCDay() === 6,
+    future: date > today.value,
+    isToday: date === today.value,
+  }
 }))
 
-const attendances = computed(() => normalizedRows.value || [])
+type CellStatus = 'onTime' | 'late' | 'early' | 'missing' | 'none'
 
-// legacy per-cell lateMs helper removed in favor of entry-level calculations
-
-// dayEarlyMs removed; entryEarlyMs handles entry-level early calculations
-
-// Shifts cache so export uses same shift defs as table rendering
-// re-exported from composable
-
-// Entry-level helpers mirror AttendanceTable.vue logic
-// imported: entryLateMs, entryEarlyMs
-
-// computeEntryEarlyMs removed - use entryEarlyMs which mirrors table logic
-
-// Compute validated cell-level earlyMs: sum per-entry values and compare to server-provided aggregate
-// keep local validator helper but use composable helpers
-function cellTotalEarlyMs(cell: any) {
-  if (!cell) return 0
-  const es = attendanceTime.normalizeCellForExport(cell)
-  const perEntry = es.reduce((a: number, e: any) => a + attendanceTime.entryEarlyMs(e, cell, es), 0)
-  if (typeof cell?.earlyMs === 'number') {
-    if (es.length > 0) {
-      const diff = Math.abs(cell.earlyMs - perEntry)
-      if (diff > 60 * 60 * 1000) return perEntry
-      return cell.earlyMs
-    }
-    return cell.earlyMs
+// One status per employee-day from the already-reconciled server cells.
+// Missing check-out outranks late, which outranks a short shift: a red cell
+// says "someone never closed the shift", which is the thing most worth
+// spotting from across the room.
+function cellStatus(cell: DayCell | undefined, future: boolean): CellStatus {
+  if (!cell?.grouped)
+    return 'none'
+  const entries = Object.entries(cell.grouped).filter(([st]) => shiftType.value === 'all' || st === shiftType.value)
+  if (!entries.length)
+    return 'none'
+  if (future)
+    return entries.some(([, e]) => e.clockIn || e.clockOut) ? 'onTime' : 'none'
+  let late = false
+  let early = false
+  for (const [, e] of entries) {
+    if (e.clockIn && !e.clockOut)
+      return 'missing'
+    if (e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso))
+      late = true
+    if (e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso))
+      early = true
   }
-  return perEntry
+  return late ? 'late' : early ? 'early' : 'onTime'
 }
 
-function toDateLabel(iso?: string) {
-  if (!iso)
-    return ''
-  const d = new Date(iso)
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const statusDot: Record<CellStatus, string> = {
+  onTime: 'bg-emerald-500/90 hover:bg-emerald-500 dark:bg-emerald-400/90 dark:hover:bg-emerald-400',
+  late: 'bg-amber-500/90 hover:bg-amber-500 dark:bg-amber-400/90 dark:hover:bg-amber-400',
+  early: 'bg-violet-500/90 hover:bg-violet-500 dark:bg-violet-400/90 dark:hover:bg-violet-400',
+  missing: 'bg-red-500/90 hover:bg-red-500 dark:bg-red-400/90 dark:hover:bg-red-400',
+  none: 'bg-gray-200 hover:bg-gray-300 dark:bg-neutral-700/70 dark:hover:bg-neutral-600/70',
 }
 
-function buildDataAoA(): { rows: any[][], dayTwoFlagsList: boolean[][] } {
-  const days = normalizedData.value?.days || []
-  const rows: any[][] = []
-  const dayTwoFlagsAll: boolean[][] = []
-  // ensure we have shift defs available for accurate per-entry calculations
-  // (no-op if already cached)
-  // Note: exportWithExcelJS will await this before calling buildDataAoA
-  for (const r of attendances.value as any[]) {
-    const byDate = attendanceTime.normalizeByDateCrossday((r?.byDate) || {}, days)
-    // Work per-date so we can respect any aggregated values the server provides
-    const cellsRaw: any[] = Object.values(byDate)
-    const entriesAll: any[] = cellsRaw.flatMap(c => attendanceTime.normalizeCellForExport(c))
-    // Count working days as total number of shifts worked.
-    // Use server-provided `workingShifts` if present for a date; otherwise count entries with clockIn.
-    const workingDays = Object.values(byDate).reduce((sum: number, c: any) => {
-      if (!c) return sum
-      if (typeof c?.workingShifts === 'number') return sum + Math.max(0, Math.floor(c.workingShifts))
-      const es = attendanceTime.normalizeCellForExport(c)
-      return sum + es.filter((e: any) => e?.clockIn).length
-    }, 0)
-    const harian = entriesAll.filter(c => c?.clockIn && c?.shiftType === 'harian').length
-    const bantuan = entriesAll.filter(c => c?.clockIn && c?.shiftType === 'bantuan').length
-    const totalLate = cellsRaw.reduce((acc: number, cell: any) => {
-      if (!cell) return acc
-      if (typeof cell?.lateMs === 'number') return acc + cell.lateMs
-      const es = attendanceTime.normalizeCellForExport(cell)
-      return acc + es.reduce((a: number, e: any) => a + attendanceTime.entryLateMs(e, cell, es), 0)
-    }, 0)
-    const totalEarly = cellsRaw.reduce((acc: number, cell: any) => acc + cellTotalEarlyMs(cell), 0)
+function fmtTime(iso?: string | null) {
+  return iso ? new Date(iso).toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: timezone }) : '—'
+}
+function fmtDate(date: string, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) {
+  return new Intl.DateTimeFormat(language.value, opts).format(new Date(`${date}T00:00:00Z`))
+}
+function fmtMinutes(ms?: number) {
+  const min = Math.round((ms ?? 0) / 60_000)
+  return `${min} ${c.value.minutes}`
+}
 
-    const row: any[] = [
-      r.name || r.username || r.email || 'N/A',
-      workingDays,
-      harian,
-      bantuan,
-      attendanceTime.humanizeMinutes(totalLate),
-      attendanceTime.humanizeMinutes(totalEarly),
-    ]
-    const dayFlags: boolean[] = []
-    for (const day of days) {
-      const c = byDate[day] || {}
-      const entries = attendanceTime.normalizeCellForExport(c)
-      const dayHasTwo = Array.isArray(entries) && entries.length > 1
-      dayFlags.push(!!dayHasTwo)
-      // We'll export top/bottom values in the same cell separated by a newline so Excel shows split cells
-      const topE = entries[0] || {}
-      const botE = entries[1] || {}
-      const topM = topE?.clockIn ? toDateLabel(topE.clockIn) : ''
-      const botM = botE?.clockIn ? toDateLabel(botE.clockIn) : ''
-      const topP = topE?.clockOut ? toDateLabel(topE.clockOut) : ''
-      const botP = botE?.clockOut ? toDateLabel(botE.clockOut) : ''
-      const topReason = topE?.earlyReason ? String(topE.earlyReason) : ''
-      const botReason = botE?.earlyReason ? String(botE.earlyReason) : ''
-      // Per-slot T and CP: prefer entry-level values, else compute via dayLateMs/dayEarlyMs
-      const topTms = typeof topE?.lateMs === 'number' ? topE.lateMs : attendanceTime.entryLateMs(topE, c, entries)
-      const botTms = typeof botE?.lateMs === 'number' ? botE.lateMs : attendanceTime.entryLateMs(botE, c, entries)
-      const topCpms = typeof topE?.earlyMs === 'number' ? topE.earlyMs : attendanceTime.entryEarlyMs(topE, c, entries)
-      const botCpms = typeof botE?.earlyMs === 'number' ? botE.earlyMs : attendanceTime.entryEarlyMs(botE, c, entries)
-      const topT = topTms ? attendanceTime.humanizeMinutes(topTms) : ''
-      const botT = botTms ? attendanceTime.humanizeMinutes(botTms) : ''
-      const topCp = topCpms ? attendanceTime.humanizeMinutes(topCpms) : ''
-      const botCp = botCpms ? attendanceTime.humanizeMinutes(botCpms) : ''
-      const m = [topM, botM].filter(Boolean).join('\n')
-      const p = [topP, botP].filter(Boolean).join('\n')
-      // For T and CP keep per-slot strings (empty lines allowed)
-      const t = [topT, botT].join('\n')
-      const cp = [topCp, botCp].join('\n')
-      // Shift label: use shiftType if present else shiftCode
-      const topSh = topE?.shiftType ? (topE.shiftType === 'bantuan' ? 'Shift Bantuan' : 'Shift Harian') : (topE?.shiftCode || '')
-      const botSh = botE?.shiftType ? (botE.shiftType === 'bantuan' ? 'Shift Bantuan' : 'Shift Harian') : (botE?.shiftCode || '')
-      const sh = [topSh, botSh].filter(Boolean).join('\n')
-      const ket = [topReason, botReason].filter(Boolean).join('\n')
-      row.push(m, p, t, cp, sh, ket)
-    }
-    rows.push(row)
-    dayTwoFlagsAll.push(dayFlags)
+// Native title tooltips carry the per-cell numbers - hoverable context
+// without shipping a tooltip dependency into the page.
+function cellTitle(employee: Employee, date: string, future: boolean) {
+  const cell = employee.byDate[date]
+  const status = cellStatus(cell, future)
+  const base = `${fmtDate(date)}`
+  if (status === 'none')
+    return `${base} — ${c.value.none}`
+  const lines = Object.entries(cell?.grouped ?? {}).filter(([st]) => shiftType.value === 'all' || st === shiftType.value).map(([st, e]) => `${st}${e.shiftCode ? ` (${e.shiftCode})` : ''}: ${c.value.in} ${fmtTime(e.clockIn)}, ${c.value.out} ${fmtTime(e.clockOut)}${lateSuffix(e)}${earlySuffix(e)}`)
+  return [base, ...lines].join('\n')
+}
+function lateSuffix(e: ShiftEntry) {
+  return e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso) ? ` • ${c.value.late.toLowerCase()} ${fmtMinutes(Date.parse(e.clockIn) - Date.parse(e.shiftStartIso))}` : ''
+}
+function earlySuffix(e: ShiftEntry) {
+  return e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso) ? ` • ${c.value.early} ${fmtMinutes(Date.parse(e.shiftEndIso) - Date.parse(e.clockOut))}` : ''
+}
+
+// Employee month totals for the right-hand columns of the board.
+function totals(employee: Employee) {
+  let worked = 0
+  let late = 0
+  let missing = 0
+  for (const day of days.value) {
+    const cell = employee.byDate[day]
+    const st = cellStatus(cell, day > today.value)
+    if (st !== 'none')
+      worked += st === 'onTime' || st === 'late' ? 1 : 0
+    if (st === 'late') late++
+    if (st === 'missing') missing++
   }
-  return { rows, dayTwoFlagsList: dayTwoFlagsAll }
+  return { worked, late, missing }
 }
 
-// imported normalizeCellForExport
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase()
+  return employees.value.filter((e) => {
+    const hay = `${e.name ?? ''} ${e.username ?? ''} ${e.email ?? ''}`.toLowerCase()
+    if (q && !hay.includes(q))
+      return false
+    if (statusFilter.value === 'all')
+      return true
+    return days.value.some(day => cellStatus(e.byDate[day], day > today.value) === statusFilter.value)
+  })
+})
 
+// Summary counts over the visible employees - one number chip per status.
+const summary = computed(() => {
+  let late = 0
+  let early = 0
+  let missing = 0
+  let onTime = 0
+  for (const e of filtered.value) {
+    for (const day of days.value) {
+      const st = cellStatus(e.byDate[day], day > today.value)
+      if (st === 'late') late++
+      else if (st === 'early') early++
+      else if (st === 'missing') missing++
+      else if (st === 'onTime' && day <= today.value) onTime++
+    }
+  }
+  return { late, early, missing, onTime }
+})
+
+// Excel export in the spirit of the original attendance page: a real .xlsx
+// via ExcelJS, one row per shift record, honouring the current search /
+// shift-type / status filters. Labels come from the copy table so the file
+// follows the UI language.
+function recordStatus(e: ShiftEntry): CellStatus {
+  if (e.clockIn && !e.clockOut)
+    return 'missing'
+  const late = !!(e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso))
+  const early = !!(e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso))
+  return late ? 'late' : early ? 'early' : 'onTime'
+}
+function statusLabel(status: CellStatus) {
+  // 'early' has no direct copy key - the label lives in earlyLeave.
+  return c.value[status === 'early' ? 'earlyLeave' : status]
+}
+function entryLateMinutes(e: ShiftEntry) {
+  return e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso) ? Math.round((Date.parse(e.clockIn) - Date.parse(e.shiftStartIso)) / 60_000) : ''
+}
+function entryEarlyMinutes(e: ShiftEntry) {
+  return e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso) ? Math.round((Date.parse(e.shiftEndIso) - Date.parse(e.clockOut)) / 60_000) : ''
+}
+function exportRecords() {
+  return filtered.value.flatMap((employee) => {
+    const out: Array<Array<string | number>> = []
+    for (const day of days.value) {
+      for (const [st, entry] of Object.entries(employee.byDate[day]?.grouped ?? {}).filter(([type]) => shiftType.value === 'all' || type === shiftType.value)) {
+        if (!entry.clockIn && !entry.clockOut)
+          continue
+        out.push([
+          employee.name || employee.username || '-',
+          employee.email ?? '',
+          day,
+          String(st),
+          entry.shiftCode ?? '',
+          fmtTime(entry.clockIn),
+          fmtTime(entry.clockOut),
+          statusLabel(recordStatus(entry)),
+          entryLateMinutes(entry),
+          entryEarlyMinutes(entry),
+          entry.earlyReason ?? '',
+        ])
+      }
+    }
+    return out
+  })
+}
 async function getExcelJS() {
-  if (process.server)
-    throw new Error('ExcelJS is client-only')
   const mod: any = await import('exceljs')
   return mod?.default ?? mod
 }
-
-function buildHeaderAoA() {
-  const subCols = ['M', 'P', 'T', 'CP', 'Shift', 'Ket']
-  const days = data.value?.days || []
-  const headerRow1: string[] = ['Nama', 'Hari Kerja', 'Shift Harian', 'Shift Bantuan', 'Keterlambatan', 'Cepat Pulang']
-  const headerRow2: string[] = ['', '', '', '', '', '']
-  for (const day of days) {
-    const label = day.slice(-2)
-    let isFirst = true
-    for (const _ of subCols) {
-      headerRow1.push(isFirst ? label : '')
-      headerRow2.push(_)
-      isFirst = false
-    }
-  }
-  return { headerRow1, headerRow2, subCols, days }
-}
-
-async function exportWithExcelJS() {
-  // ensure shifts are loaded so per-entry calculations use shift defs when available
-  await attendanceTime.ensureShifts()
-  const ExcelJS = await getExcelJS()
-  // (no global export debug flag here; debug flags are declared in the fallback branch)
-  // Try template first
-  try {
-    const resp = await fetch('/attendance-template.xlsx')
-    if (!resp.ok) throw new Error('no template')
-    const buf = await resp.arrayBuffer()
-    const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load(buf)
-    const ws = wb.worksheets[0]
-    if (!ws)
-      throw new Error('Template has no worksheets')
-
-    // Freeze the first column (Name) so it stays visible when horizontally scrolling
-    try {
-      ws.views = [{ state: 'frozen', xSplit: 1 }]
-    }
-    catch {}
-
-    const { rows, dayTwoFlagsList: dayTwoFlagsFromBuild } = buildDataAoA()
-    const { headerRow1, headerRow2, subCols, days } = buildHeaderAoA()
-    const insertAt = 5
-    // Snapshot existing merges below insertion to restore after splice (prevents footer duplication)
-    const mergesBefore: Array<{ sRow: number, sCol: number, eRow: number, eCol: number }> = []
-    try {
-      const mm = (ws as any)._merges
-      if (mm && typeof mm.forEach === 'function') {
-        mm.forEach((v: any, k: any) => {
-          const key = typeof k === 'string' ? k : (v && v.shortAddress ? v.shortAddress : null)
-          if (!key) return
-          const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(key)
-          if (!m) return
-          const colToNum = (s: string) => s.split('').reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0)
-          const sCol = colToNum(m[1]!)
-          const sRow = Number.parseInt(m[2]!)
-          const eCol = colToNum(m[3]!)
-          const eRow = Number.parseInt(m[4]!)
-          if (sRow >= insertAt) mergesBefore.push({ sRow, sCol, eRow, eCol })
-        })
-      }
-    }
-    catch {}
-
-    // Expand each logical row into two physical rows (top/bottom)
-    const expandedRows: any[] = []
-    const effectiveDayTwoFlags: boolean[][] = []
-    const dayCount = days.length
-    const subLen = subCols.length
-    for (let ri = 0; ri < (rows || []).length; ri++) {
-      const r = rows[ri] || []
-      const top: any[] = []
-      const bot: any[] = []
-      // summary cols
-      for (let c = 0; c < 6; c++) {
-        top.push(r[c])
-        bot.push('')
-      }
-      const srcFlags = Array.isArray(dayTwoFlagsFromBuild) ? (dayTwoFlagsFromBuild[ri] || []) : []
-      const rowFlags: boolean[] = []
-      for (let d = 0; d < dayCount; d++) {
-        let dayHasTwo = !!srcFlags[d]
-        const start = 6 + d * subLen
-        for (let s = 0; s < subLen; s++) {
-          const raw = r[start + s]
-          if (raw == null || String(raw).trim() === '') {
-            top.push('')
-            bot.push('')
-            continue
-          }
-          const parts = String(raw).split(/\r?\n/).map(p => String(p ?? '').trim())
-          if (parts.length > 1 && parts[0] === '' && parts[1]) {
-            top.push(parts[1])
-            bot.push('')
-          }
-          else if (parts.length === 1) {
-            top.push(parts[0])
-            bot.push('')
-          }
-          else {
-            dayHasTwo = true
-            top.push(parts[0])
-            bot.push(parts[1] ?? '')
-          }
-        }
-        rowFlags.push(dayHasTwo)
-      }
-      effectiveDayTwoFlags.push(rowFlags)
-      expandedRows.push(top, bot)
-    }
-    // Use effectiveDayTwoFlags for all merge decisions. If not available, fall back to server-provided flags.
-    // effectiveDayTwoFlags is used directly for merge decisions in the template branch
-
-    ws.spliceRows(insertAt, 0, headerRow1, headerRow2, ...expandedRows)
-
-    // Robust pass: find exact 'Ket' subheader cells in the inserted header rows (insertAt and insertAt+1)
-    try {
-      const headerRows = [insertAt, insertAt + 1]
-      for (const subHeaderRow of headerRows) {
-        try {
-          const hr = ws.getRow(subHeaderRow)
-          for (let c = 1; c <= ws.columnCount; c++) {
-            try {
-              const v = hr.getCell(c).value
-              if (v && String(v).trim().toLowerCase() === 'ket') {
-                const col = ws.getColumn(c)
-                col.width = 50
-                col.alignment = { ...col.alignment, wrapText: true, vertical: 'middle' }
-              }
-            }
-            catch {}
-          }
-        }
-        catch {}
-      }
-    }
-    catch {}
-
-    // Merge headers: base columns vertically and day groups horizontally
-    const base = 6
-    for (let c = 1; c <= base; c++) ws.mergeCells(insertAt, c, insertAt + 1, c)
-    for (let i = 0; i < days.length; i++) {
-      const start = base + i * subCols.length + 1
-      const end = start + subCols.length - 1
-      ws.mergeCells(insertAt, start, insertAt, end)
-    }
-
-    // Ensure all header cells (both header rows) are centered vertically and horizontally and wrap text
-    try {
-      const headerCols = headerRow1.length || ws.columnCount
-      for (let c = 1; c <= headerCols; c++) {
-        try {
-          const h1 = ws.getCell(insertAt, c)
-          h1.alignment = { ...h1.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-        }
-        catch {}
-        try {
-          const h2 = ws.getCell(insertAt + 1, c)
-          h2.alignment = { ...h2.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-        }
-        catch {}
-      }
-    }
-    catch {}
-
-    // Sanitization pass: ensure P cells do not contain non-time text (earlyReason)
-    try {
-      const pairCount = expandedRows.length / 2
-      const subLen = subCols.length
-      for (let i = 0; i < pairCount; i++) {
-        const topSheetRow = insertAt + 2 + i * 2
-        const botSheetRow = topSheetRow + 1
-        for (let dIdx = 0; dIdx < days.length; dIdx++) {
-          const localBase = 6
-          const startCol = localBase + dIdx * subLen + 1
-          const pCol = startCol + 1
-          for (const rr of [topSheetRow, botSheetRow]) {
-            try {
-              const cell = ws.getRow(rr).getCell(pCol)
-              const raw = (cell && cell.value) ? String(cell.value) : ''
-              if (!raw) continue
-              const parts = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-              // accept HH:MM or H:MM and optional AM/PM suffix
-              const timeParts = parts.filter(p => /^\d{1,2}:\d{2}(?:\s?[APM]{2})?$/i.test(p))
-              const final = timeParts.join('\n')
-              if (final !== raw) cell.value = final
-            }
-            catch {}
-          }
-        }
-      }
-    }
-    catch {}
-
-    // Ensure per-day Ket columns are wide (~350px). Do this after footer insertion to avoid template overrides.
-    try {
-      const subLen = subCols.length
-      for (let i = 0; i < days.length; i++) {
-        const baseIdx = 6 + i * subLen
-        try {
-          const ketCol = baseIdx + 6
-          const kc = ws.getColumn(ketCol)
-          // ~50 chars approximates 350px in Excel column width units
-          kc.width = 50
-          kc.alignment = { ...kc.alignment, wrapText: true, vertical: 'middle' }
-        }
-        catch {}
-      }
-    }
-    catch {}
-
-    // Style header rows (insertAt and insertAt+1)
-    for (const r of [insertAt, insertAt + 1]) {
-      const row = ws.getRow(r)
-      row.height = 24
-      row.eachCell((cell: any) => {
-        cell.font = { name: 'Arial', size: 12, bold: true, ...cell.font }
-        cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-        cell.border = cell.border || {
-          top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        }
-      })
-    }
-
-    // Light borders + vertical centering for data rows (if any), without disturbing template styles
-    const dataCount = expandedRows.length
-    const endDataRow = insertAt + 1 + dataCount
-    for (let rr = insertAt + 2; rr <= endDataRow; rr++) {
-      const row = ws.getRow(rr)
-      // increase height to show two lines comfortably
-      row.height = 36
-      row.eachCell((cell: any) => {
-        cell.font = { name: 'Arial', size: 12, ...cell.font }
-        cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true }
-        cell.border = cell.border || {
-          top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-          right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        }
-      })
-    }
-
-    // Ensure summary columns (1..6) are vertically centered for all data rows (covers merged/unmerged cells)
-    try {
-      for (let rr = insertAt + 2; rr <= endDataRow; rr++) {
-        const row = ws.getRow(rr)
-        for (let c = 1; c <= 6; c++) {
-          try {
-            const cell = row.getCell(c)
-            cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-          }
-          catch {}
-        }
-      }
-    }
-    catch {}
-
-    // Highlight M/P per slot: iterate over pairs of rows (top/bottom) and highlight only that slot's M or P when
-    // the corresponding T or CP value for the same slot is non-empty.
-    try {
-      const subLen = 6
-      const pairCount = expandedRows.length / 2
-      for (let i = 0; i < pairCount; i++) {
-        const topSheetRow = insertAt + 2 + i * 2
-        const botSheetRow = topSheetRow + 1
-        const topArr = expandedRows[i * 2] || []
-        const botArr = expandedRows[i * 2 + 1] || []
-        for (let dIdx = 0; dIdx < days.length; dIdx++) {
-          const startIdx = 6 + dIdx * subLen
-          const startCol = base + dIdx * subLen + 1
-          const mCol = startCol + 0
-          const pCol = startCol + 1
-          // top slot
-          const topT = String(topArr[startIdx + 2] || '').trim()
-          const topCp = String(topArr[startIdx + 3] || '').trim()
-          if (topT) {
-            const cell = ws.getRow(topSheetRow).getCell(mCol)
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-          }
-          if (topCp) {
-            const cell = ws.getRow(topSheetRow).getCell(pCol)
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-          }
-          // bottom slot
-          const botT = String(botArr[startIdx + 2] || '').trim()
-          const botCp = String(botArr[startIdx + 3] || '').trim()
-          if (botT) {
-            const cell = ws.getRow(botSheetRow).getCell(mCol)
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-          }
-          if (botCp) {
-            const cell = ws.getRow(botSheetRow).getCell(pCol)
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-          }
-          // Determine clock-in presence by checking the per-day M subcolumn (startIdx + 0)
-          const topClock = String(topArr[startIdx + 0] || '').trim()
-          const botClock = String(botArr[startIdx + 0] || '').trim()
-          const entryCount = (topClock ? 1 : 0) + (botClock ? 1 : 0)
-          // Only merge top+bottom when there are ZERO clock-ins for the day. If there is 1 or 2 clock-ins,
-          // we must NOT merge so each slot remains visible on its own row.
-          if (entryCount === 0) {
-            for (let colOffset = 0; colOffset < subLen; colOffset++) {
-              const botVal = String(botArr[startIdx + colOffset] || '').trim()
-              const col = startCol + colOffset
-              if (!botVal) {
-                try {
-                  ws.mergeCells(topSheetRow, col, botSheetRow, col)
-                  try {
-                    const topCell = ws.getRow(topSheetRow).getCell(col)
-                    topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
-                  }
-                  catch {}
-                }
-                catch {
-                  // ignore merge errors
-                }
-              }
-            }
-          }
-        }
-        // Merge summary columns (1..6) vertically for this pair
-        for (let c = 1; c <= 6; c++) {
-          try {
-            ws.mergeCells(topSheetRow, c, botSheetRow, c)
-            try {
-              const topCell = ws.getRow(topSheetRow).getCell(c)
-              topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
-            }
-            catch {}
-          }
-          catch {
-            // ignore
-          }
-        }
-      }
-    }
-    catch {}
-
-    // Set Name column width to ~350px (~50 chars)
-    try {
-      ws.getColumn(1).width = 50
-    }
-    catch {}
-
-    // Set summary columns (2..6) to ~250px (~36 chars) and ensure vertical centering
-    try {
-      for (let c = 2; c <= 6; c++) {
-        const col = ws.getColumn(c)
-        col.width = 36
-        col.alignment = { ...col.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-      }
-    }
-    catch {}
-
-    // Set per-day Shift column widths to ~200px (~28 chars)
-    try {
-      const subLen = 6
-      for (let i = 0; i < days.length; i++) {
-        const shiftCol = 6 + i * subLen + 5
-        const col = ws.getColumn(shiftCol)
-        col.width = 28
-        // Ensure wrapText and vertical centering for shift column
-        col.alignment = { ...col.alignment, wrapText: true, vertical: 'middle' }
-        // Also set wrapText for M,P,T,CP columns for this day
-        for (let j = 0; j < 4; j++) {
-          // columns start at base+1 (base=6), so add +1 to align with cell indexing used elsewhere
-          const cidx = 6 + i * subLen + j + 1
-          try {
-            const colc = ws.getColumn(cidx)
-            // ~22 characters ~= 160px
-            colc.width = 22
-            colc.alignment = { ...colc.alignment, wrapText: true, vertical: 'middle' }
-          }
-          catch {}
-        }
-      }
-    }
-    catch {}
-
-    // Restore footer merges shifted by inserted rows to prevent duplicated visible text
-    try {
-      const rowsAdded = 2 + expandedRows.length
-      for (const m of mergesBefore) {
-        try {
-          ws.mergeCells(m.sRow + rowsAdded, m.sCol, m.eRow + rowsAdded, m.eCol)
-        }
-        catch {}
-      }
-    }
-    catch {}
-
-    // Defensive un-merge pass: if the template had merges that were restored but
-    // the logical data for that day indicates two shifts, unmerge the per-day
-    // subcolumns (so top/bottom remain separate). This avoids forced merges from
-    // the template for two-shift rows (fixes cases like FI9-FI10 being merged).
-    try {
-      const pairCount = expandedRows.length / 2
-      for (let i = 0; i < pairCount; i++) {
-        const topSheetRow = insertAt + 2 + i * 2
-        const botSheetRow = topSheetRow + 1
-        for (let dIdx = 0; dIdx < days.length; dIdx++) {
-          const startCol = base + dIdx * subCols.length + 1
-          // Determine whether this logical day has any clock-ins by checking the M subcolumn in top/bottom rows
-          let entryCount = 0
-          try {
-            const topArr = expandedRows[i * 2] || []
-            const botArr = expandedRows[i * 2 + 1] || []
-            const startIdx = 6 + dIdx * subCols.length
-            const topClock = String(topArr[startIdx + 0] || '').trim()
-            const botClock = String(botArr[startIdx + 0] || '').trim()
-            entryCount = (topClock ? 1 : 0) + (botClock ? 1 : 0)
-          }
-          catch {}
-          if (entryCount === 0) continue
-          // For days with 1 or 2 clock-ins (entryCount >= 1) we must unmerge per-day subcolumns so
-          // top and bottom rows remain separate and show the actual content.
-          for (let colOffset = 0; colOffset < subCols.length; colOffset++) {
-            const col = startCol + colOffset
-            try {
-              ws.unMergeCells(topSheetRow, col, botSheetRow, col)
-            }
-            catch {}
-          }
-        }
-        // (noop) ket width handled in a dedicated pass below
-      }
-    }
-    catch {}
-
-    // Defensive pass: ensure any per-day subcolumn where the top cell has content
-    // and the bottom cell is empty is merged. This covers edge cases where
-    // newline normalization produced a top value but for some reason the
-    // earlier merge pass did not create the merge record.
-    try {
-      const subLen = 6
-      const pairCount = expandedRows.length / 2
-      for (let i = 0; i < pairCount; i++) {
-        const topSheetRow = insertAt + 2 + i * 2
-        const botSheetRow = topSheetRow + 1
-        for (let dIdx = 0; dIdx < days.length; dIdx++) {
-          const startCol = base + dIdx * subLen + 1
-          // determine entryCount from the M subcolumn (clock-in) in top/bottom expanded rows
-          let entryCount = 0
-          try {
-            const tArr = expandedRows[i * 2] || []
-            const bArr = expandedRows[i * 2 + 1] || []
-            const startIdx = 6 + dIdx * subLen
-            const topClock = String(tArr[startIdx + 0] || '').trim()
-            const botClock = String(bArr[startIdx + 0] || '').trim()
-            entryCount = (topClock ? 1 : 0) + (botClock ? 1 : 0)
-          }
-          catch {}
-          for (let colOffset = 0; colOffset < subLen; colOffset++) {
-            const col = startCol + colOffset
-            try {
-              const topCell = ws.getRow(topSheetRow).getCell(col)
-              const botCell = ws.getRow(botSheetRow).getCell(col)
-              const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-              // Only merge subcolumns when there are ZERO clock-ins (entryCount === 0)
-              if (entryCount === 0 && !botVal) {
-                // check whether already part of a merge by inspecting model.merges if available
-                let alreadyMerged = false
-                try {
-                  const addr = `${topCell.address}`
-                  const merges = (ws.model && ws.model.merges) ? ws.model.merges : null
-                  if (Array.isArray(merges)) {
-                    for (const m of merges) {
-                      if (typeof m === 'string') {
-                        if (m.includes(addr)) {
-                          alreadyMerged = true
-                          break
-                        }
-                      }
-                    }
-                  }
-                }
-                catch {}
-                if (!alreadyMerged) {
-                  try {
-                    ws.mergeCells(topSheetRow, col, botSheetRow, col)
-                  }
-                  catch {}
-                  try {
-                    topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
-                  }
-                  catch {}
-                }
-              }
-            }
-            catch {}
-          }
-        }
-      }
-    }
-    catch {}
-
-    // Final force-merge pass: ensure that for any logical single-shift day we have top+bottom merged
-    try {
-      const subLen = subCols.length
-      const pairCount = expandedRows.length / 2
-      for (let i = 0; i < pairCount; i++) {
-        const topSheetRow = insertAt + 2 + i * 2
-        const botSheetRow = topSheetRow + 1
-        for (let dIdx = 0; dIdx < days.length; dIdx++) {
-          const startCol = base + dIdx * subLen + 1
-          // Determine dynamically whether this logical day has two shifts
-          let isTwo = false
-          try {
-            const tArr = expandedRows[i * 2] || []
-            const bArr = expandedRows[i * 2 + 1] || []
-            const startIdx = 6 + dIdx * subLen
-            const anyTop = [0, 1, 2, 3, 4, 5].some(off => String(tArr[startIdx + off] || '').trim() !== '')
-            const anyBot = [0, 1, 2, 3, 4, 5].some(off => String(bArr[startIdx + off] || '').trim() !== '')
-            isTwo = Boolean(effectiveDayTwoFlags?.[i]?.[dIdx]) || (anyTop && anyBot)
-          }
-          catch {}
-          // If this logical day is a two-shift day, skip forcing merges for its subcolumns
-          if (isTwo) continue
-          for (let colOffset = 0; colOffset < subLen; colOffset++) {
-            const col = startCol + colOffset
-            try {
-              const botCell = ws.getRow(botSheetRow).getCell(col)
-              const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-              if (!botVal) {
-                try {
-                  ws.unMergeCells(topSheetRow, col, botSheetRow, col)
-                }
-                catch {}
-                try {
-                  ws.mergeCells(topSheetRow, col, botSheetRow, col)
-                }
-                catch {}
-              }
-            }
-            catch {}
-          }
-        }
-      }
-    }
-    catch {}
-
-    // Append footer from separate template, preserving merges
-    try {
-      const footerResp = await fetch('/attendance-template-footer.xlsx')
-      if (footerResp.ok) {
-        const fbuf = await footerResp.arrayBuffer()
-        const fwb = new ExcelJS.Workbook()
-        await fwb.xlsx.load(fbuf)
-        const fws = fwb.worksheets[0]
-        if (fws) {
-          // baseEndRow should account for header rows (2) + expandedRows length
-          const baseEndRow = insertAt + 1 + expandedRows.length
-          // leave 3 empty rows then footer
-          const startRow = baseEndRow + 1 + 3
-          // Collect merges from footer and use to avoid duplicate visible content
-          const footerMerges: Array<{ sRow: number, sCol: number, eRow: number, eCol: number }> = []
-          try {
-            const colToNum = (s: string) => s.split('').reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0)
-            const parseKey = (key: string) => {
-              const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(key)
-              if (!m) return
-              footerMerges.push({
-                sRow: Number.parseInt(m[2]!),
-                sCol: colToNum(m[1]!),
-                eRow: Number.parseInt(m[4]!),
-                eCol: colToNum(m[3]!),
-              })
-            }
-            // Prefer model.merges if present
-            const modelMerges: string[] | undefined = (fws as any)?.model?.merges
-            if (Array.isArray(modelMerges) && modelMerges.length) {
-              for (const addr of modelMerges) parseKey(addr)
-            }
-            else {
-              const mm2 = (fws as any)._merges
-              if (mm2) {
-                if (typeof mm2.forEach === 'function') {
-                  mm2.forEach((v: any, k: any) => {
-                    const key = typeof k === 'string' ? k : (v && v.shortAddress ? v.shortAddress : null)
-                    if (key) parseKey(key)
-                  })
-                }
-                else {
-                  for (const key of Object.keys(mm2)) parseKey(key)
-                }
-              }
-            }
-          }
-          catch {}
-
-          const findMerge = (r: number, c: number) => footerMerges.find(m => r >= m.sRow && r <= m.eRow && c >= m.sCol && c <= m.eCol)
-
-          // Copy cell values and basic styles (write value only to top-left of merged range)
-          fws.eachRow({ includeEmpty: false }, (row: any, rowNumber: number) => {
-            const targetRow = ws.getRow(startRow + rowNumber - 1)
-            targetRow.height = 24
-            row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
-              // Shift footer content to start at column B to avoid freezing into column A
-              const tcell = targetRow.getCell(colNumber + 1)
-              const merge = findMerge(rowNumber, colNumber)
-              if (merge && !(rowNumber === merge.sRow && colNumber === merge.sCol)) {
-                tcell.value = null
-              }
-              else {
-                tcell.value = cell.value
-              }
-              if (cell.font) tcell.font = { ...cell.font }
-              tcell.alignment = { ...cell.alignment, vertical: 'middle' }
-              if (cell.border) tcell.border = { ...cell.border }
-              if (cell.fill) tcell.fill = { ...cell.fill }
-              if ((cell as any).numFmt) (tcell as any).numFmt = (cell as any).numFmt
-            })
-          })
-          // Recreate merges from footer with row offset and column shift (+1)
-          try {
-            const rDelta = startRow - 1
-            for (const m of footerMerges) {
-              try {
-                ws.mergeCells(m.sRow + rDelta, m.sCol + 1, m.eRow + rDelta, m.eCol + 1)
-              }
-              catch {}
-            }
-          }
-          catch {}
-        }
-      }
-    }
-    catch {}
-
-    // Merge B1..B3 to the last column, center text, and set B3 to MONTH - YEAR
-    try {
-      const lastCol = ws.columnCount
-      for (const r of [1, 2, 3]) {
-        try {
-          ws.mergeCells(r, 2, r, lastCol)
-        }
-        catch {}
-        const cell = ws.getCell(r, 2)
-        cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle' }
-      }
-      // Fill B3 with Month - Year (capitalized)
-      try {
-        const dt = new Date(`${month.value}-01T00:00:00`)
-        const mname = dt.toLocaleString([], { month: 'long' })
-        ws.getCell(3, 2).value = `${mname} - ${dt.getFullYear()}`.toUpperCase()
-      }
-      catch {}
-    }
-    catch {}
-
-    // Reapply horizontal centering for day group headers and subheaders (fixes day labels alignment)
-    try {
-      const headerCols = headerRow1.length || ws.columnCount
-      // Center each merged day label (top header row) by targeting its start column
-      for (let i = 0; i < days.length; i++) {
-        try {
-          const start = base + i * subCols.length + 1
-          const topCell = ws.getCell(insertAt, start)
-          topCell.alignment = { ...topCell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-        }
-        catch {}
-      }
-      // Ensure subheaders (second header row) are centered as well
-      for (let c = 1; c <= headerCols; c++) {
-        try {
-          const sub = ws.getCell(insertAt + 1, c)
-          sub.alignment = { ...sub.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-        }
-        catch {}
-      }
-    }
-    catch {}
-
-    // Download
-    const out = await wb.xlsx.writeBuffer()
-    const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `attendance-${month.value}.xlsx`
-    a.click()
-    URL.revokeObjectURL(a.href)
-    return
-  }
-  catch {}
-
-  // Fallback: build workbook with header + styles
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet('Attendance', {
-    views: [{ state: 'frozen', xSplit: 1, ySplit: 2 }],
-  })
-  const { headerRow1, headerRow2, subCols, days } = buildHeaderAoA()
-  ws.addRow(headerRow1)
-  ws.addRow(headerRow2)
-  // Robust pass (fallback): find 'Ket' subheaders in header rows (1 and 2) and set their width to 50
-  try {
-    const headerRows = [1, 2]
-    for (const hrNum of headerRows) {
-      try {
-        const hr = ws.getRow(hrNum)
-        for (let c = 1; c <= ws.columnCount; c++) {
-          try {
-            const v = hr.getCell(c).value
-            if (v && String(v).trim().toLowerCase() === 'ket') {
-              const col = ws.getColumn(c)
-              col.width = 50
-              col.alignment = { ...col.alignment, wrapText: true, vertical: 'middle' }
-            }
-          }
-          catch {}
-        }
-      }
-      catch {}
-    }
-  }
-  catch {}
-  const { rows: dataRows, dayTwoFlagsList } = buildDataAoA()
-
-  // Expand data rows into top/bottom physical rows (same behavior as template branch)
-  const expandedRows: any[] = []
-  for (const r of (dataRows || [])) {
-    const dayTwoFlags: boolean[] = []
-    const top: any[] = []
-    const bot: any[] = []
-    // summary columns (1..6)
-    for (let c = 0; c < 6; c++) {
-      top.push(r[c])
-      bot.push('')
-    }
-    // per-day subcolumns
-    const dayCount = days.length
-    const subLen = subCols.length
-    for (let d = 0; d < dayCount; d++) {
-      const start = 6 + d * subLen
-      let dayHasTwo = false
-      for (let s = 0; s < subLen; s++) {
-        const raw = r[start + s]
-        if (raw == null || String(raw).trim() === '') {
-          top.push('')
-          bot.push('')
-          continue
-        }
-        const parts = String(raw).split(/\r?\n/).map(p => String(p ?? '').trim())
-        // Normalize cases where the string is '\nvalue' (leading empty top) into a single top value
-        if (parts.length > 1 && parts[0] === '' && parts[1]) {
-          top.push(parts[1])
-          bot.push('')
-        }
-        else if (parts.length === 1) {
-          top.push(parts[0])
-          bot.push('')
-        }
-        else {
-          if (parts.length > 1) dayHasTwo = true
-          top.push(parts[0])
-          bot.push(parts[1] ?? '')
-        }
-      }
-      dayTwoFlags.push(dayHasTwo)
-    }
-    dayTwoFlagsList.push(dayTwoFlags)
-    expandedRows.push(top, bot)
-  }
-
-  if (expandedRows.length)
-    ws.addRows(expandedRows)
-
-  // Sanitization pass for fallback: remove any non-time lines from P columns
-  try {
-    const pairCount = expandedRows.length / 2
-    const subLen = subCols.length
-    for (let i = 0; i < pairCount; i++) {
-      const topSheetRow = 3 + i * 2
-      const botSheetRow = topSheetRow + 1
-      for (let dIdx = 0; dIdx < days.length; dIdx++) {
-        const localBase = 6
-        const startCol = localBase + dIdx * subLen + 1
-        const pCol = startCol + 1
-        for (const rr of [topSheetRow, botSheetRow]) {
-          try {
-            const cell = ws.getRow(rr).getCell(pCol)
-            const raw = (cell && cell.value) ? String(cell.value) : ''
-            if (!raw) continue
-            const parts = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-            const timeParts = parts.filter(p => /^\d{1,2}:\d{2}$/.test(p))
-            const final = timeParts.join('\n')
-            if (final !== raw) cell.value = final
-          }
-          catch {}
-        }
-      }
-    }
-  }
-  catch {}
-
-  // Merge day group headers
-  const base = 6
-  for (let i = 0; i < days.length; i++) {
-    const start = base + i * subCols.length + 1
-    const end = start + subCols.length - 1
-    ws.mergeCells(1, start, 1, end)
-  }
-  // Ensure headers are centered
-  try {
-    const headerCols = headerRow1.length || ws.columnCount
-    for (let c = 1; c <= headerCols; c++) {
-      try {
-        const h1 = ws.getCell(1, c)
-        h1.alignment = { ...h1.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-      }
-      catch {}
-      try {
-        const h2 = ws.getCell(2, c)
-        h2.alignment = { ...h2.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-      }
-      catch {}
-    }
-  }
-  catch {}
-  // Style headers
-  for (const r of [1, 2]) {
-    const row = ws.getRow(r)
-    row.height = 24
-    row.eachCell((cell: any) => {
-      cell.font = { ...cell.font, bold: true }
-      cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-      }
-    })
-  }
-
-  // Style data rows and ensure vertical centering
-  const dataCount = expandedRows.length
-  const endDataRow = 2 + dataCount
-  for (let rr = 3; rr <= endDataRow; rr++) {
-    const row = ws.getRow(rr)
-    row.height = 36
-    row.eachCell((cell: any) => {
-      cell.font = { name: 'Arial', size: 12, ...cell.font }
-      cell.alignment = { ...cell.alignment, vertical: 'middle', wrapText: true }
-      cell.border = cell.border || {
-        top: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        left: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-        right: { style: 'thin', color: { argb: 'FFCCCCCC' } },
-      }
-    })
-  }
-
-  // Ensure summary columns (1..6) are vertically centered for all data rows
-  try {
-    for (let rr = 3; rr <= endDataRow; rr++) {
-      const row = ws.getRow(rr)
-      for (let c = 1; c <= 6; c++) {
-        try {
-          const cell = row.getCell(c)
-          cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-        }
-        catch {}
-      }
-    }
-  }
-  catch {}
-
-  // Highlight M/P per slot and merge empty bottoms (per-day) and merge summary columns per pair
-  try {
-    // Debugging helpers (toggle to true to enable):
-    const EXPORT_DEBUG = true
-    // The day-of-month to inspect (1-based). Change this when debugging other days.
-    const DEBUG_DAY = 17
-    const subLen = 6
-    const pairCount = expandedRows.length / 2
-    for (let i = 0; i < pairCount; i++) {
-      const topSheetRow = 3 + i * 2
-      const botSheetRow = topSheetRow + 1
-      const topArr = expandedRows[i * 2] || []
-      const botArr = expandedRows[i * 2 + 1] || []
-      for (let dIdx = 0; dIdx < days.length; dIdx++) {
-        const startIdx = 6 + dIdx * subLen
-        const startCol = base + dIdx * subLen + 1
-        const mCol = startCol + 0
-        const pCol = startCol + 1
-        // top slot
-        const topT = String(topArr[startIdx + 2] || '').trim()
-        const topCp = String(topArr[startIdx + 3] || '').trim()
-        if (topT && topT !== '0m') {
-          const cell = ws.getRow(topSheetRow).getCell(mCol)
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-        }
-        if (topCp && topCp !== '0m') {
-          const cell = ws.getRow(topSheetRow).getCell(pCol)
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-        }
-        // bottom slot
-        const botT = String(botArr[startIdx + 2] || '').trim()
-        const botCp = String(botArr[startIdx + 3] || '').trim()
-        if (botT && botT !== '0m') {
-          const cell = ws.getRow(botSheetRow).getCell(mCol)
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-        }
-        if (botCp && botCp !== '0m') {
-          const cell = ws.getRow(botSheetRow).getCell(pCol)
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } }
-        }
-        // If dayTwoFlagsList indicates two entries for this day, respect it. Also detect two shifts by checking any subcolumn content.
-        const tArr = topArr || []
-        const bArr = botArr || []
-        const anyTop2 = [0, 1, 2, 3, 4, 5].some(off => String(tArr[startIdx + off] || '').trim() !== '')
-        const anyBot2 = [0, 1, 2, 3, 4, 5].some(off => String(bArr[startIdx + off] || '').trim() !== '')
-        const dayHasTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx]) || (anyTop2 && anyBot2)
-        if (EXPORT_DEBUG && (dIdx + 1) === DEBUG_DAY) {
-          try {
-            console.info('[EXPORT_DEBUG] pairIndex=', i, 'dIdx=', dIdx)
-            console.info('[EXPORT_DEBUG] topArr=', JSON.stringify(topArr))
-            console.info('[EXPORT_DEBUG] botArr=', JSON.stringify(botArr))
-            console.info('[EXPORT_DEBUG] dayTwoFlagsList=', JSON.stringify(dayTwoFlagsList?.[i]))
-            try {
-              const merges = (ws.model && ws.model.merges) ? ws.model.merges : null
-              console.info('[EXPORT_DEBUG] current merges (sample)=', merges ? (Array.isArray(merges) ? merges.slice(0, 20) : merges) : merges)
-            }
-            catch (e) {
-              console.info('[EXPORT_DEBUG] reading merges failed', e)
-            }
-          }
-          catch {}
-        }
-        if (!dayHasTwo) {
-          for (let colOffset = 0; colOffset < subLen; colOffset++) {
-            const botVal = String(botArr[startIdx + colOffset] || '').trim()
-            const col = startCol + colOffset
-            if (!botVal) {
-              try {
-                ws.mergeCells(topSheetRow, col, botSheetRow, col)
-                try {
-                  const topCell = ws.getRow(topSheetRow).getCell(col)
-                  topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
-                }
-                catch {}
-              }
-              catch {
-                // ignore
-              }
-            }
-          }
-        }
-      }
-      // Merge summary columns (1..6) vertically for this pair
-      for (let c = 1; c <= 6; c++) {
-        try {
-          // Ensure both top and bottom cells are centered before merging to avoid visual misalignment
-          try {
-            const tRow = ws.getRow(topSheetRow)
-            const bRow = ws.getRow(botSheetRow)
-            const tc = tRow.getCell(c)
-            const bc = bRow.getCell(c)
-            tc.alignment = { ...tc.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-            bc.alignment = { ...bc.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-          }
-          catch {}
-          ws.mergeCells(topSheetRow, c, botSheetRow, c)
-          try {
-            const topCell = ws.getRow(topSheetRow).getCell(c)
-            topCell.alignment = { ...topCell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-          }
-          catch {}
-        }
-        catch {
-          // ignore
-        }
-      }
-    }
-  }
-  catch {}
-
-  // Defensive post-pass for fallback: ensure per-day subcolumns where top has content
-  // and bottom is empty are merged. This ensures consistent appearance regardless
-  // of earlier normalization edge cases.
-  try {
-    const subLen = 6
-    const pairCount = expandedRows.length / 2
-    for (let i = 0; i < pairCount; i++) {
-      const topSheetRow = 3 + i * 2
-      const botSheetRow = topSheetRow + 1
-      for (let dIdx = 0; dIdx < days.length; dIdx++) {
-        const startCol = base + dIdx * subLen + 1
-        for (let colOffset = 0; colOffset < subLen; colOffset++) {
-          const col = startCol + colOffset
-          try {
-            const topCell = ws.getRow(topSheetRow).getCell(col)
-            const botCell = ws.getRow(botSheetRow).getCell(col)
-            const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-            // determine dynamically whether this logical day has two shifts
-            let isTwo = false
-            try {
-              const tArr = expandedRows[i * 2] || []
-              const bArr = expandedRows[i * 2 + 1] || []
-              const startIdx = 6 + dIdx * subLen
-              const anyTop = [0, 1, 2, 3, 4, 5].some(off => String(tArr[startIdx + off] || '').trim() !== '')
-              const anyBot = [0, 1, 2, 3, 4, 5].some(off => String(bArr[startIdx + off] || '').trim() !== '')
-              isTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx]) || (anyTop && anyBot)
-            }
-            catch {}
-            if (!isTwo && !botVal) {
-              let alreadyMerged = false
-              try {
-                const addr = `${topCell.address}`
-                const merges = (ws.model && ws.model.merges) ? ws.model.merges : null
-                if (Array.isArray(merges)) {
-                  for (const m of merges) {
-                    if (typeof m === 'string') {
-                      if (m.includes(addr)) {
-                        alreadyMerged = true
-                        break
-                      }
-                    }
-                  }
-                }
-              }
-              catch {}
-              if (!alreadyMerged) {
-                try {
-                  ws.mergeCells(topSheetRow, col, botSheetRow, col)
-                }
-                catch {}
-                try {
-                  topCell.alignment = { ...topCell.alignment, vertical: 'middle' }
-                }
-                catch {}
-              }
-            }
-          }
-          catch {}
-        }
-      }
-    }
-  }
-  catch {}
-
-  // Column widths
-  try {
-    const colCount = ws.columnCount
-    // Name ~50 chars (~350px)
-    ws.getColumn(1).width = 50
-    // Summary columns 2..6 ~36 chars (~250px) and ensure vertical centering
-    for (let c = 2; c <= 6; c++) {
-      try {
-        const col = ws.getColumn(c)
-        col.width = 36
-        col.alignment = { ...col.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-      }
-      catch {}
-    }
-    // Day columns default to 12-10 chars
-    for (let c = 7; c <= colCount; c++) ws.getColumn(c).width = 12
-    // Per-day Shift column ~28 chars (~200px)
-    const subLen2 = 6
-    for (let i = 0; i < days.length; i++) {
-      const baseIdx = 6 + i * subLen2
-      // M, P, T, CP
-      for (let j = 0; j < 4; j++) {
-        try {
-          // baseIdx is 6 + i*subLen2; cells start at 1 so shift by +1 to match getColumn indexes used elsewhere
-          const cidx = baseIdx + j + 1
-          const colc = ws.getColumn(cidx)
-          colc.width = 22
-          colc.alignment = { ...colc.alignment, wrapText: true, vertical: 'middle' }
-        }
-        catch {}
-      }
-      // Shift column
-      try {
-        const shiftCol = baseIdx + 4
-        const sc = ws.getColumn(shiftCol)
-        sc.width = 28
-        sc.alignment = { ...sc.alignment, wrapText: true, vertical: 'middle' }
-      }
-      catch {}
-      // Ket column (~350px), approximate width in characters
-      try {
-        const ketCol = baseIdx + 5
-        const kc = ws.getColumn(ketCol)
-        // ~50 chars approximates 350px in Excel column width units
-        kc.width = 50
-        kc.alignment = { ...kc.alignment, wrapText: true, vertical: 'middle' }
-      }
-      catch {}
-    }
-  }
-  catch {}
-
-  // Merge B1..B3 to the last column, center text, and set B3 to MONTH - YEAR
-  try {
-    const lastCol = ws.columnCount
-    for (const r of [1, 2, 3]) {
-      try {
-        ws.mergeCells(r, 2, r, lastCol)
-      }
-      catch {}
-      const cell = ws.getCell(r, 2)
-      cell.alignment = { ...cell.alignment, horizontal: 'center', vertical: 'middle' }
-    }
-    try {
-      const dt = new Date(`${month.value}-01T00:00:00`)
-      const mname = dt.toLocaleString([], { month: 'long' })
-      ws.getCell(3, 2).value = `${mname} - ${dt.getFullYear()}`.toUpperCase()
-    }
-    catch {}
-
-    // Final force-merge pass (fallback): ensure single-shift days' subcolumns are merged top+bottom
-    try {
-      const subLen = 6
-      const pairCount = expandedRows.length / 2
-      for (let i = 0; i < pairCount; i++) {
-        const topSheetRow = 3 + i * 2
-        const botSheetRow = topSheetRow + 1
-        for (let dIdx = 0; dIdx < days.length; dIdx++) {
-          const startCol = base + dIdx * subLen + 1
-          const isTwo = Boolean(dayTwoFlagsList?.[i]?.[dIdx])
-          if (isTwo) continue
-          for (let colOffset = 0; colOffset < subLen; colOffset++) {
-            const col = startCol + colOffset
-            try {
-              const botCell = ws.getRow(botSheetRow).getCell(col)
-              const botVal = (botCell && botCell.value) ? String(botCell.value).trim() : ''
-              if (!botVal) {
-                try {
-                  ws.unMergeCells(topSheetRow, col, botSheetRow, col)
-                }
-                catch {}
-                try {
-                  ws.mergeCells(topSheetRow, col, botSheetRow, col)
-                }
-                catch {}
-              }
-            }
-            catch {}
-          }
-        }
-      }
-    }
-    catch {}
-  }
-  catch {}
-
-  // Reapply horizontal centering for day group headers and subheaders in fallback
-  try {
-    const headerCols = headerRow1.length || ws.columnCount
-    for (let i = 0; i < days.length; i++) {
-      try {
-        const start = base + i * subCols.length + 1
-        const topCell = ws.getCell(1, start)
-        topCell.alignment = { ...topCell.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-      }
-      catch {}
-    }
-    for (let c = 1; c <= headerCols; c++) {
-      try {
-        const sub = ws.getCell(2, c)
-        sub.alignment = { ...sub.alignment, horizontal: 'center', vertical: 'middle', wrapText: true }
-      }
-      catch {}
-    }
-  }
-  catch {}
-
-  // No footer in fallback (generated) mode by request
-
-  const out = await wb.xlsx.writeBuffer()
-  const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `attendance-${month.value}.xlsx`
-  a.click()
-  URL.revokeObjectURL(a.href)
-}
-
-const isExporting = ref(false)
-
 async function exportXlsx() {
-  if (process.server)
-    return
-  try {
-    if (isExporting.value)
-      return
-    isExporting.value = true
-    await exportWithExcelJS()
-    toast.add({
-      title: 'Export Successful',
-      description: 'The attendance data has been exported successfully.',
-      color: 'success',
-    })
-    useErrorReporter().trackEvent('admin.excel-export', { month: month.value })
-  }
-  catch (e) {
-    console.error(e)
-    useErrorReporter().captureException(e, { context: 'admin-excel-export' })
-    toast.add({
-      title: 'Export Failed',
-      description: (e instanceof Error) ? e.message : 'An unknown error occurred during export.',
-      color: 'danger',
-    })
-  }
-  finally {
-    isExporting.value = false
-  }
+  const ExcelJS = await getExcelJS()
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet(month.value)
+  ws.columns = [
+    { width: 24 },
+    { width: 28 },
+    { width: 12 },
+    { width: 12 },
+    { width: 10 },
+    { width: 10 },
+    { width: 10 },
+    { width: 16 },
+    { width: 12 },
+    { width: 16 },
+    { width: 32 },
+  ].map((col, i) => ({ ...col, header: [c.value.employee, c.value.colEmail, c.value.colDate, c.value.colShift, c.value.colCode, c.value.colIn, c.value.colOut, c.value.colStatus, c.value.colLateMin, c.value.colEarlyMin, c.value.colReason][i] }))
+  ws.getRow(1).font = { bold: true }
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
+  ws.addRows(exportRecords())
+  const buffer = await wb.xlsx.writeBuffer()
+  const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `attendance-board-${month.value}.xlsx`
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-definePageMeta({
-  title: 'Attendance',
-  pageTitle: 'Attendance - Admin - Attendance App',
+// Drill-down drawer: a clicked cell focuses one day, a clicked name focuses
+// the employee's whole month with clickable days.
+const selected = ref<{ userId: string, date: string | null } | null>(null)
+const selectedEmployee = computed(() => selected.value ? employees.value.find(e => e.userId === selected.value!.userId) ?? null : null)
+const selectedCell = computed(() => selected.value?.date ? selectedEmployee.value?.byDate[selected.value.date] : undefined)
+const selectedEntries = computed(() => {
+  if (!selected.value?.date)
+    return []
+  return Object.entries(selectedCell.value?.grouped ?? {}).filter(([st]) => shiftType.value === 'all' || st === shiftType.value)
 })
+const monthNotes = computed(() => {
+  if (!selected.value || selected.value.date || !selectedEmployee.value)
+    return []
+  return days.value
+    .filter((day) => {
+      const grouped = selectedEmployee.value!.byDate[day]?.grouped
+      return grouped && Object.entries(grouped).some(([st]) => shiftType.value === 'all' || st === shiftType.value)
+    })
+    .map(day => ({ day, entries: Object.entries(selectedEmployee.value!.byDate[day].grouped!).filter(([st]) => shiftType.value === 'all' || st === shiftType.value) }))
+})
+
+function openDay(userId: string, date: string) {
+  selected.value = { userId, date }
+}
+function openMonth(userId: string) {
+  selected.value = { userId, date: null }
+}
+function closeDrawer() {
+  selected.value = null
+}
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape')
+    closeDrawer()
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+
+const shiftItems = computed(() => [
+  { label: c.value.allShifts, value: 'all' },
+  { label: 'Harian', value: 'harian' },
+  { label: 'Bantuan', value: 'bantuan' },
+])
+const statusItems = computed(() => [
+  { label: c.value.allStatuses, value: 'all' },
+  { label: c.value.onTime, value: 'onTime' },
+  { label: c.value.late, value: 'late' },
+  { label: c.value.earlyLeave, value: 'early' },
+  { label: c.value.missing, value: 'missing' },
+  { label: c.value.none, value: 'none' },
+])
 </script>
 
 <template>
   <PageWrapper>
-    <template #navLeft>
-      <!-- Desktop: full tabs (label + icon) -->
-      <STabs
-        v-model="activeType"
-        :items="type"
-        class="hidden sm:block w-full ml-2"
-        :button-props="{ size: 'sm' }"
-      />
-
-      <!-- Mobile: icon-only tabs -->
-      <STabs
-        v-model="activeType"
-        :items="iconOnlyType"
-        class="sm:hidden"
-        :button-props="{ size: 'sm' }"
-        aria-label="View type"
-      />
-    </template>
-    <template #navRight>
-      <div class="flex items-center gap-3">
-        <SSelect
-          v-model="month"
-          class="w-50 hidden sm:block"
-          :items="monthOptions"
-          label-key="label"
-          value-key="value"
-        />
-
-        <!-- Mobile: compact month picker as dropdown menu -->
-        <ClientOnly>
-          <SDropdown :items="monthItems" :positioning="{ align: 'end' }" class="sm:hidden">
-            <SButton
-              icon="i-heroicons-calendar"
-              class="w-8 h-8"
-              color="neutral"
-              variant="ghost"
-              aria-label="Month"
+    <div class="px-4 py-6 text-sm text-(--selaras-resolved-text-default) sm:px-8 sm:py-7 max-[640px]:py-5">
+      <!-- Heading with month stepper: the month is the primary navigation on a
+           board like this, so it sits next to the title, not in a toolbar. -->
+      <header class="flex flex-wrap items-start gap-4 justify-between mb-6">
+        <div>
+          <h2 class="text-2xl font-[650] tracking-[-0.025em] leading-[1.3]">
+            {{ c.title }}
+          </h2>
+          <p class="text-(--selaras-resolved-text-muted) mt-1.5 max-w-prose">
+            {{ c.intro }}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="flex items-center rounded-lg border border-[var(--selaras-resolved-border-default)] overflow-hidden">
+            <button
+              type="button"
+              class="px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-neutral-800 text-(--selaras-resolved-text-muted) cursor-pointer"
+              :aria-label="c.prev"
+              @click="stepMonth(-1)"
+            >
+              <SIcon name="i-heroicons-chevron-left" class="size-4" />
+            </button>
+            <SDatePicker
+              v-model="monthPickerValue"
+              granularity="month"
+              trigger-mode="button"
+              :locale="language"
+              :is-month-disabled="isMonthDisabled"
+              :aria-label="monthLabel"
+              class="min-w-44"
             />
-          </SDropdown>
-        </ClientOnly>
+            <button
+              type="button"
+              class="px-2.5 py-1.5 hover:bg-gray-100 dark:hover:bg-neutral-800 text-(--selaras-resolved-text-muted) disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+              :aria-label="c.next"
+              :disabled="!canGoNext"
+              @click="stepMonth(1)"
+            >
+              <SIcon name="i-heroicons-chevron-right" class="size-4" />
+            </button>
+          </div>
+          <SButton
+            color="neutral"
+            variant="outline"
+            icon="i-heroicons-calendar-days"
+            :disabled="month === currentMonth"
+            @click="month = currentMonth"
+          >
+            {{ c.today }}
+          </SButton>
+          <SButton
+            color="neutral"
+            variant="outline"
+            icon="i-heroicons-arrow-path"
+            :loading="pending"
+            @click="refresh()"
+          >
+            {{ c.refresh }}
+          </SButton>
+          <SButton
+            color="neutral"
+            variant="outline"
+            icon="i-heroicons-arrow-down-tray"
+            :disabled="pending || !!error || !filtered.length"
+            @click="exportXlsx()"
+          >
+            {{ c.export }}
+          </SButton>
+        </div>
+      </header>
 
-        <SButton
-          icon="i-heroicons-arrow-path"
-          variant="soft"
-          :loading="status === 'pending'"
-          aria-label="Refresh"
-          @click="onRefresh"
-        >
-          <span class="hidden sm:inline">Refresh</span>
-        </SButton>
-        <SButton
-          icon="i-heroicons-arrow-down-tray"
-          :disabled="(data?.days || []).length === 0 || status === 'pending'"
-          aria-label="Export"
-          @click="exportXlsx"
-        >
-          <span class="hidden sm:inline">Export</span>
-        </SButton>
+      <!-- Legend doubles as the live month summary: the count sits right next
+           to the color it counts. -->
+      <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mb-4 text-xs text-(--selaras-resolved-text-muted)">
+        <span class="inline-flex items-center gap-1.5">
+          <span class="size-3 rounded-[4px] bg-emerald-500 dark:bg-emerald-400" /> {{ c.onTime }} <span class="tabular-nums font-semibold text-(--selaras-resolved-text-default)">{{ summary.onTime }}</span>
+        </span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="size-3 rounded-[4px] bg-amber-500 dark:bg-amber-400" /> {{ c.late }} <span class="tabular-nums font-semibold text-(--selaras-resolved-text-default)">{{ summary.late }}</span>
+        </span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="size-3 rounded-[4px] bg-violet-500 dark:bg-violet-400" /> {{ c.earlyLeave }} <span class="tabular-nums font-semibold text-(--selaras-resolved-text-default)">{{ summary.early }}</span>
+        </span>
+        <span class="inline-flex items-center gap-1.5">
+          <span class="size-3 rounded-[4px] bg-red-500 dark:bg-red-400" /> {{ c.missing }} <span class="tabular-nums font-semibold text-(--selaras-resolved-text-default)">{{ summary.missing }}</span>
+        </span>
       </div>
-    </template>
-    <div class="p-6">
-      <AttendanceGrid v-if="activeType === 'grid'" :data="normalizedData" :loading="status === 'pending'" />
-      <AttendanceTable v-else :data="normalizedData" :loading="status === 'pending'" />
+
+      <SCard class="overflow-hidden" :ui="{ header: 'p-0', body: 'p-0' }">
+        <!-- Toolbar -->
+        <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-[var(--selaras-resolved-border-muted)]">
+          <SInput
+            v-model="search"
+            type="search"
+            icon="i-heroicons-magnifying-glass"
+            :placeholder="c.search"
+            :aria-label="c.searchLabel"
+            class="w-full sm:w-72"
+          />
+          <SSelect v-model="shiftType" :items="shiftItems" class="w-40" />
+          <SSelect v-model="statusFilter" :items="statusItems" class="w-44" />
+        </div>
+
+        <!-- Loading skeleton: keep the board's shape so the swap is calm. -->
+        <div v-if="pending" class="p-4 space-y-3" aria-busy="true">
+          <div
+            v-for="i in 8"
+            :key="i"
+            class="h-8 rounded-lg bg-gray-100 dark:bg-neutral-800 animate-pulse"
+            :style="{ width: `${70 + ((i * 13) % 25)}%` }"
+          />
+        </div>
+
+        <div v-else-if="error" class="p-10 text-center">
+          <p class="font-medium text-(--selaras-resolved-text-default)">
+            {{ c.errorTitle }}
+          </p>
+          <p class="text-(--selaras-resolved-text-muted) mt-1">
+            {{ c.errorHelp }}
+          </p>
+          <SButton
+            class="mt-4"
+            color="neutral"
+            variant="outline"
+            icon="i-heroicons-arrow-path"
+            @click="refresh()"
+          >
+            {{ c.refresh }}
+          </SButton>
+        </div>
+
+        <div v-else-if="!filtered.length" class="p-10 text-center text-(--selaras-resolved-text-muted)">
+          {{ c.emptyFiltered }}
+        </div>
+
+        <!-- The board. A real table: sticky header, sticky name column, and
+             one compact cell per day. Weekend and today columns get a wash so
+             the eye can find its bearings without reading numbers. -->
+        <div v-else class="overflow-x-auto">
+          <table class="w-full border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr>
+                <th class="sticky left-0 top-0 z-30 bg-white dark:bg-neutral-900 border-b border-r border-[var(--selaras-resolved-border-muted)] px-4 py-2.5 text-left font-medium text-(--selaras-resolved-text-muted) min-w-52">
+                  {{ c.employee }}
+                </th>
+                <th
+                  v-for="h in dayHead"
+                  :key="h.date"
+                  class="sticky top-0 z-20 bg-white dark:bg-neutral-900 border-b border-[var(--selaras-resolved-border-muted)] px-0 py-1.5 text-center font-medium min-w-9"
+                  :class="[h.weekend && !h.isToday ? 'bg-gray-50/80 dark:bg-neutral-950/60' : '', h.isToday ? 'bg-sky-50 dark:bg-sky-950/40' : '']"
+                >
+                  <div class="text-[10px] uppercase tracking-wide text-(--selaras-resolved-text-muted)" :class="h.isToday ? 'text-sky-600 dark:text-sky-400' : ''">
+                    {{ h.weekday }}
+                  </div>
+                  <div class="text-xs tabular-nums" :class="h.isToday ? 'text-sky-600 dark:text-sky-400 font-semibold' : 'text-(--selaras-resolved-text-muted)'">
+                    {{ h.num }}
+                  </div>
+                </th>
+                <th class="sticky top-0 z-20 bg-white dark:bg-neutral-900 border-b border-l border-[var(--selaras-resolved-border-muted)] px-3 py-2.5 text-center font-medium text-(--selaras-resolved-text-muted) min-w-16">
+                  {{ c.days }}
+                </th>
+                <th class="sticky top-0 z-20 bg-white dark:bg-neutral-900 border-b border-[var(--selaras-resolved-border-muted)] px-3 py-2.5 text-center font-medium text-(--selaras-resolved-text-muted) min-w-16">
+                  {{ c.lateCol }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="e in filtered"
+                :key="e.userId"
+                class="group/row"
+              >
+                <th
+                  scope="row"
+                  class="sticky left-0 z-10 bg-white dark:bg-neutral-900 border-b border-r border-[var(--selaras-resolved-border-muted)] px-4 py-1.5 text-left font-normal group-hover/row:bg-gray-50 dark:group-hover/row:bg-neutral-800/60"
+                >
+                  <button
+                    type="button"
+                    class="flex items-center gap-2 max-w-full cursor-pointer text-left"
+                    :title="c.showMonth"
+                    @click="openMonth(e.userId)"
+                  >
+                    <SAvatar
+                      :text="String(e.name || e.username || '?').split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('')"
+                      :alt="e.name || e.username || '?'"
+                      size="xs"
+                      class="shrink-0"
+                    />
+                    <span class="truncate">
+                      <span class="font-medium text-(--selaras-resolved-text-default)">{{ e.name || e.username }}</span>
+                      <span v-if="e.name && e.username" class="text-xs text-(--selaras-resolved-text-muted)"> · @{{ e.username }}</span>
+                    </span>
+                  </button>
+                </th>
+                <td
+                  v-for="h in dayHead"
+                  :key="h.date"
+                  class="border-b border-[var(--selaras-resolved-border-muted)] p-0 text-center"
+                  :class="[h.weekend && !h.isToday ? 'bg-gray-50/60 dark:bg-neutral-950/40' : '', h.isToday ? 'bg-sky-50/70 dark:bg-sky-950/30' : '']"
+                >
+                  <button
+                    v-if="!h.future"
+                    type="button"
+                    class="mx-auto my-1 size-[18px] rounded-[5px] cursor-pointer transition-colors grid place-items-center"
+                    :class="[
+                      statusDot[cellStatus(e.byDate[h.date], h.future)],
+                      statusFilter !== 'all' && cellStatus(e.byDate[h.date], h.future) !== statusFilter ? 'opacity-15' : '',
+                      selected?.userId === e.userId && selected?.date === h.date ? 'ring-2 ring-sky-500 ring-offset-1 ring-offset-white dark:ring-offset-neutral-900' : '',
+                    ]"
+                    :title="cellTitle(e, h.date, h.future)"
+                    :aria-label="cellTitle(e, h.date, h.future)"
+                    @click="openDay(e.userId, h.date)"
+                  >
+                    <span
+                      v-if="cellStatus(e.byDate[h.date], h.future) === 'none'"
+                      class="size-1 rounded-full bg-gray-400/70 dark:bg-neutral-500/70"
+                    />
+                  </button>
+                </td>
+                <td class="border-b border-l border-[var(--selaras-resolved-border-muted)] p-0 text-center tabular-nums text-(--selaras-resolved-text-muted)">
+                  <span class="block bg-white dark:bg-neutral-900 group-hover/row:bg-gray-50 dark:group-hover/row:bg-neutral-800/60 h-full py-2.5">{{ totals(e).worked }}</span>
+                </td>
+                <td class="border-b border-[var(--selaras-resolved-border-muted)] p-0 text-center tabular-nums">
+                  <span
+                    class="block bg-white dark:bg-neutral-900 group-hover/row:bg-gray-50 dark:group-hover/row:bg-neutral-800/60 h-full py-2.5 px-3"
+                    :class="totals(e).late ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-(--selaras-resolved-text-muted)'"
+                  >{{ totals(e).late }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </SCard>
+
+      <!-- Drawer: day detail or month summary depending on what was clicked. -->
+      <Teleport to="body">
+        <Transition name="drawer">
+          <div
+            v-if="selected && selectedEmployee"
+            class="fixed inset-y-0 right-0 z-50 w-full max-w-md border-l border-[var(--selaras-resolved-border-muted)] bg-white dark:bg-neutral-900 shadow-2xl flex flex-col"
+            role="dialog"
+            :aria-label="selected.date ? c.dayDetails : c.monthSummary"
+          >
+            <div class="flex items-start justify-between gap-3 px-5 py-4 border-b border-[var(--selaras-resolved-border-muted)]">
+              <div class="min-w-0">
+                <p class="font-semibold text-(--selaras-resolved-text-default) truncate">
+                  {{ selectedEmployee.name || selectedEmployee.username }}
+                </p>
+                <p class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                  @{{ selectedEmployee.username }} · {{ selectedEmployee.email }}
+                </p>
+              </div>
+              <SButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                icon="i-heroicons-x-mark"
+                :aria-label="c.close"
+                @click="closeDrawer"
+              />
+            </div>
+
+            <!-- Day mode -->
+            <template v-if="selected.date">
+              <div class="px-5 py-3 border-b border-[var(--selaras-resolved-border-muted)] flex items-center justify-between gap-2">
+                <p class="text-sm font-medium text-(--selaras-resolved-text-default)">
+                  {{ fmtDate(selected.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) }}
+                </p>
+                <button
+                  type="button"
+                  class="text-xs text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                  @click="selected = { userId: selected.userId, date: null }"
+                >
+                  {{ c.monthSummary }}
+                </button>
+              </div>
+              <div v-if="!selectedEntries.length" class="px-5 py-8 text-center text-(--selaras-resolved-text-muted)">
+                {{ selected.date > today ? c.futureDay : c.noRecords }}
+              </div>
+              <div v-else class="px-5 py-4 space-y-3 overflow-y-auto">
+                <div
+                  v-for="[st, e] in selectedEntries"
+                  :key="st"
+                  class="rounded-lg border border-[var(--selaras-resolved-border-muted)] p-3.5"
+                >
+                  <p class="flex items-center gap-2 text-sm font-medium text-(--selaras-resolved-text-default) mb-2.5">
+                    <span class="capitalize">{{ st }}</span>
+                    <span v-if="e.shiftCode" class="rounded px-1.5 py-0.5 text-xs bg-gray-100 dark:bg-neutral-800 text-(--selaras-resolved-text-muted)">{{ e.shiftCode }}</span>
+                  </p>
+                  <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div>
+                      <dt class="text-xs text-(--selaras-resolved-text-muted)">
+                        {{ c.in }}
+                      </dt>
+                      <dd class="tabular-nums mt-0.5">
+                        {{ fmtTime(e.clockIn) }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="text-xs text-(--selaras-resolved-text-muted)">
+                        {{ c.out }}
+                      </dt>
+                      <dd class="tabular-nums mt-0.5">
+                        {{ fmtTime(e.clockOut) }}
+                      </dd>
+                    </div>
+                    <div v-if="e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso)">
+                      <dt class="text-xs text-amber-600 dark:text-amber-400">
+                        {{ c.late }}
+                      </dt>
+                      <dd class="tabular-nums mt-0.5 text-amber-600 dark:text-amber-400">
+                        {{ fmtMinutes(Date.parse(e.clockIn) - Date.parse(e.shiftStartIso)) }}
+                      </dd>
+                    </div>
+                    <div v-if="e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso)">
+                      <dt class="text-xs text-(--selaras-resolved-text-muted)">
+                        {{ c.early }}
+                      </dt>
+                      <dd class="tabular-nums mt-0.5">
+                        {{ fmtMinutes(Date.parse(e.shiftEndIso) - Date.parse(e.clockOut)) }}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p v-if="e.earlyReason" class="mt-2.5 text-xs text-(--selaras-resolved-text-muted) border-t border-[var(--selaras-resolved-border-muted)] pt-2.5">
+                    <span class="font-medium">{{ c.note }}:</span> {{ e.earlyReason }}
+                  </p>
+                </div>
+              </div>
+            </template>
+
+            <!-- Month mode -->
+            <template v-else>
+              <div class="px-5 py-4 grid grid-cols-3 gap-3 border-b border-[var(--selaras-resolved-border-muted)]">
+                <div class="text-center">
+                  <p class="text-xl font-semibold tabular-nums">
+                    {{ totals(selectedEmployee).worked }}
+                  </p>
+                  <p class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                    {{ c.totalDays }}
+                  </p>
+                </div>
+                <div class="text-center">
+                  <p class="text-xl font-semibold tabular-nums" :class="totals(selectedEmployee).late ? 'text-amber-600 dark:text-amber-400' : ''">
+                    {{ totals(selectedEmployee).late }}
+                  </p>
+                  <p class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                    {{ c.totalLate }}
+                  </p>
+                </div>
+                <div class="text-center">
+                  <p class="text-xl font-semibold tabular-nums" :class="totals(selectedEmployee).missing ? 'text-red-600 dark:text-red-400' : ''">
+                    {{ totals(selectedEmployee).missing }}
+                  </p>
+                  <p class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                    {{ c.totalMissing }}
+                  </p>
+                </div>
+              </div>
+              <div class="px-5 py-4 overflow-y-auto space-y-1.5">
+                <button
+                  v-for="{ day, entries } in monthNotes"
+                  :key="day"
+                  type="button"
+                  class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-neutral-800/60 cursor-pointer"
+                  @click="selected = { userId: selected.userId, date: day }"
+                >
+                  <span
+                    class="size-3 rounded-[4px] shrink-0"
+                    :class="statusDot[cellStatus(selectedEmployee.byDate[day], day > today)]"
+                  />
+                  <span class="w-24 shrink-0 text-sm tabular-nums text-(--selaras-resolved-text-muted)">{{ fmtDate(day) }}</span>
+                  <span class="text-sm tabular-nums truncate">
+                    <template v-for="([st, e], i) in entries" :key="st">
+                      <span v-if="i" class="text-(--selaras-resolved-text-muted)"> · </span>
+                      <span>{{ fmtTime(e.clockIn) }}–{{ fmtTime(e.clockOut) }}</span>
+                    </template>
+                  </span>
+                </button>
+              </div>
+            </template>
+          </div>
+        </Transition>
+      </Teleport>
     </div>
   </PageWrapper>
 </template>
+
+<style scoped>
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateX(100%);
+  opacity: 0.5;
+}
+</style>
