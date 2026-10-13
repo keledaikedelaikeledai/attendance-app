@@ -67,7 +67,12 @@
     "clockIn": "Clock In",
     "clockOut": "Clock Out",
     "late": "Late",
-    "early": "Early"
+    "early": "Early",
+    "refresh": "Refresh",
+    "onTime": "On time",
+    "missingOut": "Missing check-out",
+    "dayDetail": "Day detail",
+    "minutes": "min"
   },
   "index": {
     "clockedIn": "Clocked In",

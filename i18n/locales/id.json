@@ -67,7 +67,12 @@
     "clockIn": "Masuk",
     "clockOut": "Keluar",
     "late": "Telat",
-    "early": "Pulang Awal"
+    "early": "Pulang Awal",
+    "refresh": "Muat ulang",
+    "onTime": "Tepat waktu",
+    "missingOut": "Belum absen keluar",
+    "dayDetail": "Detail hari",
+    "minutes": "mnt"
   },
   "index": {
     "clockedIn": "Sudah Masuk",
