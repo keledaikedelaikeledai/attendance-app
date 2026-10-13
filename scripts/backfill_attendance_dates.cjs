@@ -97,8 +97,18 @@ async function run() {
       })
     }
 
+    // The no-tz timestamp column stores UTC instants. Reading it as a raw
+    // wall-clock string and tagging it 'Z' (instead of letting pg build a
+    // Date in the local machine timezone) is what keeps toLocalParts honest:
+    // when this ran with pg Date objects on a +07:00 machine, the wall clock
+    // got interpreted as WIB and formatted back as WIB - reading like a
+    // no-op - so every WIB-morning clock-in (00:00-06:59) keyed one day
+    // early. 06:53 WIB Sep 7 rendered as "06:53" on Sep 6 with a 1433-minute
+    // "late".
     const logsRes = await client.query(`
-      select id, user_id, date, type, "timestamp", shift_code, shift_type
+      select id, user_id, date, type,
+             to_char("timestamp" at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as timestamp,
+             shift_code, shift_type
       from attendance_log
       order by user_id asc, "timestamp" asc
     `)
