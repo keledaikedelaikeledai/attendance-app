@@ -2,6 +2,27 @@
 
 Release notes are generated automatically by Changelogen when a release is cut from `master`.
 
+## v0.2.0
+
+[compare changes](https://github.com/keledaikedelaikeledai/attendance-app/compare/v0.1.1...v0.2.0)
+
+### 🚀 Enhancements
+
+- **admin:** Impersonate users from the user list, with a return-while-impersonating banner ([3b56ce5](https://github.com/keledaikedelaikeledai/attendance-app/commit/3b56ce5))
+- **report:** Mobile-first redesign of the user report page ([9aca3c8](https://github.com/keledaikedelaikeledai/attendance-app/commit/9aca3c8))
+- **attendance:** Differentiate an in-progress shift from a missing check-out ([b0c490a](https://github.com/keledaikedelaikeledai/attendance-app/commit/b0c490a))
+
+### 🩹 Fixes
+
+- **map:** Serve maplibre worker pair from public/ - every map 500'd its worker in prod ([478d2ce](https://github.com/keledaikedelaikeledai/attendance-app/commit/478d2ce))
+- **attendance:** One grace + timezone rule for late/early everywhere ([8292123](https://github.com/keledaikedelaikeledai/attendance-app/commit/8292123))
+- **report:** Give missing-check-out days their badge, not just the dot ([8469727](https://github.com/keledaikedelaikeledai/attendance-app/commit/8469727))
+- **docker:** Copy scripts/ before bun install - postinstall needs the worker sync ([a33c2dd](https://github.com/keledaikedelaikeledai/attendance-app/commit/a33c2dd))
+
+### ❤️ Contributors
+
+- Wicaksana Pratama <wicaksanapratama@gmail.com>
+
 ## v0.1.1
 
 
