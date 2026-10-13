@@ -637,7 +637,15 @@ watch(selectedMonth, fetchReport)
                   :aria-label="t(statusLabelKey(dayStatus(d)))"
                 />
                 <SBadge
-                  v-if="dayStatus(d) === 'late'"
+                  v-if="dayStatus(d) === 'missing'"
+                  color="error"
+                  variant="soft"
+                  size="sm"
+                >
+                  {{ t('report.missingOut') }}
+                </SBadge>
+                <SBadge
+                  v-else-if="dayStatus(d) === 'late'"
                   color="warning"
                   variant="soft"
                   size="sm"
