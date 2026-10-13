@@ -25,21 +25,45 @@ const items = computed(() => [
 
 <template>
   <div class="min-h-screen">
-    <!-- Sticky header. z-20 sits below the bottom bar (30) and the modal
+    <!-- Desktop: sticky full-width header with logo, navigation and the
+         locale/theme controls. Hidden on mobile, where the floating pill
+         replaces it. z-20 sits below the bottom bar (30) and the modal
          overlay (40), so dialogs always cover it. -->
-    <header class="sticky top-0 z-20 border-b border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-default)]/85 backdrop-blur">
+    <header class="sticky top-0 z-20 hidden md:block border-b border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-default)]/85 backdrop-blur">
       <SContainer class="flex h-16 items-center justify-between gap-4">
         <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="h-9 w-auto">
-        <div class="hidden md:block">
+        <div class="flex items-center gap-3">
           <!-- No `highlight`: with variant="pill" the library renders both a
                background and an underline for the active item, which reads as
                two signals for one state. Pill alone is the single treatment. -->
           <SNavigationMenu :items="items" />
+          <div class="h-6 w-px bg-[var(--selaras-resolved-border-muted)]" aria-hidden="true" />
+          <LocaleSwitcher />
+          <SColorModeToggle />
         </div>
       </SContainer>
     </header>
 
-    <SContainer class="py-6 md:py-8">
+    <!-- Mobile: a floating pill mirroring the bottom bar's card style - the two
+         ends of the app read as one family. Carries the small logo plus the
+         locale/theme controls the old mobile header dropped. Fixed, not
+         sticky, so the page background scrolls behind it; z-20 keeps it under
+         the bottom bar (30) and modal overlays (40). -->
+    <div class="fixed inset-x-0 top-0 z-20 md:hidden">
+      <SContainer class="py-2">
+        <div class="flex h-11 items-center justify-between gap-2 rounded-[var(--selaras-resolved-radius-lg)] border border-[var(--selaras-resolved-border-default)] bg-[var(--selaras-resolved-surface-default)]/95 px-3 shadow-[var(--selaras-resolved-shadow-md)] backdrop-blur">
+          <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="h-6 w-auto">
+          <div class="flex items-center gap-1">
+            <LocaleSwitcher />
+            <SColorModeToggle />
+          </div>
+        </div>
+      </SContainer>
+    </div>
+
+    <!-- pt-20 clears the fixed pill on mobile (44px pill + padding + air);
+         md gets the sticky header back, so normal padding resumes. -->
+    <SContainer class="pb-6 pt-20 md:py-8">
       <!-- pb-28 clears the fixed bottom bar on mobile. -->
       <div class="pb-28 md:pb-0">
         <slot />
