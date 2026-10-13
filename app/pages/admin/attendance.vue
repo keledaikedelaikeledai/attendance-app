@@ -37,7 +37,6 @@ const timezone = 'Asia/Jakarta'
 const copy = {
   en: {
     title: 'Attendance board',
-    intro: 'Every employee against every day of the month. Click a cell for that shift\'s detail, a name for the whole month.',
     refresh: 'Refresh',
     export: 'Export Excel',
     today: 'Today',
@@ -92,7 +91,6 @@ const copy = {
   },
   id: {
     title: 'Papan kehadiran',
-    intro: 'Setiap karyawan terhadap setiap hari dalam bulan. Klik sel untuk detail shift, klik nama untuk rekap bulanan.',
     refresh: 'Muat ulang',
     export: 'Ekspor Excel',
     today: 'Hari ini',
@@ -481,16 +479,25 @@ const statusItems = computed(() => [
     <div class="px-4 py-6 text-sm text-(--selaras-resolved-text-default) sm:px-8 sm:py-7 max-[640px]:py-5">
       <!-- Heading with month stepper: the month is the primary navigation on a
            board like this, so it sits next to the title, not in a toolbar. -->
-      <header class="flex flex-wrap items-start gap-4 justify-between mb-6">
+      <!-- Title block, then the toolbar on its own always-there row. It used
+           to share the title line via flex-wrap + justify-between, but with
+           two export buttons plus the picker the group is wider than the
+           column left of it - so whether it sat right or below flipped with
+           the selected month's label width (min-width picker) and the window
+           size. Giving it a dedicated row makes the layout deterministic;
+           the group wraps internally on narrow windows. -->
+      <header class="flex flex-col gap-3 mb-6">
         <div>
           <h2 class="text-2xl font-[650] tracking-[-0.025em] leading-[1.3]">
             {{ c.title }}
           </h2>
-          <p class="text-(--selaras-resolved-text-muted) mt-1.5 max-w-prose">
-            {{ c.intro }}
-          </p>
         </div>
-        <div class="flex items-center gap-2">
+        <!-- Fixed-width picker (w-44, not min-w-) below: a min-width let the
+             trigger breathe with the month name - which silently resized this
+             whole group and made the buttons bounce between "right of the
+             title" and "below it" depending on the selected month. The group
+             itself wraps internally on narrow screens. -->
+        <div class="flex flex-wrap items-center gap-2 justify-end">
           <div class="flex items-center rounded-lg border border-[var(--selaras-resolved-border-default)] overflow-hidden">
             <button
               type="button"
@@ -507,7 +514,7 @@ const statusItems = computed(() => [
               :locale="language"
               :is-month-disabled="isMonthDisabled"
               :aria-label="monthLabel"
-              class="min-w-44"
+              class="w-44"
             />
             <button
               type="button"
