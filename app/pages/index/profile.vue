@@ -126,7 +126,7 @@ const onSubmit = handleSubmit(async (values) => {
              class instead - SAvatar merges the consumer class into its base. -->
         <SAvatar
           v-if="!loading && (user?.user?.displayName || user?.user?.username)"
-          :src="user?.user?.image || personaAvatarUri(user?.user?.id) || undefined"
+          :src="user?.user?.image || userAvatarUri(user?.user?.id) || undefined"
           :text="initials"
           :alt="user?.user?.displayName ?? user?.user?.username"
           size="lg"

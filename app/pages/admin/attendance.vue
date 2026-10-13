@@ -619,7 +619,7 @@ const statusItems = computed(() => [
                     @click="openMonth(e.userId)"
                   >
                     <SAvatar
-                      :src="personaAvatarUri(e.userId)"
+                      :src="userAvatarUri(e.userId)"
                       :text="String(e.name || e.username || '?').split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('')"
                       :alt="e.name || e.username || '?'"
                       size="xs"

@@ -304,7 +304,7 @@ function getDropdownActions(user: AdminUser) {
           <SColumn field="name" :header="t('adminUsers.columns.name')">
             <template #default="{ row }">
               <div class="flex items-center gap-2">
-                <SAvatar :src="personaAvatarUri(row.id)" :text="initials(row.name)" size="sm" />
+                <SAvatar :src="userAvatarUri(row.id)" :text="initials(row.name)" size="sm" />
                 <span class="truncate">
                   {{ row.name }}
                 </span>

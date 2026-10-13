@@ -338,7 +338,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                 <ul class="space-y-1">
                   <li v-for="item in missingCheckouts.slice(0, 8)" :key="`${item.employee.userId}-${item.day}`" class="flex items-center gap-3 py-1">
                     <SAvatar
-                      :src="personaAvatarUri(item.employee.userId)"
+                      :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
                       size="xs"
@@ -362,7 +362,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                 <ul class="space-y-1">
                   <li v-for="item in lateToday" :key="item.employee.userId" class="flex items-center gap-3 py-1">
                     <SAvatar
-                      :src="personaAvatarUri(item.employee.userId)"
+                      :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
                       size="xs"
@@ -383,7 +383,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                 <ul class="space-y-1">
                   <li v-for="item in earlyToday" :key="item.employee.userId" class="flex items-center gap-3 py-1">
                     <SAvatar
-                      :src="personaAvatarUri(item.employee.userId)"
+                      :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
                       size="xs"
@@ -422,7 +422,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
               <ul v-else class="divide-y divide-[var(--selaras-resolved-border-muted)]">
                 <li v-for="item in onSiteList" :key="item.employee.userId" class="flex items-center gap-3 px-4 py-2.5">
                   <SAvatar
-                    :src="personaAvatarUri(item.employee.userId)"
+                    :src="userAvatarUri(item.employee.userId)"
                     :text="initials(displayName(item.employee))"
                     :alt="displayName(item.employee)"
                     size="xs"
