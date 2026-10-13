@@ -4,6 +4,10 @@
 const { Client } = require('pg')
 const { randomUUID } = require('node:crypto')
 
+// How long past a cross-midnight shift's end a log may still belong to the
+// previous day's session. Late-but-plausible clock-outs only.
+const GRACE_MINUTES = Number(process.env.GRACE_MINUTES || 120)
+
 function pad2(n) {
   return String(n).padStart(2, '0')
 }
@@ -38,6 +42,11 @@ function toLocalParts(date, timeZone) {
   return { year, month, day, hour, minute, second, ymd }
 }
 
+// Business-date rules mirror the live endpoints: a clock-in's date is
+// resolved shift-aware from its own instant; a clock-out closes into its
+// clock-in's business date (clock-out.post.ts sets date = openClockIn.date).
+// Per-row fallback only applies to orphan clock-outs.
+
 function expectedDateForRow(row, shiftMap, businessTz) {
   const local = toLocalParts(new Date(row.timestamp), businessTz)
   let expected = local.ymd
@@ -45,7 +54,14 @@ function expectedDateForRow(row, shiftMap, businessTz) {
   const shiftDef = row.shift_code ? shiftMap.get(row.shift_code) : null
   if (shiftDef && shiftDef.crossesMidnight) {
     const nowMin = local.hour * 60 + local.minute
-    if (nowMin <= shiftDef.endMin) {
+    // Late clock-ins are legitimate for the early-morning tail: a malam
+    // shift 19:00-07:00 gets a 03:29 clock-in whose business date is the
+    // day the shift started. GRACE_MINUTES keeps late clock-OUTS in the
+    // same tail (07:10 out still belongs to the 19:00 session) - the
+    // hard endMin boundary turned every late clock-out into a ~24h
+    // "early"/"late" in the admin report.
+    const nowGrace = shiftDef.endMin + GRACE_MINUTES
+    if (nowMin <= nowGrace) {
       expected = addDaysYmd(local.ymd, -1)
     }
   }
@@ -84,18 +100,43 @@ async function run() {
     const logsRes = await client.query(`
       select id, user_id, date, type, "timestamp", shift_code, shift_type
       from attendance_log
-      order by "timestamp" asc
+      order by user_id asc, "timestamp" asc
     `)
 
+    // Walk each user's logs the way the app does: clock-ins open sessions
+    // (shift-aware business date of their own instant), clock-outs inherit
+    // the open session's date; a second clock-in re-opens, an orphan
+    // clock-out falls back to the per-row rule.
     const mismatches = []
+    const affected = new Map() // userId -> Set of oldDates touched
+    let currentUser = null
+    let openSession = null
     for (const row of logsRes.rows) {
-      const { expected, local } = expectedDateForRow(row, shiftMap, businessTz)
-      if (row.date !== expected) {
+      if (row.user_id !== currentUser) {
+        currentUser = row.user_id
+        openSession = null
+      }
+      if (row.type === 'clock-in') {
+        openSession = { expected: expectedDateForRow(row, shiftMap, businessTz).expected }
+        row.__expected = openSession.expected
+      }
+      else if (row.type === 'clock-out') {
+        row.__expected = openSession ? openSession.expected : expectedDateForRow(row, shiftMap, businessTz).expected
+        openSession = null
+      }
+      else {
+        row.__expected = row.date
+      }
+      if (row.date !== row.__expected) {
+        const local = toLocalParts(new Date(row.timestamp), businessTz)
+        if (!affected.has(row.user_id))
+          affected.set(row.user_id, new Set())
+        affected.get(row.user_id).add(row.date)
         mismatches.push({
           id: row.id,
           userId: row.user_id,
           oldDate: row.date,
-          expectedDate: expected,
+          expectedDate: row.__expected,
           type: row.type,
           shiftCode: row.shift_code,
           shiftType: row.shift_type,
@@ -123,22 +164,59 @@ async function run() {
       return
     }
 
-    await client.query('begin')
+    console.log('starting transaction...'); await client.query('begin')
+    console.log('updating logs...')
 
+    // Set-based: one UPDATE over all re-dated logs, one INSERT for missing
+    // day rows, then drop orphaned day rows. Row-by-row round-trips took
+    // minutes on a WAN database.
+    for (let i = 0; i < rows.length; i += 200) {
+      const chunk = rows.slice(i, i + 200)
+      const values = chunk.map(r => `('${r.id.replace(/'/g, `''`)}', '${r.expectedDate}')`).join(', ')
+      await client.query(`
+        update attendance_log l
+        set date = v.expected, updated_at = now()
+        from (values ${values}) as v(id, expected)
+        where l.id = v.id
+      `)
+    }
+
+    console.log('logs updated; inserting day rows...')
+    // Missing day rows for the target dates.
+    const dayPairs = new Map()
     for (const row of rows) {
-      await client.query('update attendance_log set date = $1, updated_at = now() where id = $2', [row.expectedDate, row.id])
+      const key = `${row.userId}::${row.expectedDate}`
+      if (!dayPairs.has(key))
+        dayPairs.set(key, { id: randomUUID(), userId: row.userId, date: row.expectedDate, shiftCode: row.shiftCode || null, shiftType: row.shiftType || 'harian' })
+    }
+    if (dayPairs.size) {
+      const values = [...dayPairs.values()].map(d =>
+        `('${d.id}', '${d.userId.replace(/'/g, `''`)}', '${d.date}', ${d.shiftCode ? `'${d.shiftCode.replace(/'/g, `''`)}'` : 'NULL'}, '${d.shiftType}', now(), now())`,
+      ).join(', ')
+      await client.query(`
+        insert into attendance_day (id, user_id, date, selected_shift_code, shift_type, created_at, updated_at)
+        select id, user_id, date, selected_shift_code::text, shift_type, created_at, updated_at
+        from (values ${values}) as v(id, user_id, date, selected_shift_code, shift_type, created_at, updated_at)
+        on conflict (user_id, date) do nothing
+      `)
+    }
 
-      const dayRes = await client.query('select id from attendance_day where user_id = $1 and date = $2 limit 1', [row.userId, row.expectedDate])
-      if (dayRes.rowCount === 0) {
-        await client.query(
-            'insert into attendance_day (id, user_id, date, selected_shift_code, shift_type, created_at, updated_at) values ($1, $2, $3, $4, $5, now(), now())',
-            [randomUUID(), row.userId, row.expectedDate, row.shiftCode || null, row.shiftType || 'harian'],
-        )
+    // A day row whose logs all moved elsewhere becomes an empty ghost day
+    // in the report - drop it once no log references it anymore.
+    console.log('day rows done; cleaning orphans...')
+    let removedEmptyDays = 0
+    for (const [userId, oldDates] of affected) {
+      for (const oldDate of oldDates) {
+        const remaining = await client.query('select 1 from attendance_log where user_id = $1 and date = $2 limit 1', [userId, oldDate])
+        if (remaining.rowCount === 0) {
+          await client.query('delete from attendance_day where user_id = $1 and date = $2', [userId, oldDate])
+          removedEmptyDays += 1
+        }
       }
     }
 
     await client.query('commit')
-    console.log(JSON.stringify({ updated: rows.length }, null, 2))
+    console.log(JSON.stringify({ updated: rows.length, removedEmptyDays }, null, 2))
   }
   catch (err) {
     try {
