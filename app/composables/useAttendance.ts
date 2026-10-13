@@ -131,7 +131,9 @@ const isLate = computed(() => lateByMs.value > 0)
 const lateByHuman = computed(() => {
   const ms = lateByMs.value
   if (!ms) return '0m'
-  const totalMinutes = Math.ceil(ms / 60000); const h = Math.floor(totalMinutes / 60); const m = totalMinutes % 60
+  const totalMinutes = Math.ceil(ms / 60000)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
   return h ? `${h}h ${m}m` : `${m}m`
 })
 
@@ -193,7 +195,9 @@ async function clockIn(opts?: ClockInOptions) {
       credentials: 'include',
     })
     if (res) {
-      clockedIn.value = true; clockInTime.value = new Date().toISOString(); clockOutTime.value = undefined
+      clockedIn.value = true
+      clockInTime.value = new Date().toISOString()
+      clockOutTime.value = undefined
       selectedShiftCode.value = res.selectedShiftCode ?? selectedShiftCode.value
       selectedShiftType.value = res.shiftType ?? selectedShiftType.value
     }
@@ -223,7 +227,10 @@ async function clockOut(coords?: GeolocationCoordinates, earlyReason?: string | 
       },
       credentials: 'include',
     })
-    if (res) { clockedIn.value = false; clockOutTime.value = new Date().toISOString() }
+    if (res) {
+      clockedIn.value = false
+      clockOutTime.value = new Date().toISOString()
+    }
     await refresh()
   }
   finally {
