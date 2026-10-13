@@ -1,6 +1,6 @@
 import type { AttendancePdfReport } from '../../app/utils/attendance-pdf'
 import { describe, expect, test } from 'bun:test'
-import { buildAttendancePdf } from '../../app/utils/attendance-pdf'
+import { buildAttendancePdf, formatDuration } from '../../app/utils/attendance-pdf'
 
 const copy = {
   title: 'Attendance Report',
@@ -77,5 +77,17 @@ describe('buildAttendancePdf', () => {
       todayYmd: '2026-10-01',
     })
     expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('formatDuration', () => {
+  test('omits zero units, smallest last', () => {
+    expect(formatDuration(0)).toBe('0 min')
+    expect(formatDuration(45)).toBe('45 min')
+    expect(formatDuration(60)).toBe('1 hr')
+    expect(formatDuration(75)).toBe('1 hr 15 min')
+    expect(formatDuration(1328)).toBe('22 hr 8 min')
+    expect(formatDuration(1440)).toBe('1 d')
+    expect(formatDuration(1501)).toBe('1 d 1 hr 1 min')
   })
 })

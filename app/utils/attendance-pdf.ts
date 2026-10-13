@@ -70,6 +70,23 @@ const statusText: Record<string, [number, number, number]> = {
   missing: [127, 29, 29],
 }
 
+// 1328 -> "22 hr 8 min"; zero units are omitted so 45 renders as "45 min",
+// not "0 d 0 hr 45 min". Language-neutral unit tokens keep this same in the
+// en and id documents.
+export function formatDuration(minutes: number): string {
+  const d = Math.floor(minutes / 1440)
+  const h = Math.floor((minutes % 1440) / 60)
+  const m = minutes % 60
+  const parts: string[] = []
+  if (d)
+    parts.push(`${d} d`)
+  if (h)
+    parts.push(`${h} hr`)
+  if (m || parts.length === 0)
+    parts.push(`${m} min`)
+  return parts.join(' ')
+}
+
 function fmtTime(iso?: string | null, timezone?: string, language?: string | null) {
   if (!iso || !timezone || !language)
     return '-'
@@ -134,14 +151,16 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
   y += 20
 
   // KPI strip: two text rows, values first, colored squares for statuses.
-  const kpis: Array<{ label: string, value: string, fill?: [number, number, number] }> = [
+  // Minute accumulations show duration + raw total ("22 hr 8 min" over
+  // "(1328 min)"), matching the summary table.
+  const kpis: Array<{ label: string, value: string, sub?: string, fill?: [number, number, number] }> = [
     { label: copy.employee, value: String(report.rows.length) },
     { label: copy.onTime, value: String(onTime), fill: statusFill.onTime },
     { label: copy.late, value: String(lateCount), fill: statusFill.late },
     { label: copy.earlyLeave, value: String(earlyCount), fill: statusFill.early },
     { label: copy.totalMissing, value: String(missingCount), fill: statusFill.missing },
-    { label: copy.colLateMin, value: String(lateMinutes) },
-    { label: copy.colEarlyMin, value: String(earlyMinutes) },
+    { label: copy.colLateMin, value: formatDuration(lateMinutes), sub: `(${lateMinutes} min)` },
+    { label: copy.colEarlyMin, value: formatDuration(earlyMinutes), sub: `(${earlyMinutes} min)` },
   ]
   // KPI strip: two fixed rows so the layout is deterministic. Values bold,
   // labels muted, status chips get their board color swatch.
@@ -151,10 +170,11 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
   ]
   {
     doc.setFontSize(9)
-    for (const [rowIndex, row] of kpiRows.entries()) {
-      const rowY = y + rowIndex * 16
+    let rowY = y
+    for (const row of kpiRows) {
       let x = MARGIN
       for (const kpi of row) {
+        const subX = x
         if (kpi.fill) {
           doc.setFillColor(kpi.fill[0], kpi.fill[1], kpi.fill[2])
           doc.rect(x, rowY - 7, 8, 8, 'F')
@@ -167,10 +187,17 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
         doc.setTextColor(110)
         doc.text(kpi.label, x, rowY)
         x += doc.getTextWidth(kpi.label) + 24
+        if (kpi.sub) {
+          doc.setFontSize(6.5)
+          doc.text(kpi.sub, subX, rowY + 10)
+          doc.setFontSize(9)
+        }
         doc.setTextColor(20)
       }
+      // A row holding duration+total KPIs needs vertical room for both lines.
+      rowY += row.some(kpi => kpi.sub) ? 25 : 16
     }
-    y += kpiRows.length * 16 + 14
+    y = rowY + 14
   }
 
   // ---- Per-employee monthly summary ------------------------------------
@@ -197,7 +224,12 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
           earlyMin += entryEarlyMinutes(entry) ?? 0
         }
       }
-      return [String(e.name ?? e.username ?? '-'), worked, late, lateMin, earlyMin, missing]
+      // Accumulations render as a human duration with the raw minutes kept
+      // underneath - "22 hr 8 min" over "(1328 min)" - so the cell reads at
+      // a glance and still totals exactly for payroll math.
+      const lateCell = lateMin > 0 ? `${formatDuration(lateMin)}\n(${lateMin} min)` : '0'
+      const earlyCell = earlyMin > 0 ? `${formatDuration(earlyMin)}\n(${earlyMin} min)` : '0'
+      return [String(e.name ?? e.username ?? '-'), worked, late, lateCell, earlyCell, missing]
     }),
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 3 },
