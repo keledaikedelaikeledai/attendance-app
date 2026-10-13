@@ -26,6 +26,10 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
 
 # Copy manifest files first for cached layer installs
 COPY package.json bun.lock* package-lock.json* ./
+# postinstall runs `bun scripts/sync-maplibre-worker.cjs`, so the script must
+# exist before the install - a full COPY . . here would bust the dependency
+# cache on every source edit.
+COPY scripts ./scripts
 
 # Use BuildKit cache for Bun to speed up installs (when supported by builder)
 RUN --mount=type=cache,id=bun-cache,target=/root/.bun \
