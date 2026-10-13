@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { AttendanceEntryStatusLike } from '~/utils/attendance-status'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { entryEarlyMinutes as entryEarlyMinutesShared, entryLateMinutes as entryLateMinutesShared } from '~/utils/attendance-status'
 
 definePageMeta({
   title: 'Admin Dashboard',
@@ -128,11 +130,12 @@ function fmtTime(iso?: string | null) {
 function fmtDate(date: string) {
   return new Intl.DateTimeFormat(language.value, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
 }
-function entryLateMinutes(e: ShiftEntry) {
-  return e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso) ? Math.round((Date.parse(e.clockIn) - Date.parse(e.shiftStartIso)) / 60_000) : 0
+function entryLateMinutes(e: AttendanceEntryStatusLike) {
+  // Shared grace rule - same numbers as the board, reports, and exports.
+  return entryLateMinutesShared(e) ?? 0
 }
-function entryEarlyMinutes(e: ShiftEntry) {
-  return e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso) ? Math.round((Date.parse(e.shiftEndIso) - Date.parse(e.clockOut)) / 60_000) : 0
+function entryEarlyMinutes(e: AttendanceEntryStatusLike) {
+  return entryEarlyMinutesShared(e) ?? 0
 }
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() ?? '').join('')

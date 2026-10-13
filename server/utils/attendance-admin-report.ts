@@ -1,4 +1,5 @@
 import { createShiftWindow, parseBusinessDate } from '../../shared/utils/attendance-date'
+import { earlyShortfallMs, lateDelayMs } from '../../shared/utils/attendance-grace'
 import { resolveHistoricalShiftTiming } from './attendance-shift-history'
 
 export interface AttendanceAdminShiftTiming {
@@ -41,9 +42,10 @@ export function calculateAttendanceReportMetrics(
       if (timing) {
         const shiftWindow = createShiftWindow(parseBusinessDate(businessDate), timing, businessTimezone)
         const shiftStart = shiftWindow.start.toDate()
-        const clockIn = new Date(val.clockIn)
         val.shiftStartIso = shiftStart.toISOString()
-        totalLateMs += Math.max(0, clockIn.getTime() - shiftStart.getTime())
+        // Grace-filtered: sub-minute delays count as on time, so cells, the
+        // board, and the exports all agree on what "late" means.
+        totalLateMs += lateDelayMs(val.clockIn, shiftStart.toISOString())
       }
     }
 
@@ -54,10 +56,9 @@ export function calculateAttendanceReportMetrics(
         const shiftWindow = createShiftWindow(parseBusinessDate(businessDate), timing, businessTimezone)
         const shiftStart = shiftWindow.start.toDate()
         const shiftEnd = shiftWindow.end.toDate()
-        const clockOut = new Date(val.clockOut)
         val.shiftStartIso = shiftStart.toISOString()
         val.shiftEndIso = shiftEnd.toISOString()
-        totalEarlyMs += Math.max(0, shiftEnd.getTime() - clockOut.getTime())
+        totalEarlyMs += earlyShortfallMs(val.clockOut, shiftEnd.toISOString())
       }
     }
   }

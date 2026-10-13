@@ -1,5 +1,6 @@
 import type { ShiftDef } from '~/types/shifts'
 import { ref } from 'vue'
+import { earlyShortfallMs, lateDelayMs } from '~~/shared/utils/attendance-grace'
 
 // Internal cache to avoid repeated network calls
 let SHIFTS_CACHE: Map<string, ShiftDef> | null = null
@@ -176,8 +177,7 @@ export function entryLateMs(e: any, parentCell?: any, entries?: any[]) {
   const def = e.shift || (e.shiftCode && shiftsMap.value ? shiftsMap.value.get(e.shiftCode) : undefined)
   const start = computeShiftStart(e.clockIn, def || e.shift)
   if (!start) return 0
-  const diff = new Date(e.clockIn).getTime() - start.getTime()
-  return Math.max(0, diff)
+  return lateDelayMs(new Date(e.clockIn).getTime(), start.getTime())
 }
 
 export function entryEarlyMs(e: any, parentCell?: any, entries?: any[]) {
@@ -205,9 +205,7 @@ export function entryEarlyMs(e: any, parentCell?: any, entries?: any[]) {
   const end = new Date(start)
   if (crosses) end.setDate(end.getDate() + 1)
   end.setHours(eh, em, 0, 0)
-  const co = new Date(e.clockOut)
-  const diff = end.getTime() - co.getTime()
-  return Math.max(0, diff)
+  return earlyShortfallMs(new Date(e.clockOut).getTime(), end.getTime())
 }
 
 // Compatibility helpers used elsewhere

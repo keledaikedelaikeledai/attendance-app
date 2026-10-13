@@ -3,6 +3,7 @@ import { and, between, eq } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { reconcileCrossdayOrphanClockOut, selectShiftClockBounds } from '~~/server/utils/attendance-reconcile'
+import { earlyShortfallMs, lateDelayMs } from '~~/shared/utils/attendance-grace'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -328,10 +329,10 @@ export default defineEventHandler(async (event) => {
         if (def && clockIn) {
           const { startDate: sStart, endDate: sEnd } = computeShiftSpanFromDate(date, def.start, def.end)
           const cin = clockIn.timestampMs ? new Date(clockIn.timestampMs) : null
-          if (cin && cin > sStart) lateMsForShift = Math.max(0, cin.getTime() - sStart.getTime())
+          if (cin && cin > sStart) lateMsForShift = lateDelayMs(clockIn.timestampMs, sStart.getTime())
           if (clockOut) {
             const cout = clockOut.timestampMs ? new Date(clockOut.timestampMs) : null
-            if (cout && cout < sEnd) earlyMsForShift = Math.max(0, sEnd.getTime() - cout.getTime())
+            if (cout && cout < sEnd) earlyMsForShift = earlyShortfallMs(clockOut.timestampMs, sEnd.getTime())
           }
         }
       }

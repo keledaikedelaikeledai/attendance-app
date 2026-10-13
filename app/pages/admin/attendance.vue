@@ -230,7 +230,9 @@ function fmtDate(date: string, opts: Intl.DateTimeFormatOptions = { weekday: 'sh
   return new Intl.DateTimeFormat(language.value, opts).format(new Date(`${date}T00:00:00Z`))
 }
 function fmtMinutes(ms?: number) {
-  const min = Math.round((ms ?? 0) / 60_000)
+  // Ceil: combined with the grace rule this keeps a late/early label at a
+  // minimum of "1 min" - a sub-minute delay shows as on time instead.
+  const min = Math.ceil((ms ?? 0) / 60_000)
   return `${min} ${c.value.minutes}`
 }
 
@@ -246,10 +248,14 @@ function cellTitle(employee: Employee, date: string, future: boolean) {
   return [base, ...lines].join('\n')
 }
 function lateSuffix(e: ShiftEntry) {
-  return e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso) ? ` • ${c.value.late.toLowerCase()} ${fmtMinutes(Date.parse(e.clockIn) - Date.parse(e.shiftStartIso))}` : ''
+  // Grace-filtered minutes from the shared rule - the same number the drawer,
+  // the user report, and the exports print for this entry.
+  const min = entryLateMinutesShared(e)
+  return min != null ? ` • ${c.value.late.toLowerCase()} ${fmtMinutes(min * 60_000)}` : ''
 }
 function earlySuffix(e: ShiftEntry) {
-  return e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso) ? ` • ${c.value.early} ${fmtMinutes(Date.parse(e.shiftEndIso) - Date.parse(e.clockOut))}` : ''
+  const min = entryEarlyMinutesShared(e)
+  return min != null ? ` • ${c.value.early} ${fmtMinutes(min * 60_000)}` : ''
 }
 
 // Employee month totals for the right-hand columns of the board.
@@ -314,6 +320,14 @@ function entryLateMinutes(e: ShiftEntry) {
 }
 function entryEarlyMinutes(e: ShiftEntry) {
   return entryEarlyMinutesShared(e) ?? ''
+}
+// Drawer late/early rows: shared grace-rule minutes as milliseconds for
+// fmtMinutes, 0 hides the row.
+function drawerLateMs(e: ShiftEntry) {
+  return (entryLateMinutesShared(e) ?? 0) * 60_000
+}
+function drawerEarlyMs(e: ShiftEntry) {
+  return (entryEarlyMinutesShared(e) ?? 0) * 60_000
 }
 function exportRecords() {
   return filtered.value.flatMap((employee) => {
@@ -801,20 +815,20 @@ const statusItems = computed(() => [
                         {{ fmtTime(e.clockOut) }}
                       </dd>
                     </div>
-                    <div v-if="e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso)">
+                    <div v-if="drawerLateMs(e) > 0">
                       <dt class="text-xs text-amber-600 dark:text-amber-400">
                         {{ c.late }}
                       </dt>
                       <dd class="tabular-nums mt-0.5 text-amber-600 dark:text-amber-400">
-                        {{ fmtMinutes(Date.parse(e.clockIn) - Date.parse(e.shiftStartIso)) }}
+                        {{ fmtMinutes(drawerLateMs(e)) }}
                       </dd>
                     </div>
-                    <div v-if="e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso)">
+                    <div v-if="drawerEarlyMs(e) > 0">
                       <dt class="text-xs text-(--selaras-resolved-text-muted)">
                         {{ c.early }}
                       </dt>
                       <dd class="tabular-nums mt-0.5">
-                        {{ fmtMinutes(Date.parse(e.shiftEndIso) - Date.parse(e.clockOut)) }}
+                        {{ fmtMinutes(drawerEarlyMs(e)) }}
                       </dd>
                     </div>
                   </dl>
