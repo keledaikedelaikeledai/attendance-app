@@ -13,17 +13,19 @@ export default defineEventHandler(async (event) => {
   if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { coords, shiftType: bodyShiftType, shiftCode: bodyShiftCode, timeZone: bodyTimeZone, earlyReason, geofenceComment, geofenceId, geofenceName } = body as {
+  const { coords, shiftType: bodyShiftType, shiftCode: bodyShiftCode, timeZone: bodyTimeZone, earlyReason, geofenceComment } = body as {
     coords?: { latitude?: number, longitude?: number, accuracy?: number }
     shiftType?: 'harian' | 'bantuan' | null
     shiftCode?: string | null
     timeZone?: string
     earlyReason?: string
     geofenceComment?: string
-    geofenceId?: string
-    geofenceName?: string
   }
   if (!bodyTimeZone) throw createError({ statusCode: 400, statusMessage: 'timeZone required' })
+
+  // Server-side geofence enforcement - the client guard is advisory only.
+  // Returns the fence the SERVER matched; that is what gets recorded.
+  const matchedGeofence = await resolveGeofenceForClock(coords, geofenceComment)
 
   const db = useDb()
   const userId = session.user.id
@@ -76,8 +78,8 @@ export default defineEventHandler(async (event) => {
       shiftEnd: openClockIn.shiftEnd ?? null,
       earlyReason: typeof earlyReason === 'string' && earlyReason.length ? earlyReason.slice(0, 200) : null,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
-      geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
-      geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
+      geofenceId: matchedGeofence.geofenceId,
+      geofenceName: matchedGeofence.geofenceName,
       createdAt: now,
       updatedAt: now,
     })

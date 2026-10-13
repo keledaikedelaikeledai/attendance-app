@@ -3,6 +3,7 @@ import type { ShiftDef } from '~/types/shifts'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { evaluateGeofence as evaluateGeofenceAt, formatDistance } from '~~/shared/utils/geofence-geo'
 import { getShiftLabel, useAttendance } from '~/composables/useAttendance'
 import { useGeolocation } from '~/composables/useGeolocation'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -67,137 +68,23 @@ const earlyReason = ref<string>('')
 const isEarlyOut = ref(false)
 const hasLocation = computed(() => typeof coords.value.lat === 'number' && typeof coords.value.lng === 'number')
 
-function distanceMeters(a: [number, number], b: [number, number]) {
-  const R = 6371000
-  const toRad = (x: number) => (x * Math.PI) / 180
-  const dLat = toRad(b[0] - a[0])
-  const dLng = toRad(b[1] - a[1])
-  const lat1 = toRad(a[0])
-  const lat2 = toRad(b[0])
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
-}
-
-function distanceToSegmentMeters(point: [number, number], a: [number, number], b: [number, number]) {
-  const R = 6371000
-  const lat0 = (point[0] * Math.PI) / 180
-  const toXY = ([lat, lng]: [number, number]) => {
-    const x = ((lng - point[1]) * Math.PI / 180) * Math.cos(lat0) * R
-    const y = ((lat - point[0]) * Math.PI / 180) * R
-    return { x, y }
+// Geometry + decision logic live in shared/utils/geofence-geo so the
+// server can enforce the exact same rules this guard only previews.
+function evaluateGeofenceLatLon(lat?: number, lng?: number) {
+  const ev = evaluateGeofenceAt(lat, lng, geofences.value)
+  if (!ev.allowed) {
+    const message = ev.fence?.type === 'point' && typeof ev.fence?.radiusMeters === 'number'
+      ? `You are outside the allowed radius (${formatDistance(ev.dist)} away, limit ${formatDistance(ev.fence.radiusMeters)}). Move closer to the allowed location.`
+      : 'You are outside the allowed area. Move inside the polygon to clock in/out.'
+    return { allowed: false, requireComment: false, message, fence: ev.fence }
   }
-  const p = { x: 0, y: 0 }
-  const aXY = toXY(a)
-  const bXY = toXY(b)
-  const dx = bXY.x - aXY.x
-  const dy = bXY.y - aXY.y
-  const len2 = dx * dx + dy * dy
-  if (!len2) {
-    return Math.sqrt((p.x - aXY.x) ** 2 + (p.y - aXY.y) ** 2)
-  }
-  let t = ((p.x - aXY.x) * dx + (p.y - aXY.y) * dy) / len2
-  t = Math.max(0, Math.min(1, t))
-  const projX = aXY.x + t * dx
-  const projY = aXY.y + t * dy
-  return Math.sqrt((p.x - projX) ** 2 + (p.y - projY) ** 2)
-}
-
-function distanceToPolygonMeters(point: [number, number], poly: Array<[number, number]>) {
-  if (!poly.length)
-    return Infinity
-  if (pointInPolygon(point, poly))
-    return 0
-  let min = Infinity
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i]
-    const b = poly[(i + 1) % poly.length]
-    if (!a || !b)
-      continue
-    const dist = distanceToSegmentMeters(point, a, b)
-    if (dist < min)
-      min = dist
-  }
-  return min
-}
-
-function pointInPolygon(point: [number, number], poly: Array<[number, number]>) {
-  let inside = false
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const curr = poly[i]
-    const prev = poly[j]
-    if (!curr || !prev)
-      continue
-    const xi = curr[1]
-    const yi = curr[0]
-    const xj = prev[1]
-    const yj = prev[0]
-    const intersect = ((yi > point[0]) !== (yj > point[0])) && (point[1] < ((xj - xi) * (point[0] - yi)) / (yj - yi) + xi)
-    if (intersect)
-      inside = !inside
-  }
-  return inside
-}
-
-function formatDistance(meters?: number | null) {
-  if (meters == null)
-    return ''
-  if (meters < 1000)
-    return `${Math.round(meters)} m`
-  return `${(meters / 1000).toFixed(2)} km`
-}
-
-function getClosestActiveGeofence(lat?: number, lng?: number) {
-  if (typeof lat !== 'number' || typeof lng !== 'number')
-    return null
-  const active = geofences.value.filter(g => g?.isActive)
-  if (!active.length)
-    return null
-  let best: { fence: any, dist: number, inside: boolean } | null = null
-  for (const fence of active) {
-    let dist = Infinity
-    let inside = false
-    if (fence.type === 'point' && typeof fence.centerLat === 'number' && typeof fence.centerLng === 'number') {
-      dist = distanceMeters([lat, lng], [fence.centerLat, fence.centerLng])
-      inside = typeof fence.radiusMeters === 'number' ? dist <= fence.radiusMeters : false
-    }
-    else if (fence.type === 'polygon' && Array.isArray(fence.polygon) && fence.polygon.length >= 3) {
-      inside = pointInPolygon([lat, lng], fence.polygon)
-      dist = distanceToPolygonMeters([lat, lng], fence.polygon)
-    }
-    if (!best || dist < best.dist)
-      best = { fence, dist, inside }
-  }
-  return best
-}
-
-function evaluateGeofence(lat?: number, lng?: number) {
-  if (!geofences.value.length)
-    return { allowed: true, requireComment: false, fence: null }
-  const closest = getClosestActiveGeofence(lat, lng)
-  if (!closest)
-    return { allowed: true, requireComment: false, fence: null }
-  const { fence, dist, inside } = closest
-  const mode = fence?.interactionMode || 'disallow'
-  if (mode === 'allow')
-    return { allowed: true, requireComment: false, fence }
-  if (inside)
-    return { allowed: true, requireComment: false, fence }
-  if (mode === 'allow_with_comment') {
-    return { allowed: true, requireComment: true, message: 'You are outside the allowed area. Please add a comment to continue.', fence }
-  }
-  if (fence.type === 'point' && typeof fence.radiusMeters === 'number') {
-    return {
-      allowed: false,
-      requireComment: false,
-      message: `You are outside the allowed radius (${formatDistance(dist)} away, limit ${formatDistance(fence.radiusMeters)}). Move closer to the allowed location.`,
-      fence,
-    }
-  }
-  return { allowed: false, requireComment: false, message: 'You are outside the allowed area. Move inside the polygon to clock in/out.', fence }
+  if (ev.requireComment)
+    return { allowed: true, requireComment: true, message: 'You are outside the allowed area. Please add a comment to continue.', fence: ev.fence }
+  return { allowed: true, requireComment: false, message: '', fence: ev.fence }
 }
 
 function guardGeofenceOrNotify(lat?: number, lng?: number) {
-  const { allowed, requireComment, message, fence } = evaluateGeofence(lat, lng)
+  const { allowed, requireComment, message, fence } = evaluateGeofenceLatLon(lat, lng)
   geofenceUsed.value = fence ? { id: fence.id ?? null, name: fence.name ?? null } : null
   if (!allowed) {
     geofenceBlockedMessage.value = message || 'You are outside the allowed area.'
