@@ -48,6 +48,7 @@ const ALL_SOURCE_ID = 'geofence-all'
 const ALL_FILL = 'geofence-all-fill'
 const ALL_LINE = 'geofence-all-line'
 const ALL_POINT = 'geofence-all-point'
+const ALL_LABEL = 'geofence-all-name'
 
 // Terra Draw validates feature ids as UUIDs (length 36) and silently drops
 // anything else, which used to leave the store empty with no error.
@@ -63,11 +64,13 @@ export type GeofenceTileSource = 'openfreemap' | 'osm' | 'streets' | 'satellite'
 
 // A minimal MapLibre raster style around one tile set. `maxzoom` is where the
 // source stops; MapLibre overzooms past it, so deep zooms stay painted instead
-// of going blank. There are no symbol layers in this app's geofence styling, so
-// the style needs no `glyphs` URL.
+// of going blank. The fence-name labels are symbol layers, so every style -
+// raster ones included - must serve glyphs; OpenFreeMap hosts the same Noto
+// fonts its vector styles use.
 function rasterStyle(tiles: string[], attribution: string, maxzoom: number) {
   return {
     version: 8,
+    glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
     sources: {
       basemap: { type: 'raster', tiles, tileSize: 256, maxzoom, attribution },
     },
@@ -181,6 +184,22 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
     return [lng + dLng, lat]
   }
 
+  // Bounding-box centre of an [lng, lat] ring - good enough to anchor a name
+  // label, and nowhere near the cost of a true area centroid.
+  function ringCentroid(ring: [number, number][]): [number, number] {
+    let west = 180
+    let east = -180
+    let south = 90
+    let north = -90
+    for (const [x, y] of ring) {
+      if (x < west) west = x
+      if (x > east) east = x
+      if (y < south) south = y
+      if (y > north) north = y
+    }
+    return [(west + east) / 2, (south + north) / 2]
+  }
+
   function distanceMeters(a: [number, number], b: [number, number]) {
     const R = 6371000
     const toRad = (x: number) => (x * Math.PI) / 180
@@ -262,10 +281,19 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
       if (!f || f.id === selectedId.value)
         continue
       if (f.type === 'polygon' && Array.isArray(f.polygon) && f.polygon.length >= 3) {
+        const ring = closed(f.polygon.map(([lat, lng]) => [lng, lat]))
         feats.push({
           type: 'Feature',
           properties: { kind: 'polygon', id: f.id },
-          geometry: { type: 'Polygon', coordinates: [closed(f.polygon.map(([lat, lng]) => [lng, lat]))] },
+          geometry: { type: 'Polygon', coordinates: [ring] },
+        })
+        // The name is labelled from a centroid point, not the polygon itself:
+        // a symbol layer on a polygon paints one label per tile the shape
+        // crosses, which trips fences big enough to straddle tiles.
+        feats.push({
+          type: 'Feature',
+          properties: { kind: 'label', id: f.id, name: f.name },
+          geometry: { type: 'Point', coordinates: ringCentroid(ring) },
         })
       }
       else if (f.type === 'point' && typeof f.centerLat === 'number' && typeof f.centerLng === 'number') {
@@ -279,7 +307,7 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
         }
         feats.push({
           type: 'Feature',
-          properties: { kind: 'point', id: f.id },
+          properties: { kind: 'point', id: f.id, name: f.name },
           geometry: { type: 'Point', coordinates: [f.centerLng, f.centerLat] },
         })
       }
@@ -366,8 +394,39 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
         id: ALL_POINT,
         type: 'circle',
         source: ALL_SOURCE_ID,
-        filter: ['==', ['geometry-type'], 'Point'],
+        // The centroid label points are Points too - a dot there would read as
+        // a point fence marker.
+        filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', ['get', 'kind'], 'label']],
         paint: { 'circle-radius': 4, 'circle-color': fillColor.value, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 },
+      })
+    }
+    // Fence names, view mode only: the underlay empties while editing, which
+    // empties these too. Point fences label from their centre dot, polygon
+    // fences from a centroid point - symbols directly on polygons would paint
+    // one label per tile the shape crosses. Labels sit above everything of
+    // ours but stay click-transparent: picking runs through fenceIdAt on the
+    // three layers above.
+    if (!m.getLayer(ALL_LABEL)) {
+      m.addLayer({
+        id: ALL_LABEL,
+        type: 'symbol',
+        source: ALL_SOURCE_ID,
+        filter: ['in', ['get', 'kind'], ['literal', ['point', 'label']]],
+        minzoom: 10,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Noto Sans Regular'],
+          'text-size': 12,
+          'text-anchor': 'top',
+          'text-offset': [0, 0.9],
+          'text-max-width': 8,
+          'text-letter-spacing': 0.05,
+        },
+        paint: {
+          'text-color': fillColor.value,
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.25,
+        },
       })
     }
     pushSelectedToMap()
