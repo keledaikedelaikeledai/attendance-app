@@ -1,14 +1,11 @@
 @import "tailwindcss";
-@import "@nuxt/ui";
+@import "@sewadah/selaras";
+@import "#selaras/tailwind.css";
 
-body {
-  @apply bg-gray-200;
-}
-
-.dark body {
-  @apply bg-neutral-950;
-}
-
+/* ---------------------------------------------------------------------------
+   Brand primary — the single source of truth for the brand hue.
+   The app was designed around this blue; nothing else should redefine it.
+--------------------------------------------------------------------------- */
 @theme static {
   --color-primary-50: oklch(0.965 0.016 245.06);
   --color-primary-100: oklch(0.922 0.038 242.11);
@@ -23,3 +20,158 @@ body {
   --color-primary-950: oklch(0.176 0.034 232.56);
 }
 
+/* ---------------------------------------------------------------------------
+   Bridge Selaras' gray foundation onto Tailwind's gray ramp.
+
+   Selaras' own gray is a near-identical violet-tinted family, but keeping two
+   copies of "gray" means a Selaras border and a `text-gray-500` utility in the
+   same component are computed from different scales. Aliasing the foundation
+   collapses them into one ramp, so the ~150 raw `gray-*` utilities already in
+   the templates sit on the same values Selaras resolves its surfaces, text,
+   borders and `neutral` role from.
+--------------------------------------------------------------------------- */
+/* `static` is required: Selaras reads these through Tailwind's build-time
+   `--theme()` function rather than `var()`, so a plain `@theme` block would be
+   tree-shaken as unused and the Selaras defaults would win. */
+@theme static {
+  --color-selaras-gray-50: var(--color-gray-50);
+  --color-selaras-gray-100: var(--color-gray-100);
+  --color-selaras-gray-200: var(--color-gray-200);
+  --color-selaras-gray-300: var(--color-gray-300);
+  --color-selaras-gray-400: var(--color-gray-400);
+  --color-selaras-gray-500: var(--color-gray-500);
+  --color-selaras-gray-600: var(--color-gray-600);
+  --color-selaras-gray-700: var(--color-gray-700);
+  --color-selaras-gray-800: var(--color-gray-800);
+  --color-selaras-gray-900: var(--color-gray-900);
+  --color-selaras-gray-950: var(--color-gray-950);
+}
+
+/* ---------------------------------------------------------------------------
+   Light theme.
+
+   Surfaces keep the layout the app has always had: a light grey canvas with
+   white cards sitting on it, separated by a hairline border. The primary role
+   maps leaf-by-leaf onto the brand scale above, so editing that scale
+   re-skins every Selaras component at once.
+--------------------------------------------------------------------------- */
+:root {
+  --selaras-surface-canvas: var(--color-gray-200);
+  --selaras-surface-default: var(--color-white);
+  --selaras-surface-elevated: var(--color-gray-50);
+  --selaras-surface-inverted: var(--color-gray-900);
+
+  --selaras-text-default: var(--color-gray-900);
+  --selaras-text-muted: var(--color-gray-500);
+  --selaras-text-inverted: var(--color-white);
+
+  /* border-default does two jobs on a bare <SCard>, and in light mode they
+     pull in opposite directions. The card's default variant is `outline`:
+     its root paints surface-default plus a ring in border-default, and that
+     ring sits on the canvas. Its header draws border-b in the same token, and
+     that one sits on the white card.
+
+     So the ring wants to be visible on the canvas, and the header divider
+     wants to be quiet on white. White (L* 100) and this canvas (L* 91.6) are
+     only 8.4 apart, so no single value does both:
+
+       gray-200 -> header 8.4 (quiet)   ring 0.0 (invisible)
+       gray-300 -> header 14.9 (loud)  ring 6.5 (visible)
+
+     gray-200 is the right trade. The ring going invisible costs nothing -
+     white on grey already separates the card - whereas a 14.9 header divider
+     reads as a hard line across every card. Do not raise border-default
+     without moving surface-canvas too; gray-100 canvas would let gray-200
+     serve both (ring 4.6, header 8.4). */
+  --selaras-border-default: var(--color-gray-200);
+  --selaras-border-muted: var(--color-gray-100);
+  --selaras-border-hover: var(--color-gray-300);
+
+  --selaras-scrim: rgb(0 0 0 / 0.5);
+
+  /* Nuxt UI's default corner radius; keeps the existing feel. */
+  --selaras-radius-base: 0.5rem;
+
+  --selaras-color-primary-fill: var(--color-primary-500);
+  --selaras-color-primary-fill-hover: var(--color-primary-600);
+  --selaras-color-primary-fill-pressed: var(--color-primary-700);
+  --selaras-color-primary-on-fill: var(--color-primary-50);
+
+  --selaras-color-primary-indicator: var(--color-primary-600);
+
+  --selaras-color-primary-subtle: var(--color-primary-100);
+  --selaras-color-primary-subtle-hover: var(--color-primary-200);
+  --selaras-color-primary-subtle-pressed: var(--color-primary-300);
+  --selaras-color-primary-on-subtle: var(--color-primary-800);
+
+  --selaras-color-primary-text: var(--color-primary-700);
+  --selaras-color-primary-text-hover: var(--color-primary-800);
+  --selaras-color-primary-text-pressed: var(--color-primary-900);
+
+  --selaras-color-primary-border: var(--color-primary-300);
+  --selaras-color-primary-focus: var(--color-primary-500);
+}
+
+/* ---------------------------------------------------------------------------
+   Dark theme. Steps the brand ramp the other way: a lighter fill holds contrast
+   against the dark canvas, and text/subtle invert to the light end of the
+   scale. The canvas keeps the neutral-950 the app shipped with.
+--------------------------------------------------------------------------- */
+:root.dark {
+
+  --selaras-surface-canvas: var(--color-neutral-950);
+  --selaras-surface-default: var(--color-neutral-900);
+  --selaras-surface-elevated: var(--color-neutral-800);
+  --selaras-surface-inverted: var(--color-neutral-100);
+
+  --selaras-text-default: var(--color-neutral-100);
+  --selaras-text-muted: var(--color-neutral-400);
+  --selaras-text-inverted: var(--color-neutral-950);
+
+  /* Same two jobs as light mode, and the same trade. A bare <SCard> is
+     `outline`: surface-default plus a border-default ring on the canvas, and
+     a border-default header divider on the card itself.
+
+       neutral-800 -> header 7.4 (quiet)  ring 12.4 (visible)
+       neutral-700 -> header 19.4 (loud)  ring 24.4 (heavy)
+
+     neutral-800 is the right trade, and it is also what Selaras ships:
+     L* 7.4 against its own elevated surface.
+
+     border-muted is the one genuine fix here. It was neutral-900, the same
+     value as surface-default, so the eight dividers using it rendered at 0.0
+     inside a card. neutral-800 puts them at 7.4, matching border-default. */
+  --selaras-border-default: var(--color-neutral-800);
+  --selaras-border-muted: var(--color-neutral-800);
+  --selaras-border-hover: var(--color-neutral-700);
+
+  --selaras-scrim: rgb(0 0 0 / 0.7);
+
+  --selaras-color-primary-fill: var(--color-primary-400);
+  --selaras-color-primary-fill-hover: var(--color-primary-300);
+  --selaras-color-primary-fill-pressed: var(--color-primary-200);
+  --selaras-color-primary-on-fill: var(--color-primary-950);
+
+  --selaras-color-primary-indicator: var(--color-primary-300);
+
+  --selaras-color-primary-subtle: var(--color-primary-950);
+  --selaras-color-primary-subtle-hover: var(--color-primary-900);
+  --selaras-color-primary-subtle-pressed: var(--color-primary-800);
+  --selaras-color-primary-on-subtle: var(--color-primary-200);
+
+  --selaras-color-primary-text: var(--color-primary-300);
+  --selaras-color-primary-text-hover: var(--color-primary-200);
+  --selaras-color-primary-text-pressed: var(--color-primary-100);
+
+  --selaras-color-primary-border: var(--color-primary-700);
+  --selaras-color-primary-focus: var(--color-primary-400);
+}
+
+/* ---------------------------------------------------------------------------
+   Page base. Driven by the tokens above so it flips with the `.dark` class
+   rather than needing its own dark: override.
+--------------------------------------------------------------------------- */
+body {
+  background-color: var(--selaras-surface-canvas);
+  color: var(--selaras-text-default);
+}

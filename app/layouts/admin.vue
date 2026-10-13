@@ -1,12 +1,70 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
+import type { DropdownItem, NavigationMenuItem } from '@sewadah/selaras/types'
 
-const { menus, isCollapsed } = defineProps<{
-  menus?: NavigationMenuItem[]
-  isCollapsed: boolean
-}>()
+const menus = computed<NavigationMenuItem[]>(() => [
+  { label: 'Dashboard', icon: 'i-heroicons-squares-2x2', to: '/admin' },
+  { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
+  { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
+  { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
+  { label: 'Geofence', icon: 'i-heroicons-map-pin', to: '/admin/geofence' },
+])
+
+const route = useRoute()
+
+// ---------------------------------------------------------------------------
+// Collapsed state (Selaras 0.6.0, sewadahapp/selaras#11).
+// ---------------------------------------------------------------------------
+
+const sidebarCollapsed = ref<boolean | undefined>(undefined)
+let userCollapsed = false
+
+const isCanvasRoute = computed(() => route.path.startsWith('/admin/geofence'))
+let restoreCollapsedTo: boolean | null = null
+
+function onCollapsedChange(value: boolean) {
+  userCollapsed = value
+  sidebarCollapsed.value = value
+}
+
+watch(isCanvasRoute, (canvas) => {
+  if (canvas) {
+    if (restoreCollapsedTo === null) {
+      restoreCollapsedTo = userCollapsed
+      sidebarCollapsed.value = true
+    }
+    return
+  }
+  if (restoreCollapsedTo !== null) {
+    userCollapsed = restoreCollapsedTo
+    sidebarCollapsed.value = restoreCollapsedTo
+    restoreCollapsedTo = null
+  }
+}, { immediate: true })
 
 const { data: user } = await authClient.useSession(useFetch)
+
+const userHandle = computed(() => {
+  const u = user.value?.user
+  if (!u) return ''
+  return u.username ? `@${u.username}` : (u.email ?? '')
+})
+
+const userInitials = computed(() => {
+  const name = user.value?.user?.name || user.value?.user?.username || ''
+  if (!name) return 'U'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase()
+  }
+  return name.slice(0, 2).toUpperCase()
+})
+
+const displayMenus = computed(() => {
+  if (sidebarCollapsed.value) {
+    return menus.value.filter(m => m.type !== 'label')
+  }
+  return menus.value
+})
 
 function onSignOut() {
   authClient.signOut({
@@ -17,84 +75,110 @@ function onSignOut() {
     },
   })
 }
+
+const userMenuItems = computed<DropdownItem[][]>(() => [
+  [
+    { label: 'Profile', icon: 'i-lucide-user-circle', to: '/admin/profile' },
+    { label: 'Sign Out', icon: 'i-lucide-log-out', destructive: true, onSelect: onSignOut },
+  ],
+])
 </script>
 
 <template>
-  <div>
-    <aside
-      class="fixed top-0 left-0 transition-all duration-300 hidden sm:block"
-      :class="[isCollapsed ? 'w-15' : 'w-64']"
-    >
-      <div class="h-screen flex flex-col px-3 py-4 bg-zinc-100 dark:bg-neutral-800">
-        <div class="flex flex-col items-center justify-center mb-12">
-          <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
-        </div>
-        <UNavigationMenu
-          orientation="vertical"
-          :items="menus"
-          class="data-[orientation=vertical]:w-full flex-1 overflow-y-auto"
-        />
-        <div class="flex flex-col pl-1 pr-2">
-          <USeparator />
-          <UTooltip
-            :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }"
-            :delay-duration="100"
-            :disable-closing-trigger="true"
-          >
-            <template #content>
-              <UButton
-                icon="i-lucide-user-circle"
-                size="sm"
-                color="neutral"
-                variant="link"
-                class="w-full p-[10px]"
-                to="/admin/profile"
-              >
-                Profile
-              </UButton>
-              <UButton
-                icon="i-lucide-log-out"
-                size="sm"
-                color="neutral"
-                variant="link"
-                class="w-full p-[10px]"
-                @click="onSignOut"
-              >
-                Sign Out
-              </UButton>
-            </template>
-            <div
-              class="w-full flex items-center justify-between mt-2 pt-2 pb-2"
-              :class="{ 'pl-2 pr-2': !isCollapsed }"
+  <div class="h-screen overflow-hidden bg-[var(--selaras-surface-canvas)]">
+    <SDashboardGroup auto-save-id="admin-shell" class="h-full">
+      <SDashboardSidebar
+        :collapsed="sidebarCollapsed"
+        :ui="{
+          root: 'bg-transparent border-0',
+          header: 'p-4 sm:p-5',
+          body: 'px-3 py-2',
+          footer: 'p-3 sm:p-4 border-t border-transparent',
+        }"
+        @update:collapsed="onCollapsedChange"
+      >
+        <template #header="{ isCollapsed }">
+          <div class="flex items-center px-1">
+            <img
+              v-if="!isCollapsed"
+              src="/logo-app.png"
+              alt="App Logo"
+              class="w-[145px] h-auto object-contain"
             >
-              <div class="flex items-center">
-                <UAvatar
-                  :src="user?.user.image || undefined"
+            <img
+              v-else
+              src="/logo-mark.webp"
+              alt="App Logo"
+              class="mx-auto w-7 h-auto"
+            >
+          </div>
+        </template>
+        <template #default="{ isCollapsed }">
+          <SNavigationMenu
+            orientation="vertical"
+            :items="displayMenus"
+            :collapsed="isCollapsed"
+            tooltip
+            :ui="{
+              groupLabel: 'px-3 pb-1.5 pt-3 text-[11px] font-semibold text-gray-400 dark:text-neutral-500 tracking-wider',
+            }"
+          />
+        </template>
+        <template #footer="{ isCollapsed }">
+          <SDropdown
+            :items="userMenuItems"
+            :positioning="{ side: 'top', align: 'start', sideOffset: 6 }"
+            :ui="{ content: 'w-[var(--reka-dropdown-menu-trigger-width)]' }"
+          >
+            <SButton
+              block
+              variant="ghost"
+              color="neutral"
+              class="h-auto p-0 hover:bg-gray-200/50 dark:hover:bg-neutral-800/50 rounded-xl"
+              :aria-label="isCollapsed ? (user?.user.name ?? 'User menu') : undefined"
+            >
+              <span
+                class="flex w-full items-center gap-2.5 py-1.5 text-left"
+                :class="isCollapsed ? 'justify-center px-0' : 'justify-start px-2'"
+              >
+                <SAvatar
+                  :src="user?.user.image || userAvatarUri(user?.user.id) || undefined"
+                  :text="userInitials"
                   :alt="user?.user.username || 'User Avatar'"
-                  size="lg"
-                  class="border border-neutral-300 dark:border-neutral-700"
+                  :size="isCollapsed ? 'sm' : 'md'"
+                  class="shrink-0 bg-primary-100 text-primary-700 dark:bg-primary-950 dark:text-primary-300 font-semibold"
                 />
-                <span
-                  v-if="!isCollapsed"
-                  class="text-xs ml-2"
-                >
-                  {{ user?.user.name }}
-                </span>
-              </div>
-              <UIcon
-                v-if="!isCollapsed"
-                name="i-lucide-ellipsis-vertical"
-              />
-            </div>
-          </UTooltip>
+                <template v-if="!isCollapsed">
+                  <span class="flex min-w-0 flex-1 flex-col text-left">
+                    <span class="w-full truncate text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+                      {{ user?.user.name }}
+                    </span>
+                    <span class="w-full truncate text-xs text-[var(--selaras-resolved-text-muted)]">
+                      {{ user?.user.email || userHandle }}
+                    </span>
+                  </span>
+                  <SIcon
+                    name="i-heroicons-chevron-up-down"
+                    class="shrink-0 w-4 h-4 text-[var(--selaras-resolved-text-muted)]"
+                  />
+                </template>
+              </span>
+            </SButton>
+          </SDropdown>
+        </template>
+      </SDashboardSidebar>
+
+      <SDashboardResizeHandle
+        :ui="{
+          line: 'bg-transparent transition-colors group-hover:bg-primary-500/30 group-focus-visible:bg-primary-500/30 group-data-[state=drag]:bg-primary-500/50',
+        }"
+      />
+
+      <SDashboardPanel class="h-full p-2 sm:py-3 sm:pr-3 sm:pl-0 md:py-3.5 md:pr-3.5 md:pl-0 lg:py-4 lg:pr-4 lg:pl-0 bg-transparent overflow-hidden">
+        <div class="flex flex-col flex-1 h-full min-h-0 rounded-2xl md:rounded-3xl border border-gray-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-xs overflow-hidden">
+          <slot />
         </div>
-      </div>
-    </aside>
-    <div
-      class="p-2 h-screen bg-white dark:bg-neutral-900 transition-all duration-300 overflow-hidden flex flex-col"
-      :class="[isCollapsed ? 'sm:ml-15' : 'sm:ml-64']"
-    >
-      <slot />
-    </div>
+      </SDashboardPanel>
+    </SDashboardGroup>
   </div>
 </template>

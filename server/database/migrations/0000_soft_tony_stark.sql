@@ -76,9 +76,33 @@ CREATE TABLE "attendance_log" (
 	"accuracy" double precision,
 	"shift_type" text,
 	"shift_code" text,
+	"shift_start" text,
+	"shift_end" text,
 	"early_reason" text,
+	"geofence_comment" text,
+	"geofence_id" text,
+	"geofence_name" text,
 	"created_at" timestamp NOT NULL,
-	"updated_at" timestamp NOT NULL
+	"updated_at" timestamp NOT NULL,
+	CONSTRAINT "attendance_log_type_check" CHECK ("attendance_log"."type" IN ('clock-in','clock-out')),
+	CONSTRAINT "attendance_log_date_format_check" CHECK ("attendance_log"."date" ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+	CONSTRAINT "attendance_log_shift_type_check" CHECK ("attendance_log"."shift_type" IS NULL OR "attendance_log"."shift_type" IN ('harian','bantuan'))
+);
+--> statement-breakpoint
+CREATE TABLE "geo_fence" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text,
+	"is_active" boolean DEFAULT false NOT NULL,
+	"type" text DEFAULT 'point' NOT NULL,
+	"center_lat" double precision,
+	"center_lng" double precision,
+	"radius_meters" double precision,
+	"polygon" jsonb,
+	"interaction_mode" text DEFAULT 'disallow' NOT NULL,
+	"created_at" timestamp NOT NULL,
+	"updated_at" timestamp NOT NULL,
+	CONSTRAINT "geo_fence_type_check" CHECK ("geo_fence"."type" IN ('point','polygon')),
+	CONSTRAINT "geo_fence_interaction_mode_check" CHECK ("geo_fence"."interaction_mode" IN ('disallow','allow','allow_with_comment'))
 );
 --> statement-breakpoint
 CREATE TABLE "shift" (

@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { TableColumnDef } from '@sewadah/selaras/table'
 import type { AttendanceData } from '~/pages/admin/attendance.vue'
-import { createColumnHelper } from '@tanstack/vue-table'
 import { h, onMounted } from 'vue'
 import * as attendanceTime from '~/composables/useAttendanceTime'
 
@@ -32,7 +31,7 @@ function shiftTypeLabel(t?: 'harian' | 'bantuan') {
 // and the newer cell.grouped shape where grouped is an object keyed by shiftType.
 // normalizeCell imported from composable
 
-const columnHelper = createColumnHelper<typeof attendances.value[0]>()
+const columnHelper = createTableColumnHelper<typeof attendances.value[0]>()
 
 const columns = computed(() => {
   if (!props.data)
@@ -126,7 +125,7 @@ const columns = computed(() => {
         return h('div', { class: 'text-center w-[120px]' }, String(s.workingDays))
       },
       size: 120,
-    }) as unknown as TableColumn<typeof attendances.value[0]>,
+    }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'shift-harian',
       header: () => h('div', { class: 'text-center w-[120px]' }, 'Shift Harian'),
@@ -135,7 +134,7 @@ const columns = computed(() => {
         return h('div', { class: 'text-center w-[120px]' }, String(s.harian))
       },
       size: 120,
-    }) as unknown as TableColumn<typeof attendances.value[0]>,
+    }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'shift-bantuan',
       header: () => h('div', { class: 'text-center w-[120px]' }, 'Shift Bantuan'),
@@ -144,7 +143,7 @@ const columns = computed(() => {
         return h('div', { class: 'text-center w-[120px]' }, String(s.bantuan))
       },
       size: 120,
-    }) as unknown as TableColumn<typeof attendances.value[0]>,
+    }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'late-hours',
       header: () => h('div', { class: 'text-center w-[120px]' }, 'Keterlambatan'),
@@ -153,7 +152,7 @@ const columns = computed(() => {
         return h('div', { class: 'text-center w-[120px]' }, attendanceTime.humanizeMinutes(s.lateMs))
       },
       size: 120,
-    }) as unknown as TableColumn<typeof attendances.value[0]>,
+    }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'early-hours',
       header: () => h('div', { class: 'text-center w-[120px]' }, 'Cepat Pulang'),
@@ -162,7 +161,7 @@ const columns = computed(() => {
         return h('div', { class: 'text-center w-[120px]' }, attendanceTime.humanizeMinutes(s.earlyMs))
       },
       size: 120,
-    }) as unknown as TableColumn<typeof attendances.value[0]>,
+    }) as unknown as TableColumnDef<typeof attendances.value[0]>,
   ]
 
   const dayCols = props.data?.days.map(day =>
@@ -242,7 +241,7 @@ const columns = computed(() => {
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
-        }) as unknown as TableColumn<typeof attendances.value[0]>,
+        }) as unknown as TableColumnDef<typeof attendances.value[0]>,
         columnHelper.display({
           id: `early-${day}`,
           header: () => h('div', { class: 'text-center w-[120px]' }, 'CP'),
@@ -258,7 +257,7 @@ const columns = computed(() => {
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
-        }) as unknown as TableColumn<typeof attendances.value[0]>,
+        }) as unknown as TableColumnDef<typeof attendances.value[0]>,
         columnHelper.display({
           id: `shift-${day}`,
           header: () => h('div', { class: 'text-center w-[120px]' }, 'Shift'),
@@ -276,7 +275,7 @@ const columns = computed(() => {
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 120,
-        }) as unknown as TableColumn<typeof attendances.value[0]>,
+        }) as unknown as TableColumnDef<typeof attendances.value[0]>,
         columnHelper.display({
           id: `ket-${day}`,
           header: () => h('div', { class: 'text-center w-[220px]' }, 'Ket'),
@@ -292,11 +291,11 @@ const columns = computed(() => {
             return h('div', { class: 'text-center w-[220px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
           size: 220,
-        }) as unknown as TableColumn<typeof attendances.value[0]>,
+        }) as unknown as TableColumnDef<typeof attendances.value[0]>,
       ],
-    }) as unknown as TableColumn<typeof attendances.value[0]>,
+    }) as unknown as TableColumnDef<typeof attendances.value[0]>,
   )
-  return [...baseCols, ...dayCols] as TableColumn<typeof attendances.value[0]>[]
+  return [...baseCols, ...dayCols] as TableColumnDef<typeof attendances.value[0]>[]
 })
 
 function formatTime(iso?: string) {
@@ -313,7 +312,7 @@ onMounted(() => {
 
 <template>
   <div class="border-y border-gray-200 dark:border-gray-800">
-    <u-table
+    <STable
       :data="attendances"
       :columns="columns"
       :ui="{

@@ -2,6 +2,10 @@
 import { toTypedSchema } from '@vee-validate/zod'
 import { z } from 'zod'
 
+// Selaras' SButton has no `to` handling of its own - a bare `to`
+// falls through to the <button> and does nothing. Route via NuxtLink instead.
+const NuxtLink = resolveComponent('NuxtLink')
+
 const { handleSubmit, errors, isSubmitting } = useForm()
 
 const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: '' })
@@ -41,7 +45,7 @@ definePageMeta({
 </script>
 
 <template>
-  <UContainer class="py-10 max-w-md mx-auto">
+  <SContainer class="py-10 max-w-md mx-auto">
     <div class="space-y-6">
       <div class="text-center space-y-2">
         <h1 class="text-2xl font-semibold">
@@ -51,92 +55,89 @@ definePageMeta({
           Register to manage your time
         </p>
       </div>
-      <UCard>
+      <SCard>
         <form class="space-y-4" @submit.prevent="onSubmit">
           <div class="space-y-2">
-            <UFormField label="Username" :error="errors.username">
-              <UInput
+            <SFormField label="Username" :error="errors.username" label-mode="static">
+              <SInput
                 v-model="username"
-                size="xl"
+                size="lg"
                 type="text"
                 placeholder="username"
                 icon="i-heroicons-identification"
                 autofocus
                 class="w-full"
               />
-            </UFormField>
+            </SFormField>
           </div>
           <div class="space-y-2">
-            <UFormField label="Full Name" :error="errors.name">
-              <UInput
+            <SFormField label="Full Name" :error="errors.name" label-mode="static">
+              <SInput
                 v-model="name"
-                size="xl"
+                size="lg"
                 type="text"
                 placeholder="Full Name"
                 icon="i-heroicons-user"
                 class="w-full"
               />
-            </UFormField>
+            </SFormField>
           </div>
           <div class="space-y-2">
-            <UFormField label="Email" :error="errors.email">
-              <UInput
+            <SFormField label="Email" :error="errors.email" label-mode="static">
+              <SInput
                 v-model="email"
-                size="xl"
+                size="lg"
                 type="email"
                 placeholder="you@example.com"
                 icon="i-heroicons-envelope"
                 class="w-full"
               />
-            </UFormField>
+            </SFormField>
           </div>
           <div class="space-y-2">
-            <UFormField label="Password" :error="errors.password">
-              <UInput
+            <SFormField label="Password" :error="errors.password" label-mode="static">
+              <PasswordField
                 v-model="password"
-                size="xl"
-                type="password"
+                size="lg"
                 placeholder="••••••••"
                 icon="i-heroicons-lock-closed"
-                class="w-full"
               />
-            </UFormField>
+            </SFormField>
           </div>
           <div class="space-y-2">
-            <UFormField label="Confirm Password" :error="errors.confirmPassword">
-              <UInput
+            <SFormField label="Confirm Password" :error="errors.confirmPassword" label-mode="static">
+              <PasswordField
                 v-model="confirmPassword"
-                size="xl"
-                type="password"
+                size="lg"
                 placeholder="••••••••"
                 icon="i-heroicons-lock-closed"
-                class="w-full"
               />
-            </UFormField>
+            </SFormField>
           </div>
           <div class="pt-2">
-            <UButton
-              size="xl"
+            <SButton
+              size="lg"
               :loading="isSubmitting"
               block
               type="submit"
               icon="i-heroicons-arrow-right-end-on-rectangle"
             >
               Register
-            </UButton>
+            </SButton>
           </div>
         </form>
-      </UCard>
+      </SCard>
       <div class="text-center">
-        <UButton
-          variant="link"
+        <SButton
+          :as="NuxtLink"
+          variant="text"
           to="/login"
           color="neutral"
-          size="xs"
+          size="sm"
         >
           Login
-        </UButton>
+        </SButton>
       </div>
     </div>
-  </UContainer>
+  </SContainer>
 </template>

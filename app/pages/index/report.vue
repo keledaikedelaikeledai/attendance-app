@@ -375,178 +375,331 @@ function _changeMonth(delta: number) {
   selectedMonth.value = `${y}-${String(m).padStart(2, '0')}`
 }
 
+// The report starts on the current month and can look back, but never forward.
+// A future month cannot hold attendance, so the next button disables itself
+// there. Comparison is string-based: the YYYY-MM format sorts chronologically.
+const isCurrentMonth = computed(() => selectedMonth.value === currentMonthStr)
+
+function prevMonth() {
+  _changeMonth(-1)
+}
+
+function nextMonth() {
+  if (!isCurrentMonth.value)
+    _changeMonth(1)
+}
+
 onMounted(fetchReport)
 watch(selectedMonth, fetchReport)
 </script>
 
 <template>
-  <div class="pb-8 space-y-6">
-    <div v-if="loading" class="text-sm text-gray-500">
-      {{ t('report.loading') }}
-    </div>
-    <div v-if="errorMsg" class="text-sm text-red-600">
-      {{ errorMsg }}
-    </div>
+  <div class="mx-auto w-full max-w-3xl space-y-4">
+    <!-- Loading mirrors the real page structure - overview card, then day
+         cards - so the swap from skeleton to data reads as the same page,
+         not a flash of unrelated chrome. Tiles are sized off a 5-count
+         overview and 3 day cards, roughly a full month on mobile. -->
+    <div
+      v-if="loading"
+      class="space-y-4"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <p class="sr-only">
+        {{ t('report.loading') }}
+      </p>
 
-    <div v-if="summary && !loading" class="space-y-4 max-w-3xl mx-auto">
-      <UCard>
+      <SCard :ui="{ body: 'p-0' }">
         <template #header>
-          <div class="flex items-center justify-between">
-            <span class="font-medium">{{ t('report.overview') }}</span>
-            <span class="text-sm text-gray-500">{{ monthLabel(summary?.month) }}</span>
+          <div class="flex items-center justify-between gap-3">
+            <SSkeleton class="h-5 w-36" />
+            <SSkeleton class="h-7 w-40" />
           </div>
         </template>
+        <dl class="grid grid-cols-2 divide-x divide-y divide-[var(--selaras-resolved-border-muted)] sm:grid-cols-3 sm:divide-y-0">
+          <div v-for="i in 5" :key="i" class="p-4">
+            <SSkeleton class="h-3.5 w-24" />
+            <SSkeleton class="mt-3 h-7 w-14" />
+          </div>
+        </dl>
+      </SCard>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 py-4">
-          <div class="space-y-1">
-            <p class="text-xs text-gray-500">
-              {{ t('report.totalWorkingDays') }}
-            </p>
-            <p class="text-lg font-semibold">
-              {{ summary.totalWorkingDays }}
-            </p>
-          </div>
-          <div class="space-y-1">
-            <p class="text-xs text-gray-500">
-              {{ t('report.harianShiftDays') }}
-            </p>
-            <p class="text-lg font-semibold">
-              {{ summary.totalHarianShift }}
-            </p>
-          </div>
-          <div class="space-y-1">
-            <p class="text-xs text-gray-500">
-              {{ t('report.bantuanShiftDays') }}
-            </p>
-            <p class="text-lg font-semibold">
-              {{ summary.totalBantuanShift }}
-            </p>
-          </div>
-          <div class="space-y-1">
-            <p class="text-xs text-gray-500">
-              {{ t('report.totalLate') }}
-            </p>
-            <p class="text-lg font-semibold">
-              {{ fmtMinutes(summary.totalLateMinutes) }}
-            </p>
-          </div>
-          <div class="space-y-1">
-            <p class="text-xs text-gray-500">
-              {{ t('report.totalEarlyLeave') }}
-            </p>
-            <p class="text-lg font-semibold">
-              {{ fmtMinutes(summary.totalEarlyLeaveMinutes) }}
-            </p>
-          </div>
-        </div>
-      </UCard>
+      <p class="px-1 pt-2">
+        <SSkeleton class="h-3.5 w-3/4 max-w-xs" />
+      </p>
 
-      <div class="text-xs text-gray-500">
-        {{ t('report.note') }}
-      </div>
+      <div v-for="i in 3" :key="i" class="space-y-3">
+        <SCard :ui="{ body: 'p-0', header: 'flex flex-wrap items-center justify-between gap-2 bg-[var(--selaras-resolved-surface-elevated)] p-4' }">
+          <template #header>
+            <SSkeleton class="h-4 w-32" />
+            <div class="flex items-center gap-1.5">
+              <SSkeleton class="h-5 w-16 rounded-full" />
+              <SSkeleton class="h-5 w-16 rounded-full" />
+            </div>
+          </template>
 
-      <div>
-        <h3 class="mt-6 mb-3 font-medium">
-          {{ t('report.dailyDetails') }}
-        </h3>
-        <div class="space-y-4">
-          <div v-for="d in days" :key="d.date">
-            <div class="rounded-md overflow-hidden">
-              <div class="flex items-center justify-between bg-gray-50 dark:bg-gray-800/40 px-4 py-3">
-                <div class="font-medium">
-                  {{ new Date(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) }}
+          <div class="border-b border-[var(--selaras-resolved-border-muted)] px-4 py-2.5">
+            <SSkeleton class="h-3 w-48" />
+          </div>
+
+          <div class="divide-y divide-[var(--selaras-resolved-border-muted)]">
+            <div class="p-4">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+                <div class="w-full space-y-2 sm:w-44 sm:flex-none">
+                  <SSkeleton class="h-3 w-14" />
+                  <SSkeleton class="h-5 w-24 rounded-full" />
                 </div>
-                <div class="text-sm text-gray-500 flex items-center gap-2">
-                  <template v-if="(d.shifts || []).length">
-                    <span v-if="summarizeDay(d).harian" class="text-xs px-2 py-0.5 bg-green-100 rounded">{{ t('report.harian') }}: {{ summarizeDay(d).harian }}</span>
-                    <span v-if="summarizeDay(d).bantuan" class="text-xs px-2 py-0.5 bg-blue-100 rounded">{{ t('report.bantuan') }}: {{ summarizeDay(d).bantuan }}</span>
-                    <span v-if="summarizeDay(d).unknown" class="text-xs px-2 py-0.5 bg-gray-100 rounded">{{ t('report.other') }}: {{ summarizeDay(d).unknown }}</span>
-                  </template>
-                  <template v-else>
-                    <span class="text-xs text-muted">{{ t('report.noShifts') }}</span>
-                  </template>
-                </div>
-              </div>
-
-              <div class="px-4 py-3 text-xs text-gray-500">
-                {{ t('report.late') }}: {{ fmtMinutes(Math.ceil(dayTotalLateMs(d) / 60000)) }} • {{ t('report.early') }}: {{ fmtMinutes(Math.ceil(dayTotalEarlyMs(d) / 60000)) }}
-              </div>
-
-              <div class="divide-y divide-neutral-200 dark:divide-neutral-800">
-                <template v-for="shift in d.shifts" :key="JSON.stringify([shift.selectedShiftCode, shift.shiftType, shift.clockIn, shift.clockOut])">
-                  <div class="p-3">
-                    <div class="flex flex-col sm:flex-row items-start gap-4 py-2">
-                      <div class="sm:flex-none sm:w-40 w-full">
-                        <div class="text-xs text-gray-500">
-                          {{ t('report.shift') }}
-                        </div>
-                        <div class="mt-1 flex items-center gap-2">
-                          <UBadge v-if="shift.selectedShiftCode" :color="shiftBadgeColor(shift.selectedShiftCode)" variant="solid">
-                            {{ shift.selectedShiftCode }}
-                          </UBadge>
-                          <UBadge v-else variant="outline">
-                            {{ shift.shiftType ?? t('report.unknown') }}
-                          </UBadge>
-                          <UBadge :color="shift.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="subtle" size="xs">
-                            {{ shift.shiftType ? (shift.shiftType === 'harian' ? t('report.harian') : t('report.bantuan')) : t('report.unknown') }}
-                          </UBadge>
-                        </div>
-                      </div>
-
-                      <div class="w-full flex flex-row gap-4">
-                        <div class="sm:w-1/2 sm:min-w-0 w-full">
-                          <div class="text-xs text-gray-500">
-                            Clock In
-                          </div>
-                          <div class="text-sm font-medium">
-                            {{ formatTime(shift.clockIn) }}
-                          </div>
-                          <div class="text-xs text-gray-500">
-                            <span v-if="shift.clockInLat != null && shift.clockInLng != null">
-                              <a
-                                :href="mapUrl(shift.clockInLat, shift.clockInLng)"
-                                target="_blank"
-                                rel="noopener"
-                                class="underline truncate block"
-                              >
-                                {{ shift.clockInLat.toFixed(3) }}, {{ shift.clockInLng.toFixed(3) }}
-                              </a>
-                            </span>
-                            <span v-else>-</span>
-                            <span v-if="shift.clockInAccuracy != null"> • ±{{ Math.round(shift.clockInAccuracy) }}m</span>
-                          </div>
-                        </div>
-
-                        <div class="sm:w-1/2 sm:min-w-0 w-full">
-                          <div class="text-xs text-gray-500">
-                            Clock Out
-                          </div>
-                          <div class="text-sm font-medium">
-                            {{ formatTime(shift.clockOut) }}
-                          </div>
-                          <div class="text-xs text-gray-500">
-                            <span v-if="shift.clockOutLat != null && shift.clockOutLng != null">
-                              <a
-                                :href="mapUrl(shift.clockOutLat, shift.clockOutLng)"
-                                target="_blank"
-                                rel="noopener"
-                                class="underline truncate block"
-                              >
-                                {{ shift.clockOutLat.toFixed(3) }}, {{ shift.clockOutLng.toFixed(3) }}
-                              </a>
-                            </span>
-                            <span v-else>-</span>
-                            <span v-if="shift.clockOutAccuracy != null"> • ±{{ Math.round(shift.clockOutAccuracy) }}m</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                <div class="grid w-full gap-4 sm:grid-cols-2">
+                  <div v-for="j in 2" :key="j" class="min-w-0 space-y-2">
+                    <SSkeleton class="h-3 w-20" />
+                    <SSkeleton class="h-5 w-16" />
+                    <SSkeleton class="h-3 w-32" />
                   </div>
-                </template>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </SCard>
+      </div>
+    </div>
+
+    <div
+      v-if="errorMsg"
+      class="flex items-start gap-2 rounded-[var(--selaras-resolved-radius-md)] bg-[var(--_selaras-color-subtle)] p-3 text-sm text-[var(--_selaras-color-text)]"
+    >
+      <SIcon name="i-heroicons-exclamation-triangle" class="mt-0.5 size-4 shrink-0" />
+      <span>{{ errorMsg }}</span>
+    </div>
+
+    <div v-if="summary && !loading" class="space-y-4">
+      <!-- Overview. Five tiles, each with its own icon, so the numbers are
+           scannable instead of being a wall of grey captions. -->
+      <SCard :ui="{ body: 'p-0' }">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <SIcon name="i-heroicons-calendar-days" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+              <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+                {{ t('report.overview') }}
+              </h2>
+            </div>
+            <div class="flex items-center gap-1">
+              <SButton
+                icon="i-heroicons-chevron-left"
+                size="sm"
+                variant="ghost"
+                color="neutral"
+                :aria-label="t('report.prevMonth')"
+                @click="prevMonth"
+              />
+              <span class="shrink-0 font-mono text-sm tabular-nums text-[var(--selaras-resolved-text-muted)]" role="status">
+                {{ monthLabel(summary?.month ?? selectedMonth) }}
+              </span>
+              <SButton
+                icon="i-heroicons-chevron-right"
+                size="sm"
+                variant="ghost"
+                color="neutral"
+                :disabled="isCurrentMonth"
+                :aria-label="t('report.nextMonth')"
+                @click="nextMonth"
+              />
+            </div>
+          </div>
+        </template>
+
+        <dl class="grid grid-cols-2 divide-x divide-y divide-[var(--selaras-resolved-border-muted)] sm:grid-cols-3 sm:divide-y-0">
+          <div class="p-4">
+            <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+              <SIcon name="i-heroicons-calendar-days" class="size-3.5 shrink-0" />
+              {{ t('report.totalWorkingDays') }}
+            </dt>
+            <dd class="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-[var(--selaras-resolved-text-default)]">
+              {{ summary.totalWorkingDays }}
+            </dd>
+          </div>
+          <div class="p-4">
+            <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+              <SIcon name="i-heroicons-sun" class="size-3.5 shrink-0" />
+              {{ t('report.harianShiftDays') }}
+            </dt>
+            <dd class="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-[var(--selaras-resolved-text-default)]">
+              {{ summary.totalHarianShift }}
+            </dd>
+          </div>
+          <div class="p-4">
+            <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+              <SIcon name="i-heroicons-lifebuoy" class="size-3.5 shrink-0" />
+              {{ t('report.bantuanShiftDays') }}
+            </dt>
+            <dd class="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-[var(--selaras-resolved-text-default)]">
+              {{ summary.totalBantuanShift }}
+            </dd>
+          </div>
+          <div class="p-4">
+            <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+              <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
+              {{ t('report.totalLate') }}
+            </dt>
+            <dd class="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-[var(--selaras-resolved-text-default)]">
+              {{ fmtMinutes(summary.totalLateMinutes) }}
+            </dd>
+          </div>
+          <div class="p-4">
+            <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+              <SIcon name="i-heroicons-arrow-uturn-left" class="size-3.5 shrink-0" />
+              {{ t('report.totalEarlyLeave') }}
+            </dt>
+            <dd class="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-[var(--selaras-resolved-text-default)]">
+              {{ fmtMinutes(summary.totalEarlyLeaveMinutes) }}
+            </dd>
+          </div>
+        </dl>
+      </SCard>
+
+      <p class="px-1 text-xs text-[var(--selaras-resolved-text-muted)]">
+        {{ t('report.note') }}
+      </p>
+
+      <h3 class="flex items-center gap-2 px-1 pt-2 text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+        <SIcon name="i-heroicons-calendar-days" class="size-4 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+        {{ t('report.dailyDetails') }}
+      </h3>
+
+      <div class="space-y-3">
+        <SCard
+          v-for="d in days"
+          :key="d.date"
+          :ui="{ body: 'p-0', header: 'flex flex-wrap items-center justify-between gap-2 bg-[var(--selaras-resolved-surface-elevated)] p-4' }"
+        >
+          <!-- Day header: date on the left, shift summary on the right. -->
+          <template #header>
+            <div class="font-mono text-sm font-medium tabular-nums text-[var(--selaras-resolved-text-default)]">
+              {{ new Date(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) }}
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <template v-if="(d.shifts || []).length">
+                <SBadge
+                  v-if="summarizeDay(d).harian"
+                  color="success"
+                  variant="soft"
+                  size="sm"
+                >
+                  {{ t('report.harian') }}: {{ summarizeDay(d).harian }}
+                </SBadge>
+                <SBadge
+                  v-if="summarizeDay(d).bantuan"
+                  color="info"
+                  variant="soft"
+                  size="sm"
+                >
+                  {{ t('report.bantuan') }}: {{ summarizeDay(d).bantuan }}
+                </SBadge>
+                <SBadge
+                  v-if="summarizeDay(d).unknown"
+                  color="neutral"
+                  variant="soft"
+                  size="sm"
+                >
+                  {{ t('report.other') }}: {{ summarizeDay(d).unknown }}
+                </SBadge>
+              </template>
+              <span v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('report.noShifts') }}
+              </span>
+            </div>
+          </template>
+
+          <!-- Day totals. -->
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-[var(--selaras-resolved-border-muted)] px-4 py-2 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <span class="inline-flex items-center gap-1.5">
+              <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
+              {{ t('report.late') }}: {{ fmtMinutes(Math.ceil(dayTotalLateMs(d) / 60000)) }}
+            </span>
+            <span class="inline-flex items-center gap-1.5">
+              <SIcon name="i-heroicons-arrow-uturn-left" class="size-3.5 shrink-0" />
+              {{ t('report.early') }}: {{ fmtMinutes(Math.ceil(dayTotalEarlyMs(d) / 60000)) }}
+            </span>
+          </div>
+
+          <div class="divide-y divide-[var(--selaras-resolved-border-muted)]">
+            <template v-for="shift in d.shifts" :key="JSON.stringify([shift.selectedShiftCode, shift.shiftType, shift.clockIn, shift.clockOut])">
+              <div class="p-4">
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div class="w-full sm:w-44 sm:flex-none">
+                    <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+                      <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
+                      {{ t('report.shift') }}
+                    </div>
+                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <SBadge v-if="shift.selectedShiftCode" :color="shiftBadgeColor(shift.selectedShiftCode)" variant="solid">
+                        {{ shift.selectedShiftCode }}
+                      </SBadge>
+                      <SBadge v-else variant="outline">
+                        {{ shift.shiftType ?? t('report.unknown') }}
+                      </SBadge>
+                      <SBadge :color="shift.shiftType === 'bantuan' ? 'info' : 'neutral'" variant="soft" size="sm">
+                        {{ shift.shiftType ? (shift.shiftType === 'harian' ? t('report.harian') : t('report.bantuan')) : t('report.unknown') }}
+                      </SBadge>
+                    </div>
+                  </div>
+
+                  <div class="grid w-full gap-4 sm:grid-cols-2">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+                        <SIcon name="i-heroicons-arrow-right-on-rectangle" class="size-3.5 shrink-0" />
+                        {{ t('report.clockIn') }}
+                      </div>
+                      <div class="mt-1 font-mono text-base font-medium tabular-nums text-[var(--selaras-resolved-text-default)]">
+                        {{ formatTime(shift.clockIn) }}
+                      </div>
+                      <div class="mt-0.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+                        <span v-if="shift.clockInLat != null && shift.clockInLng != null">
+                          <a
+                            :href="mapUrl(shift.clockInLat, shift.clockInLng)"
+                            target="_blank"
+                            rel="noopener"
+                            class="inline-flex items-center gap-1 underline underline-offset-2"
+                          >
+                            <SIcon name="i-heroicons-map-pin" class="size-3 shrink-0" />
+                            {{ shift.clockInLat.toFixed(3) }}, {{ shift.clockInLng.toFixed(3) }}
+                          </a>
+                        </span>
+                        <span v-else>-</span>
+                        <span v-if="shift.clockInAccuracy != null"> • ±{{ Math.round(shift.clockInAccuracy) }}m</span>
+                      </div>
+                    </div>
+
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+                        <SIcon name="i-heroicons-arrow-left-on-rectangle" class="size-3.5 shrink-0" />
+                        {{ t('report.clockOut') }}
+                      </div>
+                      <div class="mt-1 font-mono text-base font-medium tabular-nums text-[var(--selaras-resolved-text-default)]">
+                        {{ formatTime(shift.clockOut) }}
+                      </div>
+                      <div class="mt-0.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+                        <span v-if="shift.clockOutLat != null && shift.clockOutLng != null">
+                          <a
+                            :href="mapUrl(shift.clockOutLat, shift.clockOutLng)"
+                            target="_blank"
+                            rel="noopener"
+                            class="inline-flex items-center gap-1 underline underline-offset-2"
+                          >
+                            <SIcon name="i-heroicons-map-pin" class="size-3 shrink-0" />
+                            {{ shift.clockOutLat.toFixed(3) }}, {{ shift.clockOutLng.toFixed(3) }}
+                          </a>
+                        </span>
+                        <span v-else>-</span>
+                        <span v-if="shift.clockOutAccuracy != null"> • ±{{ Math.round(shift.clockOutAccuracy) }}m</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </SCard>
       </div>
     </div>
   </div>

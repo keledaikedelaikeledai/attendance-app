@@ -1,33 +1,22 @@
 {
-  "admin": {
-    "index": {
-      "month": "Month",
-      "refresh": "Refresh",
-      "totalUsers": "Total Users",
-      "daysInMonth": "Days in Month",
-      "presencePercent": "Presence %",
-      "avgLatePerUser": "Avg Late / User",
-      "dailyPresence": "Daily Presence",
-      "chartLoading": "Chart loading...",
-      "userRecap": "User Recap",
-      "name": "Name",
-      "totalDays": "Total Days",
-      "harian": "Harian",
-      "bantuan": "Bantuan",
-      "lateHours": "Late Hours",
-      "earlyHours": "Early Leave Hours"
-    }
-  },
   "common": {
     "hello": "Hello",
     "profile": "Profile",
-    "signOut": "Sign Out"
+    "signOut": "Sign Out",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "confirm": {
+      "cancel": "Cancel",
+      "confirm": "Confirm"
+    }
   },
   "profile": {
     "header": "Profile",
     "name": "Name",
     "email": "Email",
     "role": "Role",
+    "username": "Username",
+    "joined": "Joined",
     "roleUser": "user",
     "theme": "Theme",
     "language": "Language",
@@ -60,6 +49,8 @@
     "loading": "Loading...",
     "failedToLoad": "Failed to load report",
     "overview": "Overview",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
     "totalWorkingDays": "Total Working Days",
     "harianShiftDays": "Harian Shift Days",
     "bantuanShiftDays": "Bantuan Shift Days",
@@ -125,6 +116,10 @@
       "locationRequired": {
         "title": "Location required",
         "description": "Please allow location permission to clock in/out"
+      },
+      "clockFailed": {
+        "title": "Clock action failed",
+        "description": "Couldn't record attendance. Check your connection and try again."
       }
     }
   },
@@ -133,12 +128,29 @@
       "home": "Home",
       "reports": "Reports",
       "profile": "Profile",
-      "logoAlt": "App Logo"
+      "logoAlt": "App Logo",
+      "greeting_morning": "Good morning,",
+      "greeting_afternoon": "Good afternoon,",
+      "greeting_evening": "Good evening,",
+      "greeting_night": "Good evening,"
     }
   },
-
   "adminUsers": {
     "addUser": "Add user",
+    "list": {
+      "title": "Users",
+      "description": "People who can sign in and record attendance.",
+      "count": "no users | 1 user | {count} users",
+      "adminCount": "no admins | 1 admin | {count} admins",
+      "bannedCount": "no banned | 1 banned | {count} banned",
+      "search": "Search users"
+    },
+    "empty": {
+      "title": "No users yet",
+      "description": "Add a user so they can sign in and record attendance.",
+      "searchTitle": "No users match",
+      "searchDescription": "Try a different name, username or email."
+    },
     "columns": {
       "name": "Name",
       "username": "Username",
@@ -164,6 +176,7 @@
       "unban": "Unban",
       "delete": "Delete"
     },
+    "actionsLabel": "Actions",
     "confirmations": {
       "makeAdmin": {
         "title": "Make Admin",
@@ -209,15 +222,25 @@
       }
     }
   },
-
   "adminShifts": {
     "pageTitle": "Shifts",
     "add": "Add shift",
+    "list": {
+      "title": "Shifts",
+      "description": "Staff select a shift when they record attendance.",
+      "count": "no shifts | 1 shift | {count} shifts",
+      "activeCount": "no active | 1 active | {count} active"
+    },
+    "empty": {
+      "title": "No shifts yet",
+      "description": "Add a shift so staff can select it when they record attendance."
+    },
     "columns": {
       "code": "Code",
       "label": "Label",
-      "start": "Start",
-      "end": "End",
+      "time": "Time",
+      "duration": "{hours} h",
+      "nextDay": "Ends next day",
       "active": "Active",
       "order": "Order",
       "action": "Action"
@@ -231,9 +254,10 @@
       "delete": "Delete"
     },
     "actionsLabel": "Actions",
-    "modal": {
+    "drawer": {
       "add": "Add Shift",
       "edit": "Edit Shift",
+      "description": "A shift sets the working hours staff record attendance against.",
       "cancel": "Cancel",
       "save": "Save"
     },
@@ -245,7 +269,11 @@
       "start": "Start",
       "end": "End",
       "active": "Active",
-      "sortOrder": "Sort Order"
+      "sortOrder": "Sort Order",
+      "codeLockedHint": "The code identifies the shift and cannot be changed.",
+      "overnight": "This shift ends on the next day.",
+      "activeDescription": "Inactive shifts are hidden from clock-in and reports, and cannot be used for attendance.",
+      "sortOrderDescription": "Lower numbers come first."
     },
     "confirmations": {
       "delete": {
@@ -272,7 +300,120 @@
       }
     }
   },
-
+  "adminGeofence": {
+    "add": "Add geofence",
+    "list": {
+      "title": "Geofence list",
+      "description": "Create, edit, or remove geofences.",
+      "empty": "No geofences yet. Use Add geofence to create one.",
+      "untitled": "Untitled geofence"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "moreLabel": "More actions for {name}",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "badge": {
+      "point": "Point",
+      "polygon": "Polygon",
+      "active": "Active",
+      "inactive": "Inactive",
+      "disallow": "Disallow",
+      "allow": "Allow",
+      "allowWithComment": "Allow with comment"
+    },
+    "detail": {
+      "newTitle": "New geofence",
+      "editTitle": "Edit geofence",
+      "viewTitle": "Geofence details",
+      "description": "Configure shape, policy, and map coordinates.",
+      "configure": "Configure",
+      "missing": "That geofence no longer exists."
+    },
+    "form": {
+      "name": {
+        "label": "Name",
+        "placeholder": "e.g. HQ geofence"
+      },
+      "active": {
+        "label": "Active geofence",
+        "description": "Enable this geofence for clock-in/out checks."
+      },
+      "policy": {
+        "label": "Outside interaction",
+        "description": "Applies when a user is outside this geofence and it is active.",
+        "disallow": "Disallow",
+        "allow": "Allow",
+        "allowWithComment": "Allow with comment"
+      },
+      "type": {
+        "label": "Geofence type",
+        "point": "Point",
+        "polygon": "Polygon"
+      },
+      "radius": {
+        "label": "Allowed radius (meters)",
+        "placeholder": "e.g. 100",
+        "suggested": "Suggested from polygon: ~{m} m",
+        "invalid": "Enter a radius between 1 and 100,000 meters.",
+        "fixedForPolygon": "Radius is fixed to 0 while using polygons; switch to Point to edit it."
+      }
+    },
+    "map": {
+      "tool": {
+        "label": "Map tool",
+        "select": "Select and adjust",
+        "point": "Place point",
+        "polygon": "Draw polygon"
+      },
+      "instruction": {
+        "selectEmpty": "Choose Place point or Draw polygon to start drawing.",
+        "selectPoint": "Drag the centre to move it. Drag the white handle on the edge to resize the radius.",
+        "selectPolygon": "Drag a point to move it. Click a midpoint on an edge to add a point.",
+        "point": "Click the map to place the centre.",
+        "polygonStart": "Click the map to add points. A polygon needs at least 3.",
+        "polygonFinish": "Click the first point, press Enter, or use Finish to close the polygon."
+      },
+      "polygon": {
+        "hint": "Click the map to add vertices. A polygon needs at least 3 points. Click the first point to close it, or press Finish.",
+        "vertices": "{count} vertices",
+        "finish": "Finish",
+        "undo": "Undo",
+        "clear": "Clear",
+        "radiusNote": "Radius is fixed to 0 while using polygons."
+      },
+      "basemap": {
+        "label": "Map style",
+        "openfreemap": "Default",
+        "osm": "OpenStreetMap",
+        "streets": "Streets",
+        "satellite": "Satellite"
+      },
+      "loading": "Loading map...",
+      "empty": "No coordinates set yet."
+    },
+    "confirm": {
+      "deleteTitle": "Delete geofence?",
+      "deleteBody": "This will permanently delete {name}."
+    },
+    "toasts": {
+      "created": {
+        "title": "Geofence created"
+      },
+      "updated": {
+        "title": "Geofence updated"
+      },
+      "deleted": {
+        "title": "Geofence deleted"
+      },
+      "error": {
+        "title": "Error",
+        "description": "{message}"
+      }
+    }
+  },
   "auth": {
     "login": {
       "title": "Sign in to manage your time",
@@ -289,5 +430,13 @@
       "cardText": "For security reasons password resets are handled by an administrator. Reach out to your admin to request a reset.",
       "back": "Back to Login"
     }
+  },
+  "weather": {
+    "clear": "Clear",
+    "cloudy": "Cloudy",
+    "partly": "Partly cloudy",
+    "rain": "Rain",
+    "snow": "Snow",
+    "storm": "Thunderstorm"
   }
 }

@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "app/pages/admin/geofence/index.vue"
+        ],
+        "createdAt": "2026-10-12T02:05:48.128Z",
+        "reason": "Agent: existing docked-panel width transition intentionally resizes the adjacent map; trackPanelResize synchronizes the canvas, settleEditorLayout fits after completion, and reduced-motion disables transitions."
+      }
+    ]
+  }
+}

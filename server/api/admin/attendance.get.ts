@@ -1,23 +1,13 @@
 import process from 'node:process'
 import { and, asc, eq, gte, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { attendanceLog, shift, user } from '~~/server/database/schemas'
-import { useDb } from '../../utils/db'
+import { requireAdminUser } from '../../utils/admin-access'
 import { calculateAttendanceReportMetrics } from '../../utils/attendance-admin-report'
+import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
-function isAllowedAdmin(email?: string | null) {
-  const raw = process.env.NUXT_ADMIN_EMAILS || ''
-  const list = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-  if (!list.length) return true
-  if (!email) return false
-  return list.includes(String(email).toLowerCase())
-}
-
 export default defineEventHandler(async (event) => {
-  const auth = useBetterAuth()
-  const session = await auth.api.getSession({ headers: event.node.req.headers as any })
-  if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  if (!isAllowedAdmin(session.user.email)) throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+  await requireAdminUser(event)
 
   const q = getQuery(event)
   const month = typeof q.month === 'string' && /^\d{4}-\d{2}$/.test(q.month) ? q.month : new Date().toISOString().slice(0, 7)

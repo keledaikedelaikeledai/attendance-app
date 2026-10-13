@@ -52,7 +52,7 @@ const displayName = computed(() => props.user?.name || props.user?.username || p
 </script>
 
 <template>
-  <UCard class="flex flex-col min-w-0 h-[280px]" variant="subtle">
+  <SCard class="flex flex-col min-w-0 h-[280px]" variant="subtle">
     <template #header>
       <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
         @{{ props.user?.username || '-' }}
@@ -63,15 +63,15 @@ const displayName = computed(() => props.user?.name || props.user?.username || p
     </template>
 
     <div class="mt-1 flex flex-col gap-1 text-[11px]">
-      <UBadge size="md" variant="solid" color="primary">
+      <SBadge size="md" variant="solid" color="primary">
         Working Day(s): {{ workedDays }}
-      </UBadge>
-      <UBadge size="md" variant="subtle" color="neutral">
+      </SBadge>
+      <SBadge size="md" variant="soft" color="neutral">
         Harian: {{ harianDays }}
-      </UBadge>
-      <UBadge size="md" variant="subtle" color="info">
+      </SBadge>
+      <SBadge size="md" variant="soft" color="info">
         Bantuan: {{ bantuanDays }}
-      </UBadge>
+      </SBadge>
     </div>
     <template #footer>
       <div class="text-sm mt-1 dark:text-gray-400 font-medium" :class="{ 'text-red-500': lateMsTotal > 0, 'text-green-500': lateMsTotal === 0 }">
@@ -81,5 +81,5 @@ const displayName = computed(() => props.user?.name || props.user?.username || p
         Early Leave: {{ attendanceTime.humanizeMinutes(earlyMsTotal) }}
       </div>
     </template>
-  </UCard>
+  </SCard>
 </template>

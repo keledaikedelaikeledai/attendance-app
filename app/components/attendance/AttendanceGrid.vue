@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
+import type { TableColumnDef } from '@sewadah/selaras/table'
 import type { AttendanceData } from '~/pages/admin/attendance.vue'
-import { createColumnHelper } from '@tanstack/vue-table'
 import { h } from 'vue'
 
 const props = defineProps<{
@@ -14,7 +13,7 @@ const AttendanceUser = resolveComponent('AttendanceUser')
 
 const attendances = computed(() => props.data?.rows || [])
 
-const columnHelper = createColumnHelper<typeof attendances.value[0]>()
+const columnHelper = createTableColumnHelper<typeof attendances.value[0]>()
 
 const columns = computed(() => {
   if (!props.data)
@@ -35,13 +34,13 @@ const columns = computed(() => {
       size: 120,
     }),
   )
-  return [...baseCols, ...dayCols] as TableColumn<typeof attendances.value[0]>[]
+  return [...baseCols, ...dayCols] as TableColumnDef<typeof attendances.value[0]>[]
 })
 </script>
 
 <template>
   <div>
-    <u-table
+    <STable
       :data="attendances"
       :columns="columns"
       :loading="loading"

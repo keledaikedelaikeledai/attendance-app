@@ -1,4 +1,8 @@
 <script setup lang="ts">
+// Selaras' SButton has no `to` handling of its own - a bare `to`
+// falls through to the <button> and does nothing. Route via NuxtLink instead.
+const NuxtLink = resolveComponent('NuxtLink')
+
 definePageMeta({
   auth: {
     unauthenticatedOnly: true,
@@ -7,7 +11,7 @@ definePageMeta({
 </script>
 
 <template>
-  <UContainer class="py-10 max-w-md mx-auto">
+  <SContainer class="py-10 max-w-md mx-auto">
     <div class="space-y-6">
       <div class="flex flex-row justify-center items-center mb-12 gap-2 pl-6">
         <img src="/logo-dpd.png" alt="{{ $t('layout.user.logoAlt') }}" class="w-14 h-14 mt-2">
@@ -22,18 +26,18 @@ definePageMeta({
           {{ $t('auth.forgot.description') }}
         </p>
       </div>
-      <UCard>
+      <SCard>
         <img src="/logo-app.png" :alt="$t('layout.user.logoAlt')" class="mx-auto w-[150px] h-auto mb-4">
 
         <div class="p-6 text-center">
           <p class="mb-4">
             {{ $t('auth.forgot.cardText') }}
           </p>
-          <UButton variant="outline" to="/login">
+          <SButton :as="NuxtLink" variant="outline" to="/login">
             {{ $t('auth.forgot.back') }}
-          </UButton>
+          </SButton>
         </div>
-      </UCard>
+      </SCard>
     </div>
-  </UContainer>
+  </SContainer>
 </template>

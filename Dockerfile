@@ -66,6 +66,8 @@ COPY --from=builder --chown=1000:1000 /app/package.json ./package.json
 COPY --from=builder --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=builder --chown=1000:1000 /app/server/database/migrations ./server/database/migrations
 COPY --from=builder --chown=1000:1000 /app/server/database/schemas ./server/database/schemas
+# Boot-time schema migration (drizzle journal-compatible, zero runtime deps)
+COPY --from=builder --chown=1000:1000 /app/scripts/migrate-on-boot.mjs ./scripts/migrate-on-boot.mjs
 
 EXPOSE ${PORT}
 USER 1000
@@ -73,5 +75,7 @@ USER 1000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD [ -f ./.output/server/index.mjs ] || exit 1
 
-# Run the Nitro server directly with Bun.
-CMD ["/bin/sh", "-lc", "bun ./.output/server/index.mjs --port ${PORT:-3000} --host ${HOST:-0.0.0.0}"]
+# Apply pending migrations BEFORE starting the server: a failed migration
+# exits non-zero and the && chain never starts the app, so the container
+# crash-loops visibly instead of serving requests against a wrong schema.
+CMD ["/bin/sh", "-lc", "bun ./scripts/migrate-on-boot.mjs && exec bun ./.output/server/index.mjs --port ${PORT:-3000} --host ${HOST:-0.0.0.0}"]

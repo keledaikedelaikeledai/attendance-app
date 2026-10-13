@@ -52,14 +52,14 @@ const onSubmit = handleSubmit(async (values) => {
     console.error('error adding/updating user', error)
     toast.add({
       title: 'error',
-      color: 'error',
+      color: 'danger',
     })
   }
 }) as (event: MouseEvent | undefined) => void
 </script>
 
 <template>
-  <USlideover
+  <SSlideover
     v-model:open="open"
     :title="props.user?.id ? 'Edit user' : 'Add user'"
     :description="props.user?.id ? 'Edit user details' : 'Add new user or admin'"
@@ -68,15 +68,15 @@ const onSubmit = handleSubmit(async (values) => {
       <UserForm :initial="props.user" />
     </template>
     <template #footer>
-      <UButton
-        size="xl"
+      <SButton
+        size="lg"
         block
         icon="i-heroicons-user-plus"
         :loading="isSubmitting"
         @click="onSubmit"
       >
         {{ props.user?.id ? 'Update user' : 'Add user' }}
-      </UButton>
+      </SButton>
     </template>
-  </USlideover>
+  </SSlideover>
 </template>

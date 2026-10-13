@@ -7,14 +7,14 @@ function toggle() {
 </script>
 
 <template>
-  <UButton
+  <SButton
     variant="ghost"
     color="neutral"
     size="sm"
     aria-label="Toggle color mode"
     @click="toggle"
   >
-    <UIcon v-if="colorMode.preference === 'dark'" name="i-heroicons-sun" />
-    <UIcon v-else name="i-heroicons-moon" />
-  </UButton>
+    <SIcon v-if="colorMode.preference === 'dark'" name="i-heroicons-sun" />
+    <SIcon v-else name="i-heroicons-moon" />
+  </SButton>
 </template>

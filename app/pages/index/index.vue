@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import type { ShiftDef } from '~/types/shifts'
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { evaluateGeofence as evaluateGeofenceAt, formatDistance } from '~~/shared/utils/geofence-geo'
 import { getShiftLabel, useAttendance } from '~/composables/useAttendance'
+import { useGeolocation } from '~/composables/useGeolocation'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 const toast = useToast()
 const { t } = useI18n()
+const colorMode = useColorMode()
 
 const {
   clockedIn,
@@ -17,6 +22,7 @@ const {
   clockIn,
   clockOut,
   selectedShiftCode,
+  submitting,
   refresh,
   shifts,
   selectedShiftType,
@@ -32,11 +38,20 @@ const shiftItems = computed(() => {
   }))
 })
 
-const geoSupported = ref<boolean>(false)
-const permissionStatus = ref<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt')
-const coords = ref<{ lat?: number, lng?: number, accuracy?: number }>({})
-const locating = ref(false)
-const geoError = ref<string | null>(null)
+// Position and permission live in useGeolocation, shared app-wide. They used
+// to be page-local, so every return to this page reset them, re-ran the GPS
+// fix and tore the map down and up again. Now the second visit renders the
+// cached position instantly. Clock actions still take a fresh fix each time.
+const {
+  geoSupported,
+  permissionStatus,
+  coords,
+  locating,
+  geoError,
+  address,
+  requestLocationOnce,
+  ensurePermission,
+} = useGeolocation()
 const geofences = ref<any[]>([])
 const geofenceLoading = ref(true)
 const geofenceError = ref<string | null>(null)
@@ -51,146 +66,25 @@ const showConfirmOut = ref(false)
 const confirmOutMessage = ref(t('index.modal.confirm'))
 const earlyReason = ref<string>('')
 const isEarlyOut = ref(false)
-const mapTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-const mapAttribution = '&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors'
 const hasLocation = computed(() => typeof coords.value.lat === 'number' && typeof coords.value.lng === 'number')
-const mapCenter = computed<[number, number]>(() => [
-  coords.value.lat ?? 0,
-  coords.value.lng ?? 0,
-])
-const mapZoom = computed(() => (hasLocation.value ? 17 : 14))
 
-function distanceMeters(a: [number, number], b: [number, number]) {
-  const R = 6371000
-  const toRad = (x: number) => (x * Math.PI) / 180
-  const dLat = toRad(b[0] - a[0])
-  const dLng = toRad(b[1] - a[1])
-  const lat1 = toRad(a[0])
-  const lat2 = toRad(b[0])
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
-}
-
-function distanceToSegmentMeters(point: [number, number], a: [number, number], b: [number, number]) {
-  const R = 6371000
-  const lat0 = (point[0] * Math.PI) / 180
-  const toXY = ([lat, lng]: [number, number]) => {
-    const x = ((lng - point[1]) * Math.PI / 180) * Math.cos(lat0) * R
-    const y = ((lat - point[0]) * Math.PI / 180) * R
-    return { x, y }
+// Geometry + decision logic live in shared/utils/geofence-geo so the
+// server can enforce the exact same rules this guard only previews.
+function evaluateGeofenceLatLon(lat?: number, lng?: number) {
+  const ev = evaluateGeofenceAt(lat, lng, geofences.value)
+  if (!ev.allowed) {
+    const message = ev.fence?.type === 'point' && typeof ev.fence?.radiusMeters === 'number'
+      ? `You are outside the allowed radius (${formatDistance(ev.dist)} away, limit ${formatDistance(ev.fence.radiusMeters)}). Move closer to the allowed location.`
+      : 'You are outside the allowed area. Move inside the polygon to clock in/out.'
+    return { allowed: false, requireComment: false, message, fence: ev.fence }
   }
-  const p = { x: 0, y: 0 }
-  const aXY = toXY(a)
-  const bXY = toXY(b)
-  const dx = bXY.x - aXY.x
-  const dy = bXY.y - aXY.y
-  const len2 = dx * dx + dy * dy
-  if (!len2) {
-    return Math.sqrt((p.x - aXY.x) ** 2 + (p.y - aXY.y) ** 2)
-  }
-  let t = ((p.x - aXY.x) * dx + (p.y - aXY.y) * dy) / len2
-  t = Math.max(0, Math.min(1, t))
-  const projX = aXY.x + t * dx
-  const projY = aXY.y + t * dy
-  return Math.sqrt((p.x - projX) ** 2 + (p.y - projY) ** 2)
-}
-
-function distanceToPolygonMeters(point: [number, number], poly: Array<[number, number]>) {
-  if (!poly.length)
-    return Infinity
-  if (pointInPolygon(point, poly))
-    return 0
-  let min = Infinity
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i]
-    const b = poly[(i + 1) % poly.length]
-    if (!a || !b)
-      continue
-    const dist = distanceToSegmentMeters(point, a, b)
-    if (dist < min)
-      min = dist
-  }
-  return min
-}
-
-function pointInPolygon(point: [number, number], poly: Array<[number, number]>) {
-  let inside = false
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const curr = poly[i]
-    const prev = poly[j]
-    if (!curr || !prev)
-      continue
-    const xi = curr[1]
-    const yi = curr[0]
-    const xj = prev[1]
-    const yj = prev[0]
-    const intersect = ((yi > point[0]) !== (yj > point[0])) && (point[1] < ((xj - xi) * (point[0] - yi)) / (yj - yi) + xi)
-    if (intersect)
-      inside = !inside
-  }
-  return inside
-}
-
-function formatDistance(meters?: number | null) {
-  if (meters == null)
-    return ''
-  if (meters < 1000)
-    return `${Math.round(meters)} m`
-  return `${(meters / 1000).toFixed(2)} km`
-}
-
-function getClosestActiveGeofence(lat?: number, lng?: number) {
-  if (typeof lat !== 'number' || typeof lng !== 'number')
-    return null
-  const active = geofences.value.filter(g => g?.isActive)
-  if (!active.length)
-    return null
-  let best: { fence: any, dist: number, inside: boolean } | null = null
-  for (const fence of active) {
-    let dist = Infinity
-    let inside = false
-    if (fence.type === 'point' && typeof fence.centerLat === 'number' && typeof fence.centerLng === 'number') {
-      dist = distanceMeters([lat, lng], [fence.centerLat, fence.centerLng])
-      inside = typeof fence.radiusMeters === 'number' ? dist <= fence.radiusMeters : false
-    }
-    else if (fence.type === 'polygon' && Array.isArray(fence.polygon) && fence.polygon.length >= 3) {
-      inside = pointInPolygon([lat, lng], fence.polygon)
-      dist = distanceToPolygonMeters([lat, lng], fence.polygon)
-    }
-    if (!best || dist < best.dist)
-      best = { fence, dist, inside }
-  }
-  return best
-}
-
-function evaluateGeofence(lat?: number, lng?: number) {
-  if (!geofences.value.length)
-    return { allowed: true, requireComment: false, fence: null }
-  const closest = getClosestActiveGeofence(lat, lng)
-  if (!closest)
-    return { allowed: true, requireComment: false, fence: null }
-  const { fence, dist, inside } = closest
-  const mode = fence?.interactionMode || 'disallow'
-  if (mode === 'allow')
-    return { allowed: true, requireComment: false, fence }
-  if (inside)
-    return { allowed: true, requireComment: false, fence }
-  if (mode === 'allow_with_comment') {
-    return { allowed: true, requireComment: true, message: 'You are outside the allowed area. Please add a comment to continue.', fence }
-  }
-  if (fence.type === 'point' && typeof fence.radiusMeters === 'number') {
-    return {
-      allowed: false,
-      requireComment: false,
-      message: `You are outside the allowed radius (${formatDistance(dist)} away, limit ${formatDistance(fence.radiusMeters)}). Move closer to the allowed location.`,
-      fence,
-    }
-  }
-  return { allowed: false, requireComment: false, message: 'You are outside the allowed area. Move inside the polygon to clock in/out.', fence }
+  if (ev.requireComment)
+    return { allowed: true, requireComment: true, message: 'You are outside the allowed area. Please add a comment to continue.', fence: ev.fence }
+  return { allowed: true, requireComment: false, message: '', fence: ev.fence }
 }
 
 function guardGeofenceOrNotify(lat?: number, lng?: number) {
-  const { allowed, requireComment, message, fence } = evaluateGeofence(lat, lng)
+  const { allowed, requireComment, message, fence } = evaluateGeofenceLatLon(lat, lng)
   geofenceUsed.value = fence ? { id: fence.id ?? null, name: fence.name ?? null } : null
   if (!allowed) {
     geofenceBlockedMessage.value = message || 'You are outside the allowed area.'
@@ -273,58 +167,96 @@ function formatHumanMinutes(totalMinutes: number) {
 
 // Use ensureDefaultShift from composable (keeps logic centralized)
 
-async function requestLocationOnce() {
-  geoError.value = null
-  if (!('geolocation' in navigator)) {
-    geoSupported.value = false
-    permissionStatus.value = 'unsupported'
+// MapLibre renders vector tiles from OpenFreeMap: positron in light mode,
+// fiord in dark mode. Both are free with no key and no quota. The engine is
+// imported dynamically because it touches window at load, which SSR cannot do.
+// The map element lives inside <ClientOnly> in the template, so this only ever
+// runs in the browser.
+const mapContainer = ref<HTMLElement | null>(null)
+let map: import('maplibre-gl').Map | null = null
+let marker: import('maplibre-gl').Marker | null = null
+
+const mapStyle = computed(() => colorMode.value === 'dark'
+  ? 'https://tiles.openfreemap.org/styles/fiord'
+  : 'https://tiles.openfreemap.org/styles/positron')
+
+let initializing = false
+async function initMap() {
+  // Guard the async gap: two triggers can overlap on the import above, and
+  // without this both would build a Map on the same container.
+  if (map || initializing || !mapContainer.value)
     return
+  initializing = true
+  // The map is display-only: it must never break page setup. Any failure here
+  // (no WebGL on an old device, a blocked style fetch, a worker that will not
+  // load) is contained, and clocking keeps working because the position flow
+  // never touches map state.
+  try {
+    const { Map: MLMap, Marker: MLMarker, setWorkerUrl } = await import('maplibre-gl')
+    // Vite does not serve the worker at the path MapLibre guesses, so point it
+    // at the bundled file explicitly. Without this every tile fails with
+    // "Worker failed to load".
+    setWorkerUrl(mapWorkerUrl)
+    // transformStyle is a setStyle-only option (the constructor accepts none),
+    // so the map starts style-less and the fetched style JSON is sanitized
+    // before it is committed - the basemap's null-fragile feature comparisons
+    // can then no longer warn per parsed tile.
+    map = new MLMap({
+      container: mapContainer.value,
+      center: [coords.value.lng ?? 106.8, coords.value.lat ?? -6.49],
+      zoom: hasLocation.value ? 17 : 14,
+      attributionControl: { compact: true },
+    })
+    map.setStyle(mapStyle.value, { transformStyle: sanitizedMapStyleTransform })
+    marker = new MLMarker()
+    if (hasLocation.value)
+      marker.setLngLat([coords.value.lng!, coords.value.lat!]).addTo(map)
   }
-  geoSupported.value = true
-  locating.value = true
-  return new Promise<void>((resolve) => {
-    navigator.geolocation.getCurrentPosition((pos) => {
-      coords.value = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }
-      locating.value = false
-      resolve()
-    }, (err) => {
-      geoError.value = err.message
-      locating.value = false
-      useErrorReporter().captureException(err, { context: 'geolocation' })
-      resolve()
-    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 })
-  })
+  catch (err) {
+    useErrorReporter().captureException(err, { context: 'map-init' })
+    map = null
+    marker = null
+  }
+  finally {
+    initializing = false
+  }
 }
 
-async function ensurePermission() {
-  if (!('permissions' in navigator)) {
-    await requestLocationOnce()
+// Init when the container element itself appears, not when the position
+// arrives. The container lives behind v-if="hasLocation" inside ClientOnly,
+// so on a revisit with cached coords it mounts after page setup while
+// hasLocation never flips - watching the value missed it entirely and the map
+// stayed blank. Watching the element catches every mount.
+watch([mapContainer, hasLocation], ([el, located]) => {
+  if (el && located)
+    initMap()
+})
+watch(coords, (c) => {
+  if (!map || !marker || typeof c.lat !== 'number' || typeof c.lng !== 'number')
     return
-  }
-  try {
-    const status = await (navigator as any).permissions.query({ name: 'geolocation' })
-    permissionStatus.value = status.state
-    if (status.state === 'granted') {
-      await requestLocationOnce()
-    }
-    else if (status.state === 'prompt') {
-      await requestLocationOnce()
-      const status2 = await (navigator as any).permissions.query({ name: 'geolocation' })
-      permissionStatus.value = status2.state
-    }
-    status.onchange = () => {
-      permissionStatus.value = status.state
-    }
-  }
-  catch {
-    await requestLocationOnce()
-  }
-}
+  marker.setLngLat([c.lng, c.lat]).addTo(map)
+  map.flyTo({ center: [c.lng, c.lat], zoom: 17 })
+})
+
+// A theme change re-styles in place. Markers are DOM overlays, not style
+// layers, so they survive setStyle untouched. The transform keeps the
+// null-comparison sanitizing applied across basemap swaps too.
+watch(mapStyle, (style) => {
+  map?.setStyle(style, { transformStyle: sanitizedMapStyleTransform })
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  marker?.remove()
+  marker = null
+  map?.remove()
+  map = null
+})
 
 async function handleClock(action: 'in' | 'out') {
   await requestLocationOnce()
   if (permissionStatus.value !== 'granted') {
-    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
+    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'danger' })
     return
   }
   if (geofenceLoading.value)
@@ -409,7 +341,7 @@ async function onConfirmClockOut() {
   showConfirmOut.value = false
   await requestLocationOnce()
   if (permissionStatus.value !== 'granted') {
-    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'error' })
+    toast.add({ title: t('index.toast.locationRequired.title'), description: t('index.toast.locationRequired.description'), color: 'danger' })
     return
   }
   if (geofenceLoading.value)
@@ -435,6 +367,11 @@ async function onConfirmClockOut() {
   geofenceComment.value = ''
 }
 
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible')
+    refresh().catch(() => {})
+}
+
 function onCancelClockOut() {
   showConfirmOut.value = false
   // reset the early reason when the user cancels to avoid leftover text
@@ -445,8 +382,15 @@ function onCancelClockOut() {
 }
 
 onMounted(async () => {
+  // Wake resync: a backgrounded tab freezes its status and duration, and a
+  // stale session state makes every button retry a request the server will
+  // 409. Resync when the tab becomes visible again.
+  document.addEventListener('visibilitychange', onVisibilityChange)
   await refresh()
-  ensurePermission()
+  // Only ask for a fix when there is no cached one. A revisit renders the
+  // cached position instantly instead of resetting and re-requesting.
+  if (!hasLocation.value)
+    ensurePermission()
   await ensureDefaultShift()
   // Minimal fallback: if ensureDefaultShift didn't set a code, pick the first available shift so the select has a value
   if (!selectedShiftCode.value && (shifts as any)?.value && (shifts as any).value.length) {
@@ -457,231 +401,307 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <UCard>
-      <div class="grid sm:grid-cols-2 gap-6">
-        <div class="space-y-5">
-          <div class="flex items-center gap-2">
-            <UBadge :color="clockedIn ? 'primary' : 'neutral'" variant="soft">
-              {{ clockedIn ? t('index.clockedIn') : t('index.notClockedIn') }}
-            </UBadge>
-            <UBadge v-if="clockedIn && isLate" color="error" variant="soft">
-              {{ t('index.lateBadge', { late: lateByHuman }) }}
-            </UBadge>
-          </div>
-          <div class="grid grid-cols-2 gap-2 text-sm">
-            <div class="space-y-1">
-              <p class="font-medium">
-                {{ t('index.labels.clockIn') }}
-              </p>
-              <p class="text-gray-600 dark:text-gray-400">
-                {{ formatTime(clockInTime) }}
-              </p>
-            </div>
-            <div class="space-y-1">
-              <p class="font-medium">
-                {{ t('index.labels.clockOut') }}
-              </p>
-              <p class="text-gray-600 dark:text-gray-400">
-                {{ formatTime(clockOutTime) }}
-              </p>
-            </div>
-            <div class="space-y-1 col-span-2">
-              <p class="font-medium">
-                {{ t('index.labels.duration') }}
-              </p>
-              <p class="text-gray-600 dark:text-gray-400">
-                {{ durationHuman }}
-              </p>
-            </div>
-          </div>
-
-          <div class="space-y-2">
-            <UFormField :label="t('index.shift.label')" :help="t('index.shift.help')">
-              <USelect
-                v-model="selectedShiftCode"
-                :items="shiftItems"
-                class="w-full"
-                :disabled="clockedIn"
-                :placeholder="t('index.shift.placeholder')"
-                option-attribute="label"
-                value-attribute="code"
-              />
-            </UFormField>
-            <UFormField :label="t('index.shiftType.label')" :help="t('index.shiftType.help')">
-              <USelect
-                v-model="selectedShiftType"
-                :items="[{ label: t('index.shiftType.items.harian'), value: 'harian' }, { label: t('index.shiftType.items.bantuan'), value: 'bantuan' }]"
-                class="w-full"
-                :disabled="clockedIn"
-                :placeholder="t('index.shiftType.placeholder')"
-                option-attribute="label"
-                value-attribute="value"
-              />
-            </UFormField>
-          </div>
-
-          <div class="flex flex-wrap gap-3">
-            <UButton
-              v-if="!clockedIn"
-              color="primary"
-              icon="i-heroicons-play"
-              :loading="locating"
-              :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType)"
-              size="lg"
-              @click="() => handleClock('in')"
-            >
-              {{ t('index.buttons.clockIn') }}
-            </UButton>
-            <UButton
-              v-else
-              color="primary"
-              variant="solid"
-              icon="i-heroicons-stop"
-              :loading="locating"
-              size="lg"
-              @click="handleClock('out')"
-            >
-              {{ t('index.buttons.clockOut') }}
-            </UButton>
-          </div>
+  <div class="mx-auto w-full max-w-xl space-y-4">
+    <!-- Status. The page's hero, so it leads with the status and the figures. -->
+    <SCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <SIcon name="i-heroicons-clock" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+          <SBadge :color="clockedIn ? 'primary' : 'neutral'" variant="soft">
+            {{ clockedIn ? t('index.clockedIn') : t('index.notClockedIn') }}
+          </SBadge>
+          <SBadge v-if="clockedIn && isLate" color="danger" variant="soft">
+            {{ t('index.lateBadge', { late: lateByHuman }) }}
+          </SBadge>
         </div>
-        <div class="space-y-4">
-          <h2 class="font-medium flex items-center gap-2">
-            {{ t('index.location.title') }} <UBadge size="xs" :color="geoSupported ? 'primary' : 'neutral'">
-              {{ permissionStatus }}
-            </UBadge>
+      </template>
+
+      <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)]">
+        <div class="pr-3">
+          <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-arrow-right-on-rectangle" class="size-3.5 shrink-0" />
+            {{ t('index.labels.clockIn') }}
+          </dt>
+          <dd class="mt-1.5 font-mono text-lg tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)] sm:text-xl">
+            {{ formatTime(clockInTime) }}
+          </dd>
+        </div>
+        <div class="px-3">
+          <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-arrow-left-on-rectangle" class="size-3.5 shrink-0" />
+            {{ t('index.labels.clockOut') }}
+          </dt>
+          <dd class="mt-1.5 font-mono text-lg tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)] sm:text-xl">
+            {{ formatTime(clockOutTime) }}
+          </dd>
+        </div>
+        <div class="pl-3">
+          <dt class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
+            {{ t('index.labels.duration') }}
+          </dt>
+          <dd class="mt-1.5 font-mono text-lg tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)] sm:text-xl">
+            {{ durationHuman }}
+          </dd>
+        </div>
+      </dl>
+    </SCard>
+
+    <!-- Shift selection and the action, in one surface. The action follows the
+         selectors because both selectors gate it. -->
+    <SCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <SIcon name="i-heroicons-briefcase" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+          <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+            {{ t('index.shift.label') }}
           </h2>
-          <div class="text-sm space-y-1">
-            <p v-if="!geoSupported" class="text-red-500">
-              {{ t('index.location.unsupported') }}
-            </p>
-            <p v-else-if="geoError" class="text-red-500">
-              {{ geoError }}
-            </p>
-            <template v-else>
-              <p><span class="font-medium">Lat:</span> {{ coords.lat?.toFixed(6) || '-' }}</p>
-              <p><span class="font-medium">Lng:</span> {{ coords.lng?.toFixed(6) || '-' }}</p>
-              <p v-if="coords.accuracy">
-                <span class="font-medium">Accuracy:</span> ±{{ Math.round(coords.accuracy) }}m
-              </p>
-            </template>
-            <p v-if="geofenceError" class="text-xs text-red-500">
-              {{ geofenceError }}
-            </p>
-          </div>
-          <div>
-            <UButton
-              size="xs"
-              variant="soft"
-              icon="i-heroicons-map-pin"
-              :loading="locating"
-              @click="requestLocationOnce"
-            >
-              {{ t('index.buttons.refreshLocation') }}
-            </UButton>
-          </div>
-          <ClientOnly>
-            <div class="mt-4">
-              <div v-if="geoSupported">
-                <div v-if="hasLocation" class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
-                  <LMap
-                    style="height: 220px"
-                    :zoom="mapZoom"
-                    :center="mapCenter"
-                    :use-global-leaflet="false"
-                  >
-                    <LTileLayer
-                      :url="mapTileUrl"
-                      :attribution="mapAttribution"
-                    />
-                    <LMarker :lat-lng="mapCenter" />
-                  </LMap>
-                </div>
-                <div v-else class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('index.location.mapAllow') }}
-                </div>
-              </div>
-              <div v-else class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('index.location.mapUnavailable') }}
-              </div>
-            </div>
-          </ClientOnly>
         </div>
-      </div>
-    </UCard>
+      </template>
 
-    <UModal v-model:open="showConfirmOut" :title="t('index.modal.title')">
-      <template #body>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
-          {{ confirmOutMessage }}
-        </p>
-
-        <div v-if="isEarlyOut" class="mt-3">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('index.modal.reasonLabel') }}</label>
-          <textarea
-            v-model="earlyReason"
-            maxlength="200"
-            rows="3"
-            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2"
-            :placeholder="t('index.modal.reasonPlaceholder')"
+      <div class="space-y-4">
+        <div>
+          <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-clock" class="size-3.5 shrink-0" />
+            {{ t('index.shift.label') }}
+          </div>
+          <SSelect
+            v-model="selectedShiftCode"
+            :items="shiftItems"
+            class="mt-1 w-full"
+            adaptive
+            :disabled="clockedIn"
+            :placeholder="t('index.shift.placeholder')"
+            label-key="label"
+            value-key="value"
           />
-          <p class="text-xs text-gray-500 mt-1">
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.shift.help') }}
+          </p>
+        </div>
+
+        <div>
+          <div class="flex items-center gap-1.5 text-xs text-[var(--selaras-resolved-text-muted)]">
+            <SIcon name="i-heroicons-tag" class="size-3.5 shrink-0" />
+            {{ t('index.shiftType.label') }}
+          </div>
+          <SSelect
+            v-model="selectedShiftType"
+            :items="[{ label: t('index.shiftType.items.harian'), value: 'harian' }, { label: t('index.shiftType.items.bantuan'), value: 'bantuan' }]"
+            class="mt-1 w-full"
+            adaptive
+            :disabled="clockedIn"
+            :placeholder="t('index.shiftType.placeholder')"
+            label-key="label"
+            value-key="value"
+          />
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.shiftType.help') }}
+          </p>
+        </div>
+
+        <SButton
+          v-if="!clockedIn"
+          color="primary"
+          icon="i-heroicons-play"
+          :loading="locating || submitting"
+          :disabled="!selectedShiftCode || !selectedShiftType || isShiftActive(selectedShiftType) || submitting"
+          size="lg"
+          block
+          @click="() => handleClock('in')"
+        >
+          {{ t('index.buttons.clockIn') }}
+        </SButton>
+        <SButton
+          v-else
+          color="primary"
+          variant="solid"
+          icon="i-heroicons-stop"
+          :loading="locating || submitting"
+          :disabled="submitting"
+          size="lg"
+          block
+          @click="handleClock('out')"
+        >
+          {{ t('index.buttons.clockOut') }}
+        </SButton>
+      </div>
+    </SCard>
+
+    <!-- Location. Supporting detail, so it sits last and stays quiet. -->
+    <SCard>
+      <template #header>
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <SIcon name="i-heroicons-map-pin" class="size-5 shrink-0 text-[var(--selaras-resolved-text-muted)]" />
+            <h2 class="text-sm font-semibold text-[var(--selaras-resolved-text-default)]">
+              {{ t('index.location.title') }}
+            </h2>
+          </div>
+          <SBadge size="sm" :color="geoSupported ? 'primary' : 'neutral'">
+            {{ permissionStatus }}
+          </SBadge>
+        </div>
+      </template>
+
+      <p v-if="!geoSupported">
+        <span class="text-red-500">{{ t('index.location.unsupported') }}</span>
+      </p>
+      <p v-else-if="geoError">
+        <span class="text-red-500">{{ geoError }}</span>
+      </p>
+      <template v-else>
+        <dl class="grid grid-cols-3 divide-x divide-[var(--selaras-resolved-border-muted)]">
+          <div class="pr-3">
+            <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              Lat
+            </dt>
+            <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
+              {{ coords.lat?.toFixed(6) || '-' }}
+            </dd>
+          </div>
+          <div class="px-3">
+            <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              Lng
+            </dt>
+            <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
+              {{ coords.lng?.toFixed(6) || '-' }}
+            </dd>
+          </div>
+          <div v-if="coords.accuracy" class="pl-3">
+            <dt class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              Accuracy
+            </dt>
+            <dd class="mt-1 font-mono tabular-nums whitespace-nowrap text-[var(--selaras-resolved-text-default)]">
+              &plusmn;{{ Math.round(coords.accuracy) }}m
+            </dd>
+          </div>
+        </dl>
+      </template>
+      <p v-if="address" class="mt-2 truncate text-xs text-[var(--selaras-resolved-text-muted)]">
+        {{ address }}
+      </p>
+      <p v-if="geofenceError" class="mt-2 text-xs text-red-500">
+        {{ geofenceError }}
+      </p>
+
+      <SButton
+        size="sm"
+        variant="soft"
+        icon="i-heroicons-arrow-path"
+        :loading="locating"
+        class="mt-4"
+        @click="requestLocationOnce"
+      >
+        {{ t('index.buttons.refreshLocation') }}
+      </SButton>
+
+      <ClientOnly>
+        <div class="mt-4">
+          <div v-if="geoSupported">
+            <div
+              v-if="hasLocation"
+              class="isolate overflow-hidden rounded-[var(--selaras-resolved-radius-md)] border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)]"
+            >
+              <!-- MapLibre renders into this element imperatively (see
+                   initMap). The isolate wrapper keeps the canvas inside this
+                   stacking context so portalled overlays always win. -->
+              <div ref="mapContainer" style="height: 220px" class="h-[220px] w-full" />
+            </div>
+            <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+              {{ t('index.location.mapAllow') }}
+            </div>
+          </div>
+          <div v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('index.location.mapUnavailable') }}
+          </div>
+        </div>
+      </ClientOnly>
+    </SCard>
+
+    <SModal v-model:open="showConfirmOut" :title="t('index.modal.title')" :description="confirmOutMessage">
+      <template #body>
+        <div v-if="isEarlyOut">
+          <SFormField :label="t('index.modal.reasonLabel')" label-mode="static">
+            <STextarea
+              v-model="earlyReason"
+              maxlength="200"
+              rows="3"
+              class="w-full"
+              :placeholder="t('index.modal.reasonPlaceholder')"
+            />
+          </SFormField>
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
             {{ earlyReason.length }}/200
           </p>
         </div>
 
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="neutral" variant="soft" @click="onCancelClockOut">
+          <SButton color="neutral" variant="soft" @click="onCancelClockOut">
             {{ t('index.modal.cancel') }}
-          </UButton>
-          <UButton color="primary" icon="i-heroicons-check" @click="onConfirmClockOut">
+          </SButton>
+          <SButton
+            color="primary"
+            icon="i-heroicons-check"
+            :loading="submitting"
+            :disabled="submitting"
+            @click="onConfirmClockOut"
+          >
             {{ t('index.modal.confirmButton') }}
-          </UButton>
+          </SButton>
         </div>
       </template>
-    </UModal>
+    </SModal>
 
-    <UModal v-model:open="geofenceBlocked" title="Outside allowed area">
+    <SModal
+      v-model:open="geofenceBlocked"
+      title="Outside allowed area"
+      :description="geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.'"
+    >
       <template #body>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
-          {{ geofenceBlockedMessage || 'You are outside the allowed area. Move closer and try again.' }}
-        </p>
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="primary" variant="solid" @click="() => { geofenceBlocked = false }">
+          <SButton color="primary" variant="solid" @click="() => { geofenceBlocked = false }">
             OK
-          </UButton>
+          </SButton>
         </div>
       </template>
-    </UModal>
+    </SModal>
 
-    <UModal v-model:open="geofenceCommentModalOpen" title="Comment required">
+    <SModal
+      v-model:open="geofenceCommentModalOpen"
+      title="Comment required"
+      :description="geofenceBlockedMessage || 'You are outside the allowed area. Please add a comment to continue.'"
+    >
       <template #body>
-        <p class="text-sm text-gray-600 dark:text-gray-300">
-          {{ geofenceBlockedMessage || 'You are outside the allowed area. Please add a comment to continue.' }}
-        </p>
-        <div class="mt-3">
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">Comment</label>
-          <textarea
-            v-model="geofenceComment"
-            maxlength="200"
-            rows="3"
-            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm p-2"
-            placeholder="Add a brief reason..."
-          />
-          <p class="text-xs text-gray-500 mt-1">
+        <div>
+          <SFormField label="Comment" label-mode="static">
+            <STextarea
+              v-model="geofenceComment"
+              maxlength="200"
+              rows="3"
+              class="w-full"
+              placeholder="Add a brief reason..."
+            />
+          </SFormField>
+          <p class="mt-1 text-xs text-[var(--selaras-resolved-text-muted)]">
             {{ geofenceComment.length }}/200
           </p>
         </div>
         <div class="flex justify-end gap-2 mt-4">
-          <UButton color="neutral" variant="soft" @click="cancelGeofenceComment">
+          <SButton color="neutral" variant="soft" @click="cancelGeofenceComment">
             Cancel
-          </UButton>
-          <UButton color="primary" icon="i-heroicons-check" @click="submitGeofenceComment">
+          </SButton>
+          <SButton
+            color="primary"
+            icon="i-heroicons-check"
+            :loading="submitting"
+            :disabled="submitting"
+            @click="submitGeofenceComment"
+          >
             Continue
-          </UButton>
+          </SButton>
         </div>
       </template>
-    </UModal>
+    </SModal>
   </div>
 </template>

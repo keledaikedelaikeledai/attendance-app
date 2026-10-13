@@ -1,443 +1,495 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-import { useWindowSize } from '@vueuse/core'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-// `computed`, `ref`, `onMounted`, etc. are auto-imported by Nuxt; do not import from 'vue' explicitly
-
-// useI18n imported once below
-import * as attendanceTime from '~/composables/useAttendanceTime'
-
-const { t } = useI18n()
-
-const month = ref(new Date().toISOString().slice(0, 7)) // YYYY-MM
-
-// useFetch for attendance (reactive to `month`) and users
-const { data: attendanceData, pending: attendancePending, refresh: refreshAttendance } = useFetch('/api/admin/attendance', { method: 'get', credentials: 'include', query: { month } })
-const data = computed(() => attendanceData.value ?? { month: '', days: [], rows: [] })
-const normalizedRows = computed(() => attendanceTime.normalizeRowsCrossday((data.value?.rows || []) as any[], data.value?.days || []))
-const isLoading = computed(() => Boolean(attendancePending.value))
-
-const ApexChart = shallowRef<any>(null)
-const primaryColor = ref('#2563eb')
-const secondaryColor = ref('#60a5fa')
-
-// Responsive helpers for chart
-const { width: windowWidth } = useWindowSize()
-const chartHeight = computed(() => (windowWidth.value && windowWidth.value < 640) ? 220 : 320)
-// Compute chart width: on mobile make the chart wider than the viewport so it can scroll horizontally
-const chartWidth = computed(() => {
-  const isMobile = Boolean(windowWidth.value && windowWidth.value < 640)
-  const daysCount = (data.value.days || []).length || 0
-  if (!isMobile) return '100%'
-  // target ~28-36px per day bar to avoid cramping; clamp to a reasonable max
-  const perDay = 34
-  const w = Math.max(640, Math.min(2400, daysCount * perDay))
-  return `${w}px`
-})
-
-function refreshAll() {
-  void refreshAttendance()
-}
-
-onMounted(async () => {
-  // dynamic import of chart component on client only
-  if (process.client) {
-    // dynamic import; ensure you have 'vue3-apexcharts' installed for production
-    const mod = await import('vue3-apexcharts')
-    ApexChart.value = markRaw(mod.default || mod)
-    try {
-      const style = getComputedStyle(document.documentElement)
-      const foundRaw = (
-        [
-          '--u-color-primary',
-          '--u-color-primary-500',
-          '--color-primary-500',
-          '--u-primary',
-        ].map(k => style.getPropertyValue(k)).find(v => v && v.trim()) || ''
-      ).trim()
-
-      if (foundRaw) {
-        // Create a hidden element to let the browser resolve the color (OKLCH -> rgb if supported)
-        try {
-          const tmp = document.createElement('div')
-          tmp.style.color = foundRaw
-          tmp.style.display = 'none'
-          document.body.appendChild(tmp)
-          const resolved = getComputedStyle(tmp).color
-          document.body.removeChild(tmp)
-          if (resolved && resolved !== 'rgba(0, 0, 0, 0)') {
-            primaryColor.value = resolved
-          }
-          else {
-            primaryColor.value = foundRaw
-          }
-        }
-        catch {
-          primaryColor.value = foundRaw
-        }
-        // try to resolve a secondary tint for the 'bantuan' series from the theme
-        try {
-          const found2 = (
-            ['--u-color-primary-300', '--u-color-primary-200', '--color-primary-300']
-              .map(k => style.getPropertyValue(k))
-              .find(v => v && v.trim()) || ''
-          ).trim()
-          if (found2) {
-            const tmp2 = document.createElement('div')
-            tmp2.style.color = found2
-            tmp2.style.display = 'none'
-            document.body.appendChild(tmp2)
-            const resolved2 = getComputedStyle(tmp2).color
-            document.body.removeChild(tmp2)
-            if (resolved2 && resolved2 !== 'rgba(0, 0, 0, 0)') secondaryColor.value = resolved2
-            else secondaryColor.value = found2
-          }
-        }
-        catch {
-          // ignore
-        }
-      }
-    }
-    catch {
-      // ignore
-    }
-  }
-  // initial fetch is handled by useFetch; nothing else needed here
-
-  // preload shifts definitions for local calculations
-  await attendanceTime.ensureShifts().catch(() => {})
-})
-
-const totalUsers = computed(() => data.value.rows?.length || 0)
-const totalDays = computed(() => data.value.days?.length || 0)
-
-const presentCountsPerDay = computed(() => {
-  const days = data.value.days || []
-  return days.map((d: string) => {
-    return (normalizedRows.value || []).reduce((acc: number, row: any) => {
-      const cell = row.byDate?.[d]
-      if (!cell) return acc
-      if (typeof cell.workingShifts === 'number') return acc + Math.max(0, Math.floor(cell.workingShifts))
-      // fallback: count entries with a clockIn (supports multiple shifts per day)
-      const entries = attendanceTime.normalizeCell(cell)
-      const countIns = entries.filter((e: any) => e?.clockIn).length
-      return acc + countIns
-    }, 0)
-  })
-})
-
-const totalPresent = computed(() => presentCountsPerDay.value.reduce((a: number, b: number) => a + b, 0))
-const percentPresent = computed(() => {
-  const denom = totalUsers.value * totalDays.value
-  return denom ? Math.round((totalPresent.value / denom) * 10000) / 100 : 0
-})
-
-const lateCountsPerUser = computed(() => (normalizedRows.value || []).map((row: any) => {
-  const days = data.value.days || []
-  const count = days.reduce((acc: number, d: string) => {
-    const cell = row.byDate?.[d]
-    if (!cell) return acc
-    // prefer server aggregate if present, else compute per-entry
-    if (typeof cell?.lateMs === 'number') return acc + (cell.lateMs > 0 ? 1 : 0)
-    const es = attendanceTime.normalizeCell(cell)
-    const hasLate = es.some((e: any) => attendanceTime.entryLateMs(e, cell, es) > 0)
-    return acc + (hasLate ? 1 : 0)
-  }, 0)
-  return { userId: row.userId, name: row.name, username: row.username, email: row.email, lateCount: count }
-}))
-
-const averageLatePerUser = computed(() => {
-  const arr = lateCountsPerUser.value
-  if (!arr.length) return 0
-  return Math.round((arr.reduce((a: any, b: any) => a + b.lateCount, 0) / arr.length) * 100) / 100
-})
-
-// Top Late Users table removed; we keep lateCountsPerUser and averageLatePerUser for stats
-
-// recentUsersColumns removed; replaced by `recentRecapColumns` for the recap table
-
-const recentRecap = computed(() => {
-  const rows = normalizedRows.value || []
-  const days = data.value.days || []
-  return rows.map((row: any) => {
-    let totalWorkingDays = 0
-    let harian = 0
-    let bantuan = 0
-    let lateMsTotal = 0
-    let earlyMsTotal = 0
-    for (const d of days) {
-      const v = row.byDate?.[d]
-      if (!v) continue
-      // Count working shifts: prefer server-provided workingShifts, else count entries with clockIn
-      const esAll = attendanceTime.normalizeCell(v)
-      const presentCount = typeof v?.workingShifts === 'number' ? Math.max(0, Math.floor(v.workingShifts)) : esAll.filter((e: any) => e?.clockIn).length
-      if (!presentCount) continue
-      totalWorkingDays += presentCount
-      harian += v.harian || 0
-      bantuan += v.bantuan || 0
-      // late total: prefer server aggregate if present, else sum per-entry
-      if (typeof v?.lateMs === 'number') lateMsTotal += Number(v.lateMs)
-      else lateMsTotal += esAll.reduce((a: number, e: any) => a + attendanceTime.entryLateMs(e, v, esAll), 0)
-
-      // early total: compute per-entry earlyMs and validate server aggregate using 1-hour heuristic
-      const computedEarly = esAll.reduce((a: number, e: any) => a + attendanceTime.entryEarlyMs(e, v, esAll), 0)
-      if (typeof v?.earlyMs === 'number') {
-        if (esAll.length > 0) {
-          const diff = Math.abs(Number(v.earlyMs) - computedEarly)
-          earlyMsTotal += diff > 60 * 60 * 1000 ? computedEarly : Number(v.earlyMs)
-        }
-        else {
-          earlyMsTotal += Number(v.earlyMs)
-        }
-      }
-      else {
-        earlyMsTotal += computedEarly
-      }
-    }
-
-    const lateHours = Math.round((lateMsTotal / 3600000) * 100) / 100
-    const earlyHours = Math.round((earlyMsTotal / 3600000) * 100) / 100
-
-    return {
-      userId: row.userId,
-      name: row.name,
-      username: row.username,
-      email: row.email,
-      totalWorkingDays,
-      harian,
-      bantuan,
-      lateHours,
-      earlyHours,
-    }
-  })
-})
-
-const recentRecapColumns = computed<TableColumn<any>[]>(() => [
-  { header: t('admin.index.name'), accessorKey: 'name', size: 220 },
-  { header: t('admin.index.totalDays'), accessorKey: 'totalWorkingDays', size: 120 },
-  { header: t('admin.index.harian'), accessorKey: 'harian', size: 100 },
-  { header: t('admin.index.bantuan'), accessorKey: 'bantuan', size: 100 },
-  { header: t('admin.index.lateHours'), accessorKey: 'lateHours', size: 140 },
-  { header: t('admin.index.earlyHours'), accessorKey: 'earlyHours', size: 160 },
-])
-
-// Chart color follows the resolved theme primary color. We populate `primaryColor` on mount.
-const chartOptions = computed(() => {
-  const isMobile = Boolean(windowWidth.value && windowWidth.value < 640)
-  return {
-    chart: { id: 'presence-chart', toolbar: { show: false }, stacked: true },
-    colors: [primaryColor.value, secondaryColor.value],
-    fill: { colors: [primaryColor.value, secondaryColor.value] },
-    plotOptions: {
-      bar: {
-        horizontal: false,
-        columnWidth: isMobile ? '70%' : '50%',
-      },
-    },
-    xaxis: {
-      categories: data.value.days?.map((d: string) => d.split('-').pop()) || [],
-      labels: {
-        rotate: isMobile ? -45 : 0,
-        hideOverlappingLabels: true,
-        trim: true,
-      },
-    },
-    yaxis: { title: { text: 'Users present' } },
-    dataLabels: { enabled: false },
-    stroke: { curve: 'smooth' as const },
-    responsive: [
-      {
-        breakpoint: 640,
-        options: {
-          legend: { position: 'bottom' },
-          plotOptions: { bar: { columnWidth: '70%' } },
-        },
-      },
-    ],
-  }
-})
-
-// Produce two series: 'Harian' and 'Bantuan'. We assume attendance data rows aggregate shifts per day
-// by `workingShifts`, `harian`, and `bantuan` fields when present. Otherwise we fallback to counting entries.
-const chartSeries = computed(() => {
-  const days = data.value.days || []
-  const rows = normalizedRows.value || []
-  // Count present per day for each type
-  const harianCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
-    const cell = row.byDate?.[d]
-    if (!cell) return acc
-    if (typeof cell.harian === 'number') return acc + Number(cell.harian)
-    // fallback: count entries marked harian (entry.shiftType === 'harian')
-    const entries = attendanceTime.normalizeCell(cell)
-    return acc + entries.filter((e: any) => e?.shiftType === 'harian' && e?.clockIn).length
-  }, 0))
-
-  const bantuanCounts = days.map((d: string) => rows.reduce((acc: number, row: any) => {
-    const cell = row.byDate?.[d]
-    if (!cell) return acc
-    if (typeof cell.bantuan === 'number') return acc + Number(cell.bantuan)
-    const entries = attendanceTime.normalizeCell(cell)
-    return acc + entries.filter((e: any) => e?.shiftType === 'bantuan' && e?.clockIn).length
-  }, 0))
-
-  return [
-    { name: 'Harian', data: harianCounts },
-    { name: 'Bantuan', data: bantuanCounts },
-  ]
-})
-
-function formatPercent(v: number) {
-  return `${v}%`
-}
-
-// Helpers copied/kept lightweight for recap calculations
-
-// dayEarlyMs removed; use entry-level helpers below
-
-// helpers imported from composable: ensureShifts, shiftsMap, normalizeCell, entryLateMs, entryEarlyMs, humanizeMinutes
-
-// month is changed via `v-model` on USelect; use `load()` when needed
-
-const monthOptions = computed(() => {
-  const arr: Array<{ label: string, value: string }> = []
-  const now = new Date()
-  for (let i = 0; i < 12; i++) {
-    const dt = new Date(now)
-    dt.setMonth(now.getMonth() - i)
-    const val = dt.toISOString().slice(0, 7)
-    const label = dt.toLocaleDateString([], { year: 'numeric', month: 'long' })
-    arr.push({ label, value: val })
-  }
-  return arr
-})
 
 definePageMeta({
   title: 'Admin Dashboard',
   pageTitle: 'Dashboard - Admin - Attendance App',
 })
+
+// A dashboard sits next to a full report, so it must not re-answer the
+// report's question ("what happened this month?"). Everything here answers
+// the ops question instead: what is happening TODAY, and what has fallen
+// through the cracks. One fetch of the current month feeds it all.
+interface ShiftEntry {
+  clockIn?: string | null
+  clockOut?: string | null
+  shiftCode?: string | null
+  shiftStartIso?: string | null
+  shiftEndIso?: string | null
+  earlyReason?: string | null
+}
+interface DayCell {
+  grouped?: Record<string, ShiftEntry>
+}
+interface Employee {
+  userId: string
+  email?: string | null
+  name?: string | null
+  username?: string | null
+  byDate: Record<string, DayCell>
+}
+interface Report { month: string, days: string[], rows: Employee[] }
+
+const { locale } = useI18n()
+const timezone = 'Asia/Jakarta'
+
+const copy = {
+  en: {
+    title: 'Dashboard',
+    intro: 'Today at a glance, plus anything that needs a follow-up.',
+    refresh: 'Refresh',
+    clockedIn: 'Clocked in today',
+    clockedInSub: 'employees with a check-in',
+    onSite: 'On-site now',
+    onSiteSub: 'in, not yet out',
+    lateToday: 'Late today',
+    lateTodaySub: 'arrived after shift start',
+    earlyToday: 'Left early today',
+    earlyTodaySub: 'clocked out before shift end',
+    attention: 'Needs attention',
+    allClear: 'All clear - nothing needs attention.',
+    missingCheckout: 'Missing check-out',
+    missingSince: 'last seen',
+    lateSection: 'Late today',
+    earlySection: 'Left early today',
+    minutesAgo: 'min',
+    onSiteNow: 'On-site now',
+    nobodyOnSite: 'Nobody on-site right now.',
+    thisMonth: 'This month',
+    workedDays: 'Worked days',
+    lateDays: 'Late days',
+    earlyDays: 'Short days',
+    missingDays: 'Missing check-outs',
+    employees: 'Employees',
+    openBoard: 'Open attendance board',
+    errorTitle: 'Could not load the dashboard',
+    errorHelp: 'Please try refreshing.',
+  },
+  id: {
+    title: 'Dasbor',
+    intro: 'Ringkasan hari ini, ditambah hal yang perlu ditindaklanjuti.',
+    refresh: 'Muat ulang',
+    clockedIn: 'Absen masuk hari ini',
+    clockedInSub: 'karyawan sudah check-in',
+    onSite: 'Sedang di lokasi',
+    onSiteSub: 'masuk, belum keluar',
+    lateToday: 'Terlambat hari ini',
+    lateTodaySub: 'datang lewat jam mulai shift',
+    earlyToday: 'Pulang awal hari ini',
+    earlyTodaySub: 'absen keluar sebelum shift selesai',
+    attention: 'Perlu perhatian',
+    allClear: 'Semua aman - tidak ada yang perlu diperhatikan.',
+    missingCheckout: 'Belum absen keluar',
+    missingSince: 'terakhir terlihat',
+    lateSection: 'Terlambat hari ini',
+    earlySection: 'Pulang awal hari ini',
+    minutesAgo: 'mnt',
+    onSiteNow: 'Sedang di lokasi',
+    nobodyOnSite: 'Tidak ada yang sedang di lokasi.',
+    thisMonth: 'Bulan ini',
+    workedDays: 'Hari kerja',
+    lateDays: 'Hari terlambat',
+    earlyDays: 'Hari kurang',
+    missingDays: 'Belum absen keluar',
+    employees: 'Karyawan',
+    openBoard: 'Buka papan kehadiran',
+    errorTitle: 'Gagal memuat dasbor',
+    errorHelp: 'Silakan coba muat ulang.',
+  },
+}
+const c = computed(() => copy[locale.value === 'id' ? 'id' : 'en'])
+const language = computed(() => locale.value === 'id' ? 'id-ID' : 'en-GB')
+
+// The business clock ticks once a minute so "on-site since" stays honest.
+const now = ref(new Date())
+let clock: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  clock = setInterval(() => (now.value = new Date()), 60_000)
+})
+onBeforeUnmount(() => clearInterval(clock))
+const today = computed(() => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now.value))
+const month = computed(() => today.value.slice(0, 7))
+const clockLabel = computed(() => now.value.toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: timezone }))
+
+const { data, status, error, refresh } = await useFetch<Report>('/api/admin/attendance', { query: { month }, credentials: 'include' })
+const pending = computed(() => status.value === 'pending')
+// A one-minute re-fetch keeps the today numbers fresh without any socket work.
+let poller: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  poller = setInterval(() => void refresh(), 60_000)
+})
+onBeforeUnmount(() => clearInterval(poller))
+const employees = computed(() => data.value?.month === month.value ? data.value.rows : [])
+
+function fmtTime(iso?: string | null) {
+  return iso ? new Date(iso).toLocaleTimeString(language.value, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: timezone }) : '—'
+}
+function fmtDate(date: string) {
+  return new Intl.DateTimeFormat(language.value, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
+}
+function entryLateMinutes(e: ShiftEntry) {
+  return e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso) ? Math.round((Date.parse(e.clockIn) - Date.parse(e.shiftStartIso)) / 60_000) : 0
+}
+function entryEarlyMinutes(e: ShiftEntry) {
+  return e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso) ? Math.round((Date.parse(e.shiftEndIso) - Date.parse(e.clockOut)) / 60_000) : 0
+}
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase() ?? '').join('')
+}
+function displayName(e: Employee) {
+  return e.name || e.username || '-'
+}
+
+// A day's visible entries honour the shift type later if ever needed; the
+// dashboard reads ALL shift types - an admin cares that someone is on-site,
+// not which bucket it lands in.
+function dayEntries(employee: Employee, date: string): Array<[string, ShiftEntry]> {
+  return Object.entries(employee.byDate[date]?.grouped ?? {})
+}
+
+const todayRows = computed(() => employees.value.map(employee => ({
+  employee,
+  entries: dayEntries(employee, today.value),
+})))
+
+// TODAY strip ---------------------------------------------------------------
+const clockedIn = computed(() => todayRows.value.reduce((acc, row) => acc + (row.entries.some(([, e]) => e.clockIn) ? 1 : 0), 0))
+const onSiteList = computed(() => todayRows.value.flatMap(({ employee, entries }) => {
+  const open = entries.filter(([, e]) => e.clockIn && !e.clockOut)
+  if (!open.length)
+    return []
+  const earliest = open.map(([, e]) => e.clockIn!).sort()[0]!
+  const shiftType = open[0]![0]
+  return [{ employee, in: earliest, shiftType }]
+}))
+const lateToday = computed(() => todayRows.value.flatMap(({ employee, entries }) => {
+  const worst = Math.max(0, ...entries.map(([, e]) => entryLateMinutes(e)))
+  if (!worst)
+    return []
+  return [{ employee, minutes: worst, in: entries.map(([, e]) => e.clockIn).filter(Boolean).sort()[0] ?? '' }]
+}))
+const earlyToday = computed(() => todayRows.value.flatMap(({ employee, entries }) => {
+  const worst = Math.max(0, ...entries.map(([, e]) => entryEarlyMinutes(e)))
+  if (!worst)
+    return []
+  return [{ employee, minutes: worst, out: entries.map(([, e]) => e.clockOut).filter(Boolean).sort().at(-1) ?? '' }]
+}))
+
+// NEEDS ATTENTION -----------------------------------------------------------
+// Missing check-outs from before today are the real follow-ups: today's open
+// entries are just "still on-site", but a yesterday without a clock-out means
+// the record needs a human.
+const missingCheckouts = computed(() => {
+  const list: Array<{ employee: Employee, day: string, in: string }> = []
+  for (const employee of employees.value) {
+    for (const day of data.value?.days ?? []) {
+      if (day >= today.value)
+        break
+      for (const [, e] of dayEntries(employee, day)) {
+        if (e.clockIn && !e.clockOut)
+          list.push({ employee, day, in: e.clockIn })
+      }
+    }
+  }
+  return list.sort((a, b) => b.day.localeCompare(a.day))
+})
+const missingOverflow = computed(() => Math.max(0, missingCheckouts.value.length - 8))
+
+// THIS MONTH ----------------------------------------------------------------
+const monthStats = computed(() => {
+  let workedDays = 0
+  let lateDays = 0
+  let earlyDays = 0
+  for (const employee of employees.value) {
+    for (const day of data.value?.days ?? []) {
+      if (day > today.value)
+        break
+      const entries = dayEntries(employee, day).filter(([, e]) => e.clockIn || e.clockOut)
+      if (!entries.length)
+        continue
+      workedDays++
+      if (entries.some(([, e]) => entryLateMinutes(e) > 0))
+        lateDays++
+      if (day !== today.value && entries.some(([, e]) => entryEarlyMinutes(e) > 0))
+        earlyDays++
+    }
+  }
+  return { workedDays, lateDays, earlyDays, missingDays: missingCheckouts.value.length, employees: employees.value.length }
+})
+
+const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateToday.value.length && !earlyToday.value.length)
 </script>
 
 <template>
   <PageWrapper>
-    <template #navRight>
-      <div class="flex items-center gap-3">
-        <label class="text-sm text-muted">{{ t('admin.index.month') }}</label>
-        <USelect
-          v-model="month"
-          class="w-52"
-          :items="monthOptions"
-          option-attribute="label"
-          value-attribute="value"
-        />
-        <UButton
-          icon="i-heroicons-arrow-path"
-          :loading="isLoading"
-          class="hidden md:inline-flex"
-          @click="refreshAll"
-        >
-          {{ t('admin.index.refresh') }}
-        </UButton>
-      </div>
-    </template>
-
-    <div class="space-y-6 p-6">
-      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <UCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.totalUsers') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ totalUsers }}
-          </div>
-        </UCard>
-        <UCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.daysInMonth') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ totalDays }}
-          </div>
-        </UCard>
-        <UCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.presencePercent') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ formatPercent(percentPresent) }}
-          </div>
-        </UCard>
-        <UCard>
-          <div class="text-sm text-muted">
-            {{ t('admin.index.avgLatePerUser') }}
-          </div>
-          <div class="text-xl font-semibold">
-            {{ averageLatePerUser }}
-          </div>
-        </UCard>
-      </div>
-
-      <UCard>
-        <div class="mb-4">
-          <strong>{{ t('admin.index.dailyPresence') }}</strong>
-        </div>
+    <div class="px-4 py-6 text-sm text-(--selaras-resolved-text-default) sm:px-8 sm:py-7 max-[640px]:py-5">
+      <header class="flex flex-wrap items-start gap-4 justify-between mb-6">
         <div>
-          <client-only>
-            <div v-if="ApexChart" class="admin-presence-chart">
-              <!-- On mobile the inner container will be wider than the viewport so the chart can be scrolled horizontally -->
-              <div class="w-full overflow-x-auto" style="-webkit-overflow-scrolling: touch;">
-                <div :style="{ minWidth: typeof chartWidth === 'number' ? `${chartWidth}px` : chartWidth }">
-                  <component
-                    :is="ApexChart"
-                    type="bar"
-                    :options="chartOptions"
-                    :series="chartSeries"
-                    :height="chartHeight"
-                    :width="chartWidth"
-                  />
+          <h2 class="text-2xl font-[650] tracking-[-0.025em] leading-[1.3]">
+            {{ c.title }}
+          </h2>
+          <p class="text-(--selaras-resolved-text-muted) mt-1.5 max-w-prose">
+            {{ c.intro }}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="hidden sm:inline-flex items-center gap-1.5 text-xs text-(--selaras-resolved-text-muted) border border-[var(--selaras-resolved-border-default)] rounded-lg px-2.5 py-1.5 tabular-nums">
+            <SIcon name="i-heroicons-clock" class="size-3.5" /> {{ clockLabel }} <span class="text-[10px] uppercase tracking-wide">WIB</span>
+          </span>
+          <SButton
+            color="neutral"
+            variant="outline"
+            icon="i-heroicons-arrow-path"
+            :loading="pending"
+            @click="refresh()"
+          >
+            {{ c.refresh }}
+          </SButton>
+        </div>
+      </header>
+
+      <!-- Loading skeleton keeps both columns' shapes so the swap is calm. -->
+      <div v-if="pending" class="space-y-4" aria-busy="true">
+        <div class="grid gap-4 grid-cols-2 xl:grid-cols-4">
+          <div v-for="i in 4" :key="i" class="h-24 rounded-xl bg-gray-100 dark:bg-neutral-800 animate-pulse" />
+        </div>
+        <div class="grid gap-4 lg:grid-cols-5">
+          <div class="h-72 rounded-xl bg-gray-100 dark:bg-neutral-800 animate-pulse lg:col-span-3" />
+          <div class="h-72 rounded-xl bg-gray-100 dark:bg-neutral-800 animate-pulse lg:col-span-2" />
+        </div>
+      </div>
+
+      <div v-else-if="error" class="p-10 text-center">
+        <p class="font-medium text-(--selaras-resolved-text-default)">
+          {{ c.errorTitle }}
+        </p>
+        <p class="text-(--selaras-resolved-text-muted) mt-1">
+          {{ c.errorHelp }}
+        </p>
+        <SButton
+          class="mt-4"
+          color="neutral"
+          variant="outline"
+          icon="i-heroicons-arrow-path"
+          @click="refresh()"
+        >
+          {{ c.refresh }}
+        </SButton>
+      </div>
+
+      <template v-else>
+        <!-- TODAY strip: four live numbers, refreshed every minute. -->
+        <div class="grid gap-4 grid-cols-2 xl:grid-cols-4 mb-4">
+          <SCard
+            v-for="tile in [
+              { key: 'in', label: c.clockedIn, sub: c.clockededInSub, value: clockedIn, icon: 'i-heroicons-arrow-right-start-on-rectangle', tone: 'text-emerald-600 dark:text-emerald-400' },
+              { key: 'site', label: c.onSite, sub: c.onSiteSub, value: onSiteList.length, icon: 'i-heroicons-map-pin', tone: 'text-sky-600 dark:text-sky-400' },
+              { key: 'late', label: c.lateToday, sub: c.lateTodaySub, value: lateToday.length, icon: 'i-heroicons-clock', tone: lateToday.length ? 'text-amber-600 dark:text-amber-400' : '' },
+              { key: 'early', label: c.earlyToday, sub: c.earlyTodaySub, value: earlyToday.length, icon: 'i-heroicons-arrow-right-end-on-rectangle', tone: earlyToday.length ? 'text-violet-600 dark:text-violet-400' : '' },
+            ]"
+            :key="tile.key"
+            :ui="{ body: 'p-4' }"
+          >
+            <div class="flex items-start gap-3">
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-elevated)]">
+                <SIcon :name="tile.icon" class="size-4.5" :class="tile.tone" />
+              </div>
+              <div class="min-w-0">
+                <div class="text-2xl font-semibold leading-tight tabular-nums">
+                  {{ tile.value }}
+                </div>
+                <div class="mt-0.5 text-xs font-medium text-(--selaras-resolved-text-default) truncate">
+                  {{ tile.label }}
+                </div>
+                <div class="text-[11px] text-(--selaras-resolved-text-muted) truncate">
+                  {{ tile.sub }}
                 </div>
               </div>
             </div>
-            <div v-else class="text-sm text-muted">
-              {{ t('admin.index.chartLoading') }}
-            </div>
-          </client-only>
+          </SCard>
         </div>
-      </UCard>
 
-      <div class="space-y-4">
-        <UCard>
-          <div class="mb-3">
-            <strong>{{ t('admin.index.userRecap') }}</strong>
+        <div class="grid gap-4 lg:grid-cols-5 items-start">
+          <!-- Needs attention: follow-ups, most broken thing first. -->
+          <SCard class="lg:col-span-3" :ui="{ body: 'p-0' }">
+            <template #header>
+              <div class="flex items-center gap-3 px-4 py-3">
+                <SIcon name="i-heroicons-flag" class="size-5 shrink-0 text-(--selaras-resolved-text-muted)" />
+                <h3 class="text-sm font-semibold text-(--selaras-resolved-text-default)">
+                  {{ c.attention }}
+                </h3>
+              </div>
+            </template>
+
+            <div v-if="attentionEmpty" class="px-4 py-10 text-center">
+              <SIcon name="i-heroicons-check-circle" class="size-8 mx-auto text-emerald-500" />
+              <p class="mt-2 text-(--selaras-resolved-text-muted)">
+                {{ c.allClear }}
+              </p>
+            </div>
+
+            <div v-else class="divide-y divide-[var(--selaras-resolved-border-muted)]">
+              <!-- Missing check-outs first: they need actual fixing. -->
+              <div v-if="missingCheckouts.length" class="p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-2">
+                  {{ c.missingCheckout }} · {{ missingCheckouts.length }}
+                </p>
+                <ul class="space-y-1">
+                  <li v-for="item in missingCheckouts.slice(0, 8)" :key="`${item.employee.userId}-${item.day}`" class="flex items-center gap-3 py-1">
+                    <SAvatar
+                      :src="userAvatarUri(item.employee.userId)"
+                      :text="initials(displayName(item.employee))"
+                      :alt="displayName(item.employee)"
+                      size="xs"
+                      class="shrink-0"
+                    />
+                    <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
+                    <span class="shrink-0 text-xs text-(--selaras-resolved-text-muted) tabular-nums">
+                      {{ fmtDate(item.day) }} · {{ c.missingSince }} {{ fmtTime(item.in) }}
+                    </span>
+                  </li>
+                </ul>
+                <p v-if="missingOverflow" class="mt-2 text-xs text-(--selaras-resolved-text-muted)">
+                  +{{ missingOverflow }} more
+                </p>
+              </div>
+
+              <div v-if="lateToday.length" class="p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-2">
+                  {{ c.lateSection }} · {{ lateToday.length }}
+                </p>
+                <ul class="space-y-1">
+                  <li v-for="item in lateToday" :key="item.employee.userId" class="flex items-center gap-3 py-1">
+                    <SAvatar
+                      :src="userAvatarUri(item.employee.userId)"
+                      :text="initials(displayName(item.employee))"
+                      :alt="displayName(item.employee)"
+                      size="xs"
+                      class="shrink-0"
+                    />
+                    <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
+                    <span class="shrink-0 text-xs text-amber-600 dark:text-amber-400 tabular-nums">
+                      {{ fmtTime(item.in) }} · +{{ item.minutes }} {{ c.minutesAgo }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div v-if="earlyToday.length" class="p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400 mb-2">
+                  {{ c.earlySection }} · {{ earlyToday.length }}
+                </p>
+                <ul class="space-y-1">
+                  <li v-for="item in earlyToday" :key="item.employee.userId" class="flex items-center gap-3 py-1">
+                    <SAvatar
+                      :src="userAvatarUri(item.employee.userId)"
+                      :text="initials(displayName(item.employee))"
+                      :alt="displayName(item.employee)"
+                      size="xs"
+                      class="shrink-0"
+                    />
+                    <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
+                    <span class="shrink-0 text-xs text-violet-600 dark:text-violet-400 tabular-nums">
+                      {{ fmtTime(item.out) }} · -{{ item.minutes }} {{ c.minutesAgo }}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </SCard>
+
+          <!-- Right rail: on-site now, then the month context. -->
+          <div class="space-y-4 lg:col-span-2">
+            <SCard :ui="{ body: 'p-0' }">
+              <template #header>
+                <div class="flex items-center justify-between gap-3 px-4 py-3">
+                  <div class="flex items-center gap-3">
+                    <span class="relative flex size-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                      <span class="relative inline-flex rounded-full size-2 bg-emerald-500" />
+                    </span>
+                    <h3 class="text-sm font-semibold text-(--selaras-resolved-text-default)">
+                      {{ c.onSiteNow }}
+                    </h3>
+                  </div>
+                  <span class="text-xs tabular-nums text-(--selaras-resolved-text-muted)">{{ clockLabel }}</span>
+                </div>
+              </template>
+              <div v-if="!onSiteList.length" class="px-4 py-8 text-center text-(--selaras-resolved-text-muted)">
+                {{ c.nobodyOnSite }}
+              </div>
+              <ul v-else class="divide-y divide-[var(--selaras-resolved-border-muted)]">
+                <li v-for="item in onSiteList" :key="item.employee.userId" class="flex items-center gap-3 px-4 py-2.5">
+                  <SAvatar
+                    :src="userAvatarUri(item.employee.userId)"
+                    :text="initials(displayName(item.employee))"
+                    :alt="displayName(item.employee)"
+                    size="xs"
+                    class="shrink-0"
+                  />
+                  <span class="truncate flex-1 min-w-0">
+                    <span class="block font-medium text-(--selaras-resolved-text-default) truncate">{{ displayName(item.employee) }}</span>
+                    <span class="block text-[11px] text-(--selaras-resolved-text-muted) capitalize">{{ item.shiftType }}</span>
+                  </span>
+                  <span class="shrink-0 text-xs tabular-nums text-(--selaras-resolved-text-muted)">
+                    {{ c.onSite }} {{ fmtTime(item.in) }}
+                  </span>
+                </li>
+              </ul>
+            </SCard>
+
+            <SCard :ui="{ body: 'p-4' }">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <h3 class="text-sm font-semibold text-(--selaras-resolved-text-default)">
+                  {{ c.thisMonth }}
+                </h3>
+                <span class="text-xs text-(--selaras-resolved-text-muted) tabular-nums">{{ month }}</span>
+              </div>
+              <dl class="grid grid-cols-2 gap-3 text-sm">
+                <div class="rounded-lg border border-[var(--selaras-resolved-border-muted)] p-3">
+                  <dd class="text-xl font-semibold tabular-nums">
+                    {{ monthStats.workedDays }}
+                  </dd>
+                  <dt class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                    {{ c.workedDays }}
+                  </dt>
+                </div>
+                <div class="rounded-lg border border-[var(--selaras-resolved-border-muted)] p-3">
+                  <dd class="text-xl font-semibold tabular-nums" :class="monthStats.lateDays ? 'text-amber-600 dark:text-amber-400' : ''">
+                    {{ monthStats.lateDays }}
+                  </dd>
+                  <dt class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                    {{ c.lateDays }}
+                  </dt>
+                </div>
+                <div class="rounded-lg border border-[var(--selaras-resolved-border-muted)] p-3">
+                  <dd class="text-xl font-semibold tabular-nums" :class="monthStats.earlyDays ? 'text-violet-600 dark:text-violet-400' : ''">
+                    {{ monthStats.earlyDays }}
+                  </dd>
+                  <dt class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                    {{ c.earlyDays }}
+                  </dt>
+                </div>
+                <div class="rounded-lg border border-[var(--selaras-resolved-border-muted)] p-3">
+                  <dd class="text-xl font-semibold tabular-nums" :class="monthStats.missingDays ? 'text-red-600 dark:text-red-400' : ''">
+                    {{ monthStats.missingDays }}
+                  </dd>
+                  <dt class="text-xs text-(--selaras-resolved-text-muted) mt-0.5">
+                    {{ c.missingDays }}
+                  </dt>
+                </div>
+              </dl>
+              <div class="flex items-center justify-between gap-3 mt-3 text-xs text-(--selaras-resolved-text-muted)">
+                <span>{{ c.employees }}: <strong class="tabular-nums text-(--selaras-resolved-text-default)">{{ monthStats.employees }}</strong></span>
+                <NuxtLink to="/admin/attendance" class="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400 hover:underline">
+                  {{ c.openBoard }} <SIcon name="i-heroicons-arrow-right" class="size-3.5" />
+                </NuxtLink>
+              </div>
+            </SCard>
           </div>
-          <UTable :data="recentRecap" :columns="recentRecapColumns">
-            <template #name-cell="{ row }">
-              {{ row.original.name }}
-            </template>
-            <template #totalWorkingDays-cell="{ row }">
-              {{ row.original.totalWorkingDays }}
-            </template>
-            <template #harian-cell="{ row }">
-              {{ row.original.harian }}
-            </template>
-            <template #bantuan-cell="{ row }">
-              {{ row.original.bantuan }}
-            </template>
-            <template #lateHours-cell="{ row }">
-              {{ row.original.lateHours }}
-            </template>
-            <template #earlyHours-cell="{ row }">
-              {{ row.original.earlyHours }}
-            </template>
-          </UTable>
-        </UCard>
-      </div>
+        </div>
+      </template>
     </div>
   </PageWrapper>
 </template>
-
-<style scoped>
-.text-muted { color: var(--u-color-muted, #6b7280); }
-  .admin-presence-chart :deep(.apexcharts-bar-area .apexcharts-series.apexcharts-series-0 .apexcharts-bar-path) {
-    fill: var(--u-color-primary-500, #efb100) !important;
-  }
-</style>

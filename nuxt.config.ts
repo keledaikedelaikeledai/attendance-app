@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   },
 
   modules: [
-    '@nuxt/ui',
+    '@sewadah/selaras',
     '@nuxt/fonts',
     '@vee-validate/nuxt',
     '@vueuse/nuxt',
@@ -20,12 +20,6 @@ export default defineNuxtConfig({
     '@nuxtjs/i18n',
     './modules/error-reporting',
   ],
-
-  ui: {
-    // enable color mode so the UI package can manage light/dark themes
-    // set to true to use the default color-mode behavior (you can later customize this)
-    colorMode: true,
-  },
 
   // Internationalization (i18n) - lazy loaded locales
   i18n: {
@@ -60,9 +54,25 @@ export default defineNuxtConfig({
     // the module attempting to resolve an object as a file path.
   },
 
+  vite: {
+    optimizeDeps: {
+      // Terra Draw is pre-bundled ESM with no deps; letting esbuild's dev-dep
+      // scanner crawl it hangs the dev server, so serve it unoptimized.
+      exclude: ['terra-draw', 'terra-draw-maplibre-gl-adapter'],
+    },
+  },
+
   nitro: {
     experimental: {
       openAPI: true,
+    },
+    externals: {
+      // xtend is CommonJS with `"main": "immutable"` and no exports map, reached
+      // via postgres-interval (a drizzle-orm dependency). Sentry 11's build plugin
+      // makes Nitro externalize it, which emits an extensionless `xtend/mutable`
+      // ESM import and crashes the server at boot with ERR_MODULE_NOT_FOUND.
+      // Inlining lets the bundler resolve the CJS interop instead.
+      inline: ['xtend'],
     },
   },
 

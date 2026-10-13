@@ -1,188 +1,64 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, NavigationMenuItem } from '@nuxt/ui'
-import { useI18n } from 'vue-i18n'
-
 const route = useRoute()
 
-// get current user session for profile/avatar in mobile drawer
-const { data: user } = await authClient.useSession(useFetch)
+// Publish the header's real height as `--admin-header-h`, so a page that wants a
+// full-height surface can size against it instead of guessing.
+const root = ref<HTMLElement | null>(null)
 
-function onSignOut() {
-  authClient.signOut({
-    fetchOptions: {
-      onSuccess() {
-        navigateTo('/login', { external: true })
-      },
-    },
-  })
+function publishHeaderHeight() {
+  const header = root.value?.querySelector<HTMLElement>('[data-admin-header]')
+  if (header && root.value)
+    root.value.style.setProperty('--admin-header-h', `${Math.round(header.getBoundingClientRect().height)}px`)
 }
 
-const isCollapsed = useState('admin-is-collapsed')
+let headerObserver: ResizeObserver | undefined
 
-const menus = computed<NavigationMenuItem[]>(() => [
-  { label: 'Menus', type: 'label', hidden: true },
-  { label: 'Dashboard', icon: 'i-heroicons-home', to: '/admin', exact: true },
-  { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
-  { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
-  { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
-])
-
-// locales available (kept in sync with nuxt.config i18n locales)
-const availableLocales = [
-  { code: 'en', name: 'English' },
-  { code: 'id', name: 'Indonesian' },
-]
-
-const { locale, setLocale } = useI18n()
-
-const localeItems = computed<DropdownMenuItem[]>(() => {
-  // determine current locale from the nuxt-i18n `locale` ref
-  let currentLocale: string | undefined
-  const composerLocale = locale as any
-  if (composerLocale && typeof composerLocale === 'object' && 'value' in composerLocale) {
-    currentLocale = composerLocale.value
+onMounted(() => {
+  publishHeaderHeight()
+  const header = root.value?.querySelector<HTMLElement>('[data-admin-header]')
+  if (header) {
+    headerObserver = new ResizeObserver(publishHeaderHeight)
+    headerObserver.observe(header)
   }
-  else if (typeof composerLocale === 'string') {
-    currentLocale = composerLocale
-  }
-
-  return availableLocales.map(l => ({
-    label: l.name,
-    value: l.code,
-    // leading language icon
-    icon: `i-circle-flags-${l.code}`,
-    // use the checkbox item type from Nuxt UI so the check appears on the right
-    type: 'checkbox',
-    checked: l.code === currentLocale,
-    // handler invoked when the checkbox is toggled
-    onUpdateChecked(checked: boolean) {
-      if (!checked) return
-      // use nuxt-i18n setLocale to trigger lazy loading, hooks and cookie update
-      try {
-        void (setLocale as any)(l.code)
-      }
-      catch {
-      }
-    },
-    // prevent default navigation behavior (checkbox items usually prevent links)
-    onSelect(e: Event) {
-      e.preventDefault()
-    },
-  }))
 })
+
+onBeforeUnmount(() => headerObserver?.disconnect())
 </script>
 
 <template>
-  <HeaderColumn class="mb-2 flex-none">
-    <template #left>
-      <UDrawer
-        class="sm:hidden"
-        direction="left"
-        as="aside"
-        :handle="false"
-      >
-        <UButton
-          icon="i-lucide-menu"
-          class="w-8 h-8"
-          color="neutral"
-          variant="ghost"
-        />
-        <template #content>
-          <div class="h-screen flex flex-col px-3 py-4 bg-zinc-100 dark:bg-neutral-800">
-            <div class="flex flex-col items-center justify-center mb-6">
-              <img src="/logo-app.png" alt="App Logo" class="mx-auto w-[150px] h-auto mb-4">
-            </div>
+  <div ref="root" class="flex flex-col flex-1 h-full min-h-0">
+    <!-- Header inside rounded container -->
+    <header
+      data-admin-header
+      class="flex-none flex items-center justify-between border-b border-gray-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-4 sm:px-6 py-3.5"
+    >
+      <div class="flex items-center gap-2.5 min-w-0">
+        <SDashboardSidebarToggle class="w-8 h-8 -ml-1 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white" />
+        <div class="flex items-center gap-2 min-w-0">
+          <SIcon name="i-heroicons-squares-2x2" class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+          <h1 class="font-medium text-sm text-gray-800 dark:text-gray-200 truncate">
+            {{ route.meta.title || 'Ruang kerja' }}
+          </h1>
+        </div>
+        <slot name="navLeft" />
+      </div>
 
-            <UNavigationMenu
-              orientation="vertical"
-              :items="menus"
-              class="data-[orientation=vertical]:w-full flex-1 overflow-y-auto"
-            />
+      <div class="flex items-center gap-2">
+        <slot name="navMiddle" />
+      </div>
 
-            <div class="flex flex-col pl-1 pr-2 mt-4">
-              <USeparator />
-              <UPopover :ui="{ content: 'w-54 flex flex-col h-auto p-0 gap-0' }" trigger="click">
-                <template #content>
-                  <UButton
-                    icon="i-lucide-user-circle"
-                    size="sm"
-                    color="neutral"
-                    variant="link"
-                    class="w-full p-[10px]"
-                    to="/admin/profile"
-                  >
-                    Profile
-                  </UButton>
-                  <UButton
-                    icon="i-lucide-log-out"
-                    size="sm"
-                    color="neutral"
-                    variant="link"
-                    class="w-full p-[10px]"
-                    @click="onSignOut"
-                  >
-                    Sign Out
-                  </UButton>
-                </template>
+      <div class="flex items-center gap-2 sm:gap-3 shrink-0">
+        <slot name="navRight" />
 
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  class="w-full flex items-center justify-between mt-2 pt-2 pb-2 p-0"
-                  aria-label="User menu"
-                >
-                  <div class="flex items-center">
-                    <UAvatar
-                      :src="user?.user.image || undefined"
-                      :alt="user?.user.username || 'User Avatar'"
-                      size="lg"
-                      class="border border-neutral-300 dark:border-neutral-700"
-                    />
-                    <span v-if="true" class="text-xs ml-2">
-                      {{ user?.user.name }}
-                    </span>
-                  </div>
-                  <UIcon name="i-lucide-ellipsis-vertical" />
-                </UButton>
-              </UPopover>
-            </div>
-          </div>
-        </template>
-      </UDrawer>
-      <UButton
-        :icon="isCollapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
-        class="w-8 h-8 hidden sm:block"
-        color="neutral"
-        variant="ghost"
-        @click="isCollapsed = !isCollapsed"
-      />
-      <title>{{ route.meta.pageTitle }}</title>
-      <h1 class="font-semibold hidden sm:block text-lg">
-        {{ route.meta.title }}
-      </h1>
-      <slot name="navLeft" />
-    </template>
-    <template #middle>
-      <slot name="navMiddle" />
-    </template>
-    <template #right>
-      <slot name="navRight" />
-      <ClientOnly>
-        <UDropdownMenu :items="localeItems" :content="{ align: 'end' }" :ui="{ content: 'w-48' }">
-          <UButton
-            icon="i-heroicons-language"
-            class="w-8 h-8"
-            color="neutral"
-            variant="ghost"
-            aria-label="Language"
-          />
-        </UDropdownMenu>
-      </ClientOnly>
+        <LocaleSwitcher />
 
-      <UColorModeButton />
-    </template>
-  </HeaderColumn>
-  <div class="p-2 border-2 border-neutral-200 border-dashed rounded-lg dark:border-neutral-700 flex-1 overflow-auto">
-    <slot />
+        <SColorModeToggle />
+      </div>
+    </header>
+
+    <!-- Main scrollable content inside rounded card -->
+    <main class="flex-1 min-h-0 overflow-y-auto flex flex-col bg-gray-100 dark:bg-neutral-950">
+      <slot />
+    </main>
   </div>
 </template>

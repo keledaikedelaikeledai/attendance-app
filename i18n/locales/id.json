@@ -1,33 +1,22 @@
 {
-  "admin": {
-    "index": {
-      "month": "Bulan",
-      "refresh": "Muat Ulang",
-      "totalUsers": "Total Pengguna",
-      "daysInMonth": "Jumlah Hari",
-      "presencePercent": "Persentase Hadir",
-      "avgLatePerUser": "Rata-rata Telat / Pengguna",
-      "dailyPresence": "Kehadiran Harian",
-      "chartLoading": "Grafik dimuat...",
-      "userRecap": "Rekap Pengguna",
-      "name": "Nama",
-      "totalDays": "Total Hari",
-      "harian": "Harian",
-      "bantuan": "Bantuan",
-      "lateHours": "Jam Telat",
-      "earlyHours": "Jam Pulang Awal"
-    }
-  },
   "common": {
     "hello": "Halo",
     "profile": "Profil",
-    "signOut": "Keluar"
+    "signOut": "Keluar",
+    "showPassword": "Tampilkan sandi",
+    "hidePassword": "Sembunyikan sandi",
+    "confirm": {
+      "cancel": "Batal",
+      "confirm": "Konfirmasi"
+    }
   },
   "profile": {
     "header": "Profil",
     "name": "Nama",
     "email": "Email",
     "role": "Peran",
+    "username": "Nama pengguna",
+    "joined": "Bergabung",
     "roleUser": "pengguna",
     "theme": "Tema",
     "language": "Bahasa",
@@ -60,6 +49,8 @@
     "loading": "Memuat...",
     "failedToLoad": "Gagal memuat laporan",
     "overview": "Ikhtisar",
+    "prevMonth": "Bulan sebelumnya",
+    "nextMonth": "Bulan berikutnya",
     "totalWorkingDays": "Total Hari Kerja",
     "harianShiftDays": "Hari Shift Harian",
     "bantuanShiftDays": "Hari Shift Bantuan",
@@ -125,6 +116,10 @@
       "locationRequired": {
         "title": "Lokasi diperlukan",
         "description": "Silakan izinkan akses lokasi untuk clock in/out"
+      },
+      "clockFailed": {
+        "title": "Absen gagal",
+        "description": "Gagal mencatat absensi. Periksa koneksi dan coba lagi."
       }
     }
   },
@@ -133,12 +128,29 @@
       "home": "Beranda",
       "reports": "Laporan",
       "profile": "Profil",
-      "logoAlt": "Logo Aplikasi"
+      "logoAlt": "Logo Aplikasi",
+      "greeting_morning": "Selamat pagi,",
+      "greeting_afternoon": "Selamat siang,",
+      "greeting_evening": "Selamat sore,",
+      "greeting_night": "Selamat malam,"
     }
   },
-
   "adminUsers": {
     "addUser": "Tambah pengguna",
+    "list": {
+      "title": "Pengguna",
+      "description": "Orang yang dapat masuk dan mencatat absensi.",
+      "count": "tidak ada pengguna | 1 pengguna | {count} pengguna",
+      "adminCount": "tidak ada admin | 1 admin | {count} admin",
+      "bannedCount": "tidak ada dilarang | 1 dilarang | {count} dilarang",
+      "search": "Cari pengguna"
+    },
+    "empty": {
+      "title": "Belum ada pengguna",
+      "description": "Tambahkan pengguna agar dapat masuk dan mencatat absensi.",
+      "searchTitle": "Tidak ada pengguna yang cocok",
+      "searchDescription": "Coba nama, username, atau email lain."
+    },
     "columns": {
       "name": "Nama",
       "username": "Username",
@@ -164,6 +176,7 @@
       "unban": "Batalkan blokir",
       "delete": "Hapus"
     },
+    "actionsLabel": "Aksi",
     "confirmations": {
       "makeAdmin": {
         "title": "Jadikan Admin",
@@ -209,15 +222,25 @@
       }
     }
   },
-
   "adminShifts": {
     "pageTitle": "Shift",
     "add": "Tambah shift",
+    "list": {
+      "title": "Shift",
+      "description": "Staf memilih shift saat mencatat absensi.",
+      "count": "tidak ada shift | 1 shift | {count} shift",
+      "activeCount": "tidak ada aktif | 1 aktif | {count} aktif"
+    },
+    "empty": {
+      "title": "Belum ada shift",
+      "description": "Tambahkan shift agar staf dapat memilihnya saat mencatat absensi."
+    },
     "columns": {
       "code": "Kode",
       "label": "Label",
-      "start": "Mulai",
-      "end": "Selesai",
+      "time": "Waktu",
+      "duration": "{hours} jam",
+      "nextDay": "Selesai hari berikutnya",
       "active": "Aktif",
       "order": "Urutan",
       "action": "Aksi"
@@ -231,9 +254,10 @@
       "delete": "Hapus"
     },
     "actionsLabel": "Aksi",
-    "modal": {
+    "drawer": {
       "add": "Tambah Shift",
       "edit": "Sunting Shift",
+      "description": "Shift menentukan jam kerja yang dipakai staf saat mencatat absensi.",
       "cancel": "Batal",
       "save": "Simpan"
     },
@@ -245,7 +269,11 @@
       "start": "Mulai",
       "end": "Selesai",
       "active": "Aktif",
-      "sortOrder": "Urutan"
+      "sortOrder": "Urutan",
+      "codeLockedHint": "Kode mengidentifikasi shift dan tidak dapat diubah.",
+      "overnight": "Shift ini berakhir pada hari berikutnya.",
+      "activeDescription": "Shift nonaktif disembunyikan dari absen dan laporan, dan tidak dapat dipakai untuk absensi.",
+      "sortOrderDescription": "Angka yang lebih kecil tampil lebih dulu."
     },
     "confirmations": {
       "delete": {
@@ -272,7 +300,120 @@
       }
     }
   },
-
+  "adminGeofence": {
+    "add": "Tambah geofence",
+    "list": {
+      "title": "Daftar geofence",
+      "description": "Buat, edit, atau hapus geofence.",
+      "empty": "Belum ada geofence. Gunakan Tambah geofence untuk membuat.",
+      "untitled": "Geofence tanpa nama"
+    },
+    "actions": {
+      "edit": "Edit",
+      "delete": "Hapus",
+      "moreLabel": "Aksi lainnya untuk {name}",
+      "save": "Simpan",
+      "cancel": "Batal"
+    },
+    "badge": {
+      "point": "Titik",
+      "polygon": "Poligon",
+      "active": "Aktif",
+      "inactive": "Nonaktif",
+      "disallow": "Dilarang",
+      "allow": "Diizinkan",
+      "allowWithComment": "Diizinkan dengan komentar"
+    },
+    "detail": {
+      "newTitle": "Geofence baru",
+      "editTitle": "Edit geofence",
+      "viewTitle": "Detail geofence",
+      "description": "Atur bentuk, kebijakan, dan koordinat peta.",
+      "configure": "Atur",
+      "missing": "Geofence tersebut sudah tidak ada."
+    },
+    "form": {
+      "name": {
+        "label": "Nama",
+        "placeholder": "mis. Geofence kantor pusat"
+      },
+      "active": {
+        "label": "Geofence aktif",
+        "description": "Aktifkan geofence ini untuk pengecekan clock in/out."
+      },
+      "policy": {
+        "label": "Interaksi di luar",
+        "description": "Berlaku saat pengguna berada di luar geofence ini dan geofence aktif.",
+        "disallow": "Dilarang",
+        "allow": "Diizinkan",
+        "allowWithComment": "Diizinkan dengan komentar"
+      },
+      "type": {
+        "label": "Tipe geofence",
+        "point": "Titik",
+        "polygon": "Poligon"
+      },
+      "radius": {
+        "label": "Radius yang diizinkan (meter)",
+        "placeholder": "mis. 100",
+        "suggested": "Disarankan dari poligon: ~{m} m",
+        "invalid": "Masukkan radius antara 1 dan 100.000 meter.",
+        "fixedForPolygon": "Radius dikunci di 0 saat memakai poligon; pindah ke Titik untuk mengubahnya."
+      }
+    },
+    "map": {
+      "tool": {
+        "label": "Alat peta",
+        "select": "Pilih dan sesuaikan",
+        "point": "Tempatkan titik",
+        "polygon": "Gambar poligon"
+      },
+      "instruction": {
+        "selectEmpty": "Pilih Tempatkan titik atau Gambar poligon untuk mulai menggambar.",
+        "selectPoint": "Seret titik pusat untuk memindah. Seret gagang putih di tepi untuk mengubah radius.",
+        "selectPolygon": "Seret titik untuk memindah. Klik titik tengah pada sisi untuk menambah titik.",
+        "point": "Klik peta untuk menempatkan titik pusat.",
+        "polygonStart": "Klik peta untuk menambah titik. Poligon minimal 3 titik.",
+        "polygonFinish": "Klik titik pertama, tekan Enter, atau gunakan Selesai untuk menutup poligon."
+      },
+      "polygon": {
+        "hint": "Klik peta untuk menambah titik. Poligon minimal 3 titik. Klik titik pertama untuk menutup, atau tekan Selesai.",
+        "vertices": "{count} titik",
+        "finish": "Selesai",
+        "undo": "Urungkan",
+        "clear": "Hapus",
+        "radiusNote": "Radius dikunci di 0 saat memakai poligon."
+      },
+      "basemap": {
+        "label": "Gaya peta",
+        "openfreemap": "Default",
+        "osm": "OpenStreetMap",
+        "streets": "Jalan",
+        "satellite": "Satelit"
+      },
+      "loading": "Memuat peta...",
+      "empty": "Belum ada koordinat."
+    },
+    "confirm": {
+      "deleteTitle": "Hapus geofence?",
+      "deleteBody": "Ini akan menghapus {name} secara permanen."
+    },
+    "toasts": {
+      "created": {
+        "title": "Geofence dibuat"
+      },
+      "updated": {
+        "title": "Geofence diperbarui"
+      },
+      "deleted": {
+        "title": "Geofence dihapus"
+      },
+      "error": {
+        "title": "Kesalahan",
+        "description": "{message}"
+      }
+    }
+  },
   "auth": {
     "login": {
       "title": "Masuk untuk mengelola waktu Anda",
@@ -289,5 +430,13 @@
       "cardText": "Untuk alasan keamanan, reset kata sandi ditangani oleh administrator. Hubungi admin Anda untuk meminta reset.",
       "back": "Kembali ke Login"
     }
+  },
+  "weather": {
+    "clear": "Cerah",
+    "cloudy": "Berawan",
+    "partly": "Cerah berawan",
+    "rain": "Hujan",
+    "snow": "Salju",
+    "storm": "Hujan badai"
   }
 }

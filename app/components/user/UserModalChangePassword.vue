@@ -26,11 +26,11 @@ watch(open, (v) => {
 async function submit() {
   if (!props.user?.id) return
   if (newPassword.value.length < 6) {
-    toast.add({ title: 'Password too short', description: 'Password must be at least 6 characters', color: 'error' })
+    toast.add({ title: 'Password too short', description: 'Password must be at least 6 characters', color: 'danger' })
     return
   }
   if (newPassword.value !== confirmPassword.value) {
-    toast.add({ title: 'Passwords do not match', color: 'error' })
+    toast.add({ title: 'Passwords do not match', color: 'danger' })
     return
   }
 
@@ -44,7 +44,7 @@ async function submit() {
   }
   catch (err: any) {
     console.error('failed to set password', err)
-    toast.add({ title: 'Error', description: err?.message || 'Failed to update password', color: 'error' })
+    toast.add({ title: 'Error', description: err?.message || 'Failed to update password', color: 'danger' })
   }
   finally {
     isSubmitting.value = false
@@ -53,43 +53,39 @@ async function submit() {
 </script>
 
 <template>
-  <USlideover
+  <SSlideover
     v-model:open="open"
     :title="props.user?.name ? `Change password for ${props.user.name}` : 'Change password'"
     description="Set a new password for the user"
   >
     <template #body>
       <div class="space-y-4">
-        <UFormField label="New password">
-          <UInput
+        <SFormField label="New password" label-mode="static">
+          <PasswordField
             v-model="newPassword"
-            type="password"
             placeholder="New password"
             size="lg"
-            class="w-full"
           />
-        </UFormField>
+        </SFormField>
 
-        <UFormField label="Confirm password">
-          <UInput
+        <SFormField label="Confirm password" label-mode="static">
+          <PasswordField
             v-model="confirmPassword"
-            type="password"
             placeholder="Confirm password"
             size="lg"
-            class="w-full"
           />
-        </UFormField>
+        </SFormField>
       </div>
     </template>
     <template #footer>
       <div class="flex gap-2">
-        <UButton variant="outline" color="neutral" @click="open = false">
+        <SButton variant="outline" color="neutral" @click="open = false">
           Cancel
-        </UButton>
-        <UButton color="primary" :loading="isSubmitting" @click="submit">
+        </SButton>
+        <SButton color="primary" :loading="isSubmitting" @click="submit">
           Update password
-        </UButton>
+        </SButton>
       </div>
     </template>
-  </USlideover>
+  </SSlideover>
 </template>

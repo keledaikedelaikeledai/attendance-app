@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, or, sql } from 'drizzle-orm'
+import { and, desc, eq, or, sql } from 'drizzle-orm'
 import { createError, readBody } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { addBusinessDays, formatBusinessDate, getCalendarDate, parseBusinessDate, resolveBusinessDateFromInstant } from '~~/shared/utils/attendance-date'
 import { trackServerEvent } from '../../../modules/error-reporting/runtime/server/utils/error-reporting'
 import { validateAttendanceShiftDefinition, validateAttendanceShiftType } from '../../utils/attendance-shift-validation'
 import { useDb } from '../../utils/db'
+import { normalizeTimestampRaw } from '../../utils/time'
 
 export default defineEventHandler(async (event) => {
   const auth = useBetterAuth()
@@ -13,15 +14,17 @@ export default defineEventHandler(async (event) => {
   if (!session?.user) throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 
   const body = await readBody(event)
-  const { shiftCode, shiftType, coords, timeZone: bodyTimeZone, geofenceComment, geofenceId, geofenceName } = body as {
+  const { shiftCode, shiftType, coords, timeZone: bodyTimeZone, geofenceComment } = body as {
     shiftCode?: string
-    shiftType?: 'harian' | 'bantuan'
+    shiftType?: string
     coords?: { latitude?: number, longitude?: number, accuracy?: number }
     timeZone?: string
     geofenceComment?: string
-    geofenceId?: string
-    geofenceName?: string
   }
+
+  // Server-side geofence enforcement - the client guard is advisory only.
+  // Returns the fence the SERVER matched; that is what gets recorded.
+  const matchedGeofence = await resolveGeofenceForClock(coords, geofenceComment)
   if (!bodyTimeZone) throw createError({ statusCode: 400, statusMessage: 'timeZone required' })
   validateAttendanceShiftType(shiftType)
 
@@ -48,15 +51,14 @@ export default defineEventHandler(async (event) => {
       : calendarDate
     const previousDate = formatBusinessDate(addBusinessDays(parseBusinessDate(targetDate), -1))
 
-    const existingLogs = await tx.select().from(attendanceLog)
-      .where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, targetDate), eq(attendanceLog.date, previousDate))))
-      .orderBy(attendanceLog.timestamp)
-    let openClockIn: typeof existingLogs[number] | undefined
-    for (const log of existingLogs) {
-      if (log.type === 'clock-in') openClockIn = log
-      else if (log.type === 'clock-out' && openClockIn) openClockIn = undefined
-    }
-    if (openClockIn) throw createError({ statusCode: 409, statusMessage: 'Attendance session is already open' })
+    // One open session per user across ALL dates: a session left open days
+    // ago must be clocked out (clock-out can close any open session now),
+    // not silently orphaned by starting a new one.
+    const recentLogs = await tx.select().from(attendanceLog).where(eq(attendanceLog.userId, userId)).orderBy(desc(attendanceLog.timestamp)).limit(500)
+    const allLogsAscending = [...recentLogs].sort((a, b) => normalizeTimestampRaw(a.timestamp) - normalizeTimestampRaw(b.timestamp))
+    if (findOpenClockIn(allLogsAscending)) throw createError({ statusCode: 409, statusMessage: 'Attendance session is already open' })
+
+    const existingLogs = await tx.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), or(eq(attendanceLog.date, targetDate), eq(attendanceLog.date, previousDate)))).orderBy(attendanceLog.timestamp)
 
     // A business date may contain one completed Harian session and one completed
     // Bantuan session, but never two sessions of the same type. Older logs with a
@@ -79,15 +81,23 @@ export default defineEventHandler(async (event) => {
     }
 
     await tx.insert(attendanceLog).values({
-      id: randomUUID(), userId, date: targetDate, type: 'clock-in', timestamp: now,
-      lat: coords?.latitude, lng: coords?.longitude, accuracy: coords?.accuracy,
-      shiftType: requestedShiftType, shiftCode,
+      id: randomUUID(),
+      userId,
+      date: targetDate,
+      type: 'clock-in',
+      timestamp: now,
+      lat: coords?.latitude,
+      lng: coords?.longitude,
+      accuracy: coords?.accuracy,
+      shiftType: requestedShiftType,
+      shiftCode,
       shiftStart: shiftDef?.start ?? null,
       shiftEnd: shiftDef?.end ?? null,
       geofenceComment: typeof geofenceComment === 'string' && geofenceComment.length ? geofenceComment.slice(0, 200) : null,
-      geofenceId: typeof geofenceId === 'string' && geofenceId.length ? geofenceId.slice(0, 64) : null,
-      geofenceName: typeof geofenceName === 'string' && geofenceName.length ? geofenceName.slice(0, 200) : null,
-      createdAt: now, updatedAt: now,
+      geofenceId: matchedGeofence.geofenceId,
+      geofenceName: matchedGeofence.geofenceName,
+      createdAt: now,
+      updatedAt: now,
     })
 
     const [day] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)

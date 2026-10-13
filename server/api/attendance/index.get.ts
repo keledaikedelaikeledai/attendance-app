@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
 import { attendanceDay, attendanceLog } from '~~/server/database/schemas'
-import { isBusinessDate, formatBusinessDate, getCalendarDate } from '~~/shared/utils/attendance-date'
+import { formatBusinessDate, getCalendarDate, isBusinessDate } from '~~/shared/utils/attendance-date'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -34,12 +34,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = useDb()
-  const [day] = await db.select().from(attendanceDay)
-    .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, today))).limit(1)
+  const [day] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, today))).limit(1)
 
-  const logs = await db.select().from(attendanceLog)
-    .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, today)))
-    .orderBy(desc(attendanceLog.timestamp))
+  const logs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, today))).orderBy(desc(attendanceLog.timestamp))
 
   let stateDay: AttendanceDay | undefined = day
   let stateLogs: Log[] = logs
@@ -49,22 +46,13 @@ export default defineEventHandler(async (event) => {
   // A valid open session may belong to the previous business date after midnight.
   if (!clockIn || clockOut) {
     try {
-      const recentLogs = await db.select().from(attendanceLog)
-        .where(eq(attendanceLog.userId, userId))
-        .orderBy(desc(attendanceLog.timestamp)).limit(200)
+      const recentLogs = await db.select().from(attendanceLog).where(eq(attendanceLog.userId, userId)).orderBy(desc(attendanceLog.timestamp)).limit(500)
       const asc = [...recentLogs].sort((a, b) => normalizeTimestampRaw(a.timestamp) - normalizeTimestampRaw(b.timestamp)) as Log[]
-      let openClockIn: Log | undefined
-      for (const log of asc) {
-        if (log.type === 'clock-in') openClockIn = log
-        else if (log.type === 'clock-out' && openClockIn) openClockIn = undefined
-      }
+      const openClockIn = findOpenClockIn(asc)
 
       if (openClockIn?.date) {
-        const openDateLogs = await db.select().from(attendanceLog)
-          .where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, openClockIn.date)))
-          .orderBy(desc(attendanceLog.timestamp)) as Log[]
-        const [openDay] = await db.select().from(attendanceDay)
-          .where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, openClockIn.date))).limit(1)
+        const openDateLogs = await db.select().from(attendanceLog).where(and(eq(attendanceLog.userId, userId), eq(attendanceLog.date, openClockIn.date))).orderBy(desc(attendanceLog.timestamp)) as Log[]
+        const [openDay] = await db.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, openClockIn.date))).limit(1)
         stateDay = openDay
         stateLogs = openDateLogs.length ? openDateLogs : [openClockIn]
         clockIn = openClockIn

@@ -1,24 +1,11 @@
 <script setup lang="ts">
-import type { NavigationMenuItem } from '@nuxt/ui'
-
-const isCollapsed = useState('admin-is-collapsed', () => false)
-
-const menus = computed<NavigationMenuItem[]>(() => [
-  { label: 'Menus', type: 'label', hidden: true },
-  { label: 'Dashboard', icon: 'i-heroicons-home', to: '/admin', exact: true },
-  { label: 'Users', icon: 'i-heroicons-users', to: '/admin/users' },
-  { label: 'Attendance', icon: 'i-heroicons-calendar-days', to: '/admin/attendance' },
-  { label: 'Shifts', icon: 'i-heroicons-clock', to: '/admin/shifts' },
-  { label: 'Geofence', icon: 'i-heroicons-map-pin', to: '/admin/geofence' },
-])
-
 definePageMeta({
   middleware: ['admin'],
 })
 </script>
 
 <template>
-  <nuxt-layout :is-collapsed="isCollapsed" name="admin" :menus="menus">
+  <nuxt-layout name="admin">
     <nuxt-page v-slot="{ Component }">
       <component :is="Component" />
     </nuxt-page>

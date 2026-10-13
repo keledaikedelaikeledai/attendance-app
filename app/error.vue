@@ -33,9 +33,9 @@ function tryAgain() {
 </script>
 
 <template>
-  <UContainer class="py-16">
+  <SContainer class="py-16">
     <div class="mx-auto max-w-xl">
-      <UCard>
+      <SCard>
         <div class="flex flex-col items-center text-center space-y-4">
           <div class="text-6xl font-bold tracking-tight">
             {{ code }}
@@ -47,20 +47,20 @@ function tryAgain() {
             {{ message }}
           </div>
           <div class="flex gap-2 pt-2">
-            <UButton color="primary" icon="i-heroicons-home" @click="goHome">
+            <SButton color="primary" icon="i-heroicons-home" @click="goHome">
               Go Home
-            </UButton>
-            <UButton
+            </SButton>
+            <SButton
               color="neutral"
               variant="soft"
               icon="i-heroicons-arrow-path"
               @click="tryAgain"
             >
               Try Again
-            </UButton>
+            </SButton>
           </div>
         </div>
-      </UCard>
+      </SCard>
     </div>
-  </UContainer>
+  </SContainer>
 </template>

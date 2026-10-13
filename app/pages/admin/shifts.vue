@@ -1,10 +1,24 @@
 <script setup lang="ts">
-import type { DropdownMenuItem, TableColumn } from '@nuxt/ui'
+// SColumn/SColumnGroup ship as .js but the Selaras module's
+// addComponentsDir `extensions` is ['vue','ts'], so they are never
+// auto-registered. Without this import Vue resolves <SColumn> to a plain
+// string, builds an ELEMENT vnode, and calls the cell slot with no args.
+// Remove once @sewadah/selaras registers them itself.
+
+import type { DropdownItem } from '@sewadah/selaras/types'
+import { Time } from '@internationalized/date'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const pageTitle = computed(() => `${t('adminShifts.pageTitle')} - Admin - Attendance App`)
 useHead({ title: pageTitle })
+
+// definePageMeta is hoisted, so it cannot read the i18n `t()` above. The header
+// reads `title`; without it this page had no heading at all in the admin shell.
+definePageMeta({
+  title: 'Shifts',
+  pageTitle: 'Shifts - Admin - Attendance App',
+})
 
 interface ShiftRow {
   code: string
@@ -15,23 +29,86 @@ interface ShiftRow {
   sortOrder: number
 }
 
+/**
+ * A shift is a range, so `start`/`end` travel together on the row. `wraps` marks
+ * the ranges that run past midnight; `malam` runs 19:00 -> 07:00 and naive
+ * subtraction would report -12 h.
+ */
+interface ShiftSpan {
+  hours: number
+  wraps: boolean
+}
+
+// The table's own frame is off, so the card is the only frame. The wrapper
+// defaults to `rounded-md ring-1`.
+const TABLE_WRAPPER_UI = { wrapper: 'rounded-none ring-0 overflow-x-auto' }
+
+// Every minute must be reachable, so the stepper runs at 1. In `trigger-mode="button"`
+// the trigger renders the value as plain button text, with no editable segments, so the
+// stepper is the only way to set a time: typing and arrow keys do nothing. Stepping by 5
+// here would silently lock out any time that is not a multiple of 5.
+const TIME_PICKER_MINUTE_STEP = 1
+
+// 24-hour, zero padded, and locale independent. Without this the picker's
+// default `timeStyle: 'short'` renders `07:00` under `en` but `07.00` under `id`.
+const TIME_FORMAT: Intl.DateTimeFormatOptions = {
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+}
+
 const toast = useToast()
-const confirmation = useConfirmation()
+// Selaras' `useConfirm` renders an SAlertDialog. Its `confirmColor` is a typed
+// ColorRole, so an invalid role like `error` can no longer reach the button.
+const { confirm } = useConfirm()
 
 const { data: _data, pending, refresh } = await useFetch<ShiftRow[]>('/api/admin/shifts', { credentials: 'include' })
 const data = computed(() => _data.value || [])
 
-const columns = computed<TableColumn<ShiftRow>[]>(() => [
-  { header: t('adminShifts.columns.code'), accessorKey: 'code', size: 120 },
-  { header: t('adminShifts.columns.label'), accessorKey: 'label', size: 300 },
-  { header: t('adminShifts.columns.start'), accessorKey: 'start', size: 100 },
-  { header: t('adminShifts.columns.end'), accessorKey: 'end', size: 100 },
-  { header: t('adminShifts.columns.active'), id: 'active', size: 100 },
-  { header: t('adminShifts.columns.order'), accessorKey: 'sortOrder', size: 80 },
-  { id: 'action', header: t('adminShifts.columns.action'), size: 10, maxSize: 10, meta: { class: { td: 'w-5' } } },
-])
+function parseMinutes(hhmm: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec((hhmm || '').trim())
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  if (hours > 23 || minutes > 59) return null
+  return hours * 60 + minutes
+}
 
-const modalOpen = ref(false)
+function shiftSpan(start: string, end: string): ShiftSpan | null {
+  const from = parseMinutes(start)
+  const to = parseMinutes(end)
+  if (from === null || to === null) return null
+
+  // `to <= from` means the end is on the next day. Equal times are read as a
+  // full 24 h shift, since a zero-length shift is never intended.
+  const raw = to - from
+  const wraps = raw <= 0
+  const minutes = wraps ? raw + 24 * 60 : raw
+  return { hours: Number((minutes / 60).toFixed(1)), wraps }
+}
+
+const rows = computed(() => data.value.map(s => ({ ...s, span: shiftSpan(s.start, s.end) })))
+const activeCount = computed(() => data.value.filter(s => s.active).length)
+const totalCount = computed(() => data.value.length)
+
+// `SDatePicker` in `time-only` mode speaks `@internationalized/date`'s `Time`.
+// The column and the API payload are `HH:mm` text, so convert at the boundary
+// instead of storing a `Time` in the field.
+//
+// `Time` only accepts positional arguments here: `new Time({ hour: 7, minute: 0 })`
+// silently produces `hour: NaN`, which the picker then renders as `00`.
+function timeFromHhmm(value: string): Time | undefined {
+  const parsed = parseMinutes(value)
+  if (parsed === null) return undefined
+  return new Time(Math.floor(parsed / 60), parsed % 60)
+}
+
+function hhmmFromTime(value: Time | undefined | null): string {
+  if (!value) return ''
+  return `${String(value.hour).padStart(2, '0')}:${String(value.minute).padStart(2, '0')}`
+}
+
+const formOpen = ref(false)
 const editing = ref<ShiftRow | null>(null)
 
 const { handleSubmit, isSubmitting } = useForm()
@@ -42,6 +119,18 @@ const { value: end } = useField('end', () => true, { initialValue: '15:00' })
 const active = useState('admin.shift.active', () => false)
 const { value: sortOrder } = useField('sortOrder', () => true, { initialValue: 0 })
 
+const formSpan = computed(() => shiftSpan(start.value, end.value))
+
+const startTime = computed({
+  get: () => timeFromHhmm(start.value),
+  set: (value: Time | undefined | null) => { start.value = hhmmFromTime(value) },
+})
+
+const endTime = computed({
+  get: () => timeFromHhmm(end.value),
+  set: (value: Time | undefined | null) => { end.value = hhmmFromTime(value) },
+})
+
 function openAdd() {
   editing.value = null
   code.value = ''
@@ -50,7 +139,7 @@ function openAdd() {
   end.value = '15:00'
   active.value = false
   sortOrder.value = 0
-  modalOpen.value = true
+  formOpen.value = true
 }
 
 function openEdit(s: ShiftRow) {
@@ -61,7 +150,7 @@ function openEdit(s: ShiftRow) {
   end.value = s.end
   active.value = Boolean(s.active)
   sortOrder.value = Number(s.sortOrder) || 0
-  modalOpen.value = true
+  formOpen.value = true
 }
 
 const onSubmit = handleSubmit(async () => {
@@ -81,21 +170,23 @@ const onSubmit = handleSubmit(async () => {
       credentials: 'include',
     })
     toast.add({ title: editing.value ? t('adminShifts.toasts.updated.title') : t('adminShifts.toasts.created.title'), description: editing.value ? t('adminShifts.toasts.updated.description', { code: code.value }) : t('adminShifts.toasts.created.description', { code: code.value }), color: 'success' })
-    modalOpen.value = false
+    formOpen.value = false
     await refresh()
   }
   catch (err: any) {
     console.error('shift save error', err)
-    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to save' }), color: 'error' })
+    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to save' }), color: 'danger' })
   }
 })
 
 async function doDelete(s: ShiftRow) {
-  const confirmed = await confirmation.confirm({
+  const confirmed = await confirm({
     icon: 'i-heroicons-trash',
     title: t('adminShifts.confirmations.delete.title'),
     description: t('adminShifts.confirmations.delete.description', { code: s.code }),
-    btnConfirmProps: { color: 'error' },
+    confirmColor: 'danger',
+    confirmLabel: t('common.confirm.confirm'),
+    cancelLabel: t('common.confirm.cancel'),
   })
   if (!confirmed) return
 
@@ -105,11 +196,11 @@ async function doDelete(s: ShiftRow) {
     await refresh()
   }
   catch (err: any) {
-    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to delete' }), color: 'error' })
+    toast.add({ title: t('adminShifts.toasts.error.title'), description: err?.message || t('adminShifts.toasts.error.description', { message: 'Failed to delete' }), color: 'danger' })
   }
 }
 
-function getDropdownActions(s: ShiftRow): DropdownMenuItem[] {
+function getDropdownActions(s: ShiftRow): DropdownItem[] {
   return [
     {
       label: t('adminShifts.actions.edit'),
@@ -123,7 +214,7 @@ function getDropdownActions(s: ShiftRow): DropdownMenuItem[] {
       label: t('adminShifts.actions.delete'),
       value: 'delete',
       icon: 'i-heroicons-trash',
-      color: 'error' as const,
+      destructive: true,
       async onSelect() {
         await doDelete(s)
       },
@@ -135,69 +226,184 @@ function getDropdownActions(s: ShiftRow): DropdownMenuItem[] {
 <template>
   <PageWrapper>
     <template #navRight>
-      <UButton color="primary" icon="i-heroicons-plus" @click="openAdd">
+      <SButton color="primary" icon="i-heroicons-plus" @click="openAdd">
         {{ t('adminShifts.add') }}
-      </UButton>
+      </SButton>
     </template>
 
-    <UTable :data="data || []" :columns="columns" :loading="pending === true">
-      <template #active-cell="{ row }">
-        <UBadge v-if="row.original.active" color="success">
-          {{ t('adminShifts.status.active') }}
-        </UBadge>
-        <UBadge v-else color="neutral" variant="outline">
-          {{ t('adminShifts.status.inactive') }}
-        </UBadge>
-      </template>
-      <template #action-cell="{ row }">
-        <UDropdownMenu
-          :items="getDropdownActions(row.original)"
-          :content="{ align: 'end' }"
-          :ui="{ content: 'w-40' }"
-        >
-          <UButton
-            icon="i-lucide-ellipsis-vertical"
-            color="neutral"
-            variant="ghost"
-            :aria-label="t('adminShifts.actionsLabel')"
-          />
-        </UDropdownMenu>
-      </template>
-    </UTable>
-
-    <UModal v-model:open="modalOpen" :title="editing ? t('adminShifts.modal.edit') : t('adminShifts.modal.add')">
-      <template #body>
-        <form class="space-y-3" @submit.prevent="onSubmit">
-          <UFormField :label="t('adminShifts.form.code')">
-            <UInput v-model="code" :disabled="!!editing" :placeholder="t('adminShifts.form.codePlaceholder')" />
-          </UFormField>
-          <UFormField :label="t('adminShifts.form.label')">
-            <UInput v-model="label" :placeholder="t('adminShifts.form.labelPlaceholder')" />
-          </UFormField>
-          <div class="grid grid-cols-2 gap-2">
-            <UFormField :label="t('adminShifts.form.start')">
-              <UInput v-model="start" type="time" />
-            </UFormField>
-            <UFormField :label="t('adminShifts.form.end')">
-              <UInput v-model="end" type="time" />
-            </UFormField>
+    <!-- `border-hover` rather than the header's `border-default`, which stays visible
+         where `border-default` collapses into the elevated surface in dark mode. The
+         body drops its padding so the table fills the card, and TABLE_WRAPPER_UI drops
+         the table's own radius and ring, leaving the card as the only frame.
+         `p-6` on top of PageWrapper's `p-2`, matching the dashboard, so both pages
+         inset their content 32px from the panel edge. -->
+    <div class="p-6">
+      <SCard :ui="{ body: 'p-0', header: 'border-[var(--selaras-resolved-border-hover)]' }">
+        <template #header>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p class="text-sm font-medium">
+                {{ t('adminShifts.list.title') }}
+              </p>
+              <p class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.list.description') }}
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <SBadge color="success" variant="soft">
+                {{ t('adminShifts.list.activeCount', activeCount, { count: activeCount }) }}
+              </SBadge>
+              <SBadge color="neutral" variant="outline">
+                {{ t('adminShifts.list.count', totalCount, { count: totalCount }) }}
+              </SBadge>
+            </div>
           </div>
-          <UFormField :label="t('adminShifts.form.active')">
-            <UCheckbox v-model="active" />
-          </UFormField>
-          <UFormField :label="t('adminShifts.form.sortOrder')">
-            <UInput v-model="sortOrder" type="number" />
-          </UFormField>
+        </template>
+
+        <STable :data="rows" :ui="TABLE_WRAPPER_UI" :loading="pending">
+          <template #empty>
+            <div class="flex flex-col items-center gap-1 py-10 text-center">
+              <span class="text-sm font-medium">
+                {{ t('adminShifts.empty.title') }}
+              </span>
+              <span class="max-w-sm text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.empty.description') }}
+              </span>
+            </div>
+          </template>
+
+          <SColumn field="code" :header="t('adminShifts.columns.code')" />
+          <SColumn field="label" :header="t('adminShifts.columns.label')" />
+          <!-- `start` identifies the column for sorting; the slot renders the whole
+             range so a shift reads as one time window, not two loose columns. -->
+          <SColumn field="start" :header="t('adminShifts.columns.time')">
+            <template #default="{ row }">
+              <div class="flex items-baseline gap-2 whitespace-nowrap">
+                <span class="tabular-nums font-medium">
+                  {{ row.start }} &ndash; {{ row.end }}
+                </span>
+                <span v-if="row.span" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                  {{ t('adminShifts.columns.duration', { hours: row.span.hours }) }}
+                </span>
+              </div>
+              <span v-if="row.span?.wraps" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+                {{ t('adminShifts.columns.nextDay') }}
+              </span>
+            </template>
+          </SColumn>
+          <SColumn field="active" :header="t('adminShifts.columns.active')">
+            <template #default="{ value }">
+              <SBadge v-if="value" color="success" variant="soft">
+                {{ t('adminShifts.status.active') }}
+              </SBadge>
+              <SBadge v-else color="neutral" variant="outline">
+                {{ t('adminShifts.status.inactive') }}
+              </SBadge>
+            </template>
+          </SColumn>
+          <!-- The stored value drives the order the API returns, so it is shown as a
+             position rather than a bare number. -->
+          <SColumn field="sortOrder" :header="t('adminShifts.columns.order')">
+            <template #default="{ value }">
+              <span class="tabular-nums text-[var(--selaras-resolved-text-muted)]">#{{ value }}</span>
+            </template>
+          </SColumn>
+          <!-- `code` is reused as the identity for the actions column; its value is
+             never rendered, the slot supplies the whole cell. -->
+          <SColumn field="code" :header="t('adminShifts.columns.action')">
+            <template #default="{ row }">
+              <SDropdown
+                :items="[getDropdownActions(row)]"
+                :positioning="{ align: 'end' }"
+                :ui="{ content: 'w-40' }"
+              >
+                <SButton
+                  icon="i-lucide-ellipsis-vertical"
+                  color="neutral"
+                  variant="ghost"
+                  :aria-label="t('adminShifts.actionsLabel')"
+                />
+              </SDropdown>
+            </template>
+          </SColumn>
+        </STable>
+      </SCard>
+    </div>
+
+    <SSlideover
+      v-model:open="formOpen"
+      side="right"
+      :title="editing ? t('adminShifts.drawer.edit') : t('adminShifts.drawer.add')"
+      :description="t('adminShifts.drawer.description')"
+    >
+      <template #body>
+        <form class="space-y-4" @submit.prevent="onSubmit">
+          <SFormField
+            :label="t('adminShifts.form.code')"
+            :hint="editing ? t('adminShifts.form.codeLockedHint') : undefined"
+            label-mode="static"
+          >
+            <SInput v-model="code" :disabled="!!editing" :placeholder="t('adminShifts.form.codePlaceholder')" />
+          </SFormField>
+          <SFormField :label="t('adminShifts.form.label')" label-mode="static">
+            <SInput v-model="label" :placeholder="t('adminShifts.form.labelPlaceholder')" />
+          </SFormField>
+          <!-- `time-only` mode drives hour + minute. `trigger-mode="button"` renders
+               the value as a button rather than a segmented field, which matches the
+               rest of the form. The format is pinned instead of leaving the default
+               `timeStyle: 'short'`, which renders 07.00 under `id` and 07:00 under `en`. -->
+          <div class="grid grid-cols-2 gap-3">
+            <SFormField :label="t('adminShifts.form.start')" label-mode="static">
+              <SDatePicker
+                v-model="startTime"
+                time-only
+                trigger-mode="button"
+                :hour-cycle="24"
+                :minute-step="TIME_PICKER_MINUTE_STEP"
+                :format="TIME_FORMAT"
+              />
+            </SFormField>
+            <SFormField :label="t('adminShifts.form.end')" label-mode="static">
+              <SDatePicker
+                v-model="endTime"
+                time-only
+                trigger-mode="button"
+                :hour-cycle="24"
+                :minute-step="TIME_PICKER_MINUTE_STEP"
+                :format="TIME_FORMAT"
+              />
+            </SFormField>
+          </div>
+          <p v-if="formSpan?.wraps" class="text-xs text-[var(--selaras-resolved-text-muted)]">
+            {{ t('adminShifts.form.overnight') }}
+          </p>
+
+          <!-- `SSwitch` renders its own <label> around the control, so the label
+               toggles the switch without any hand-rolled markup. -->
+          <SSwitch
+            v-model="active"
+            :label="t('adminShifts.form.active')"
+            :description="t('adminShifts.form.activeDescription')"
+            :loading="isSubmitting"
+          />
+
+          <SFormField
+            :label="t('adminShifts.form.sortOrder')"
+            :description="t('adminShifts.form.sortOrderDescription')"
+            label-mode="static"
+          >
+            <SInput v-model="sortOrder" type="number" />
+          </SFormField>
         </form>
       </template>
       <template #footer>
-        <UButton variant="ghost" @click="modalOpen = false">
-          {{ t('adminShifts.modal.cancel') }}
-        </UButton>
-        <UButton :loading="isSubmitting" color="primary" @click="() => { void onSubmit() }">
-          {{ t('adminShifts.modal.save') }}
-        </UButton>
+        <SButton variant="ghost" @click="formOpen = false">
+          {{ t('adminShifts.drawer.cancel') }}
+        </SButton>
+        <SButton :loading="isSubmitting" color="primary" @click="() => { void onSubmit() }">
+          {{ t('adminShifts.drawer.save') }}
+        </SButton>
       </template>
-    </UModal>
+    </SSlideover>
   </PageWrapper>
 </template>
