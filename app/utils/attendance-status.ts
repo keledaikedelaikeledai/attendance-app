@@ -1,9 +1,12 @@
 // Employee-day status, shared by the admin board (drives the matrix colors
 // and the Excel export) and the PDF export (drives the same colors). One
 // implementation so printed colors mean exactly what the on-screen colors
-// mean.
+// mean. Late/early comparisons all delegate to the shared grace rule so the
+// board, the reports, and the exports cannot disagree about a day.
 
-export type CellStatus = 'onTime' | 'late' | 'early' | 'missing' | 'none'
+import { earlyMinutes as earlyMinutesGrace, lateMinutes as lateMinutesGrace } from '../../shared/utils/attendance-grace'
+
+export type CellStatus = 'onTime' | 'late' | 'early' | 'missing' | 'running' | 'none'
 
 export interface AttendanceShiftEntryLike {
   clockIn?: string | null
@@ -22,12 +25,17 @@ export interface AttendanceEntryStatusLike {
   clockOut?: string | null
   shiftStartIso?: string | null
   shiftEndIso?: string | null
+  // Server-side flag: an open shift (clock-in, no clock-out) whose expected
+  // shift window has not ended yet. Without it, open = missing.
+  running?: boolean
 }
 
 // One status per employee-day from the already-reconciled server cells.
 // Missing check-out outranks late, which outranks a short shift: a red cell
 // says "someone never closed the shift", which is the thing most worth
-// spotting from across the room.
+// spotting from across the room. An open shift that is still inside its
+// expected window is "running" instead - someone mid-shift is not a problem,
+// and coloring it red would cry wolf every day.
 export function resolveCellStatus(
   cell: AttendanceDayCellLike | undefined,
   future: boolean,
@@ -42,36 +50,39 @@ export function resolveCellStatus(
     return entries.some(([, e]) => e.clockIn || e.clockOut) ? 'onTime' : 'none'
   let late = false
   let early = false
+  let hasRunning = false
   for (const [, e] of entries) {
-    if (e.clockIn && !e.clockOut)
-      return 'missing'
-    if (e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso))
+    if (e.clockIn && !e.clockOut) {
+      if (!e.running)
+        return 'missing'
+      hasRunning = true
+      continue
+    }
+    if (lateMinutesGrace(e.clockIn, e.shiftStartIso) != null)
       late = true
-    if (e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso))
+    if (earlyMinutesGrace(e.clockOut, e.shiftEndIso) != null)
       early = true
   }
-  return late ? 'late' : early ? 'early' : 'onTime'
+  return late ? 'late' : early ? 'early' : hasRunning ? 'running' : 'onTime'
 }
 
 // Per-shift-record status for row-level exports (Excel, PDF detail sheets):
 // no session-level aggregation, just this entry's in/out vs its snapshot.
 export function resolveEntryStatus(e: AttendanceEntryStatusLike): Exclude<CellStatus, 'none'> {
   if (e.clockIn && !e.clockOut)
-    return 'missing'
-  const late = !!(e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso))
-  const early = !!(e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso))
+    return e.running ? 'running' : 'missing'
+  const late = lateMinutesGrace(e.clockIn, e.shiftStartIso) != null
+  const early = earlyMinutesGrace(e.clockOut, e.shiftEndIso) != null
   return late ? 'late' : early ? 'early' : 'onTime'
 }
 
-// Late/early minutes for one entry - same math as the board's tootips.
+// Late/early minutes for one entry - grace-filtered and ceil'd so the values
+// match the board's colors and never show a zero-minute late. Null when the
+// entry is on time for that side.
 export function entryLateMinutes(e: AttendanceEntryStatusLike) {
-  return e.clockIn && e.shiftStartIso && Date.parse(e.clockIn) > Date.parse(e.shiftStartIso)
-    ? Math.round((Date.parse(e.clockIn) - Date.parse(e.shiftStartIso)) / 60_000)
-    : null
+  return lateMinutesGrace(e.clockIn, e.shiftStartIso)
 }
 
 export function entryEarlyMinutes(e: AttendanceEntryStatusLike) {
-  return e.clockOut && e.shiftEndIso && Date.parse(e.clockOut) < Date.parse(e.shiftEndIso)
-    ? Math.round((Date.parse(e.shiftEndIso) - Date.parse(e.clockOut)) / 60_000)
-    : null
+  return earlyMinutesGrace(e.clockOut, e.shiftEndIso)
 }

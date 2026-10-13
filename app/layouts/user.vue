@@ -52,6 +52,12 @@ const greeting = computed(() => t(`layout.user.${greetingKey.value}`))
 // way there and returns on every other page.
 const route = useRoute()
 const showGreeting = computed(() => route.path !== '/profile')
+
+// An impersonated session carries `impersonatedBy` (the admin who started
+// it) set by Better Auth's admin plugin. While it is set the layout grows a
+// persistent return strip: desktop inside the sticky header, mobile above
+// the greeting card - both feed ImpersonationBanner.
+const impersonating = computed(() => Boolean(session.value?.session?.impersonatedBy))
 </script>
 
 <template>
@@ -61,6 +67,10 @@ const showGreeting = computed(() => route.path !== '/profile')
          deliberately not here. z-20 sits below the bottom bar (30) and the
          modal overlay (40), so dialogs always cover it. -->
     <header class="sticky top-0 z-20 hidden md:block border-b border-[var(--selaras-resolved-border-muted)] bg-[var(--selaras-resolved-surface-default)]/85 backdrop-blur">
+      <ImpersonationBanner
+        v-if="impersonating"
+        :display-name="displayName"
+      />
       <SContainer class="flex h-16 items-center justify-between gap-4">
         <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="h-9 w-auto">
         <div class="flex items-center gap-4">
@@ -81,6 +91,11 @@ const showGreeting = computed(() => route.path !== '/profile')
          space once the user scrolls, and it slides away on the profile page,
          whose own identity card would repeat it. -->
     <SContainer class="py-6 md:py-8">
+      <ImpersonationBanner
+        v-if="impersonating"
+        :display-name="displayName"
+        class="mb-4 md:hidden"
+      />
       <Transition name="greeting-slide">
         <SCard v-if="showGreeting" class="mb-4 md:hidden" :ui="{ body: 'flex items-center gap-3 p-4' }">
           <SAvatar

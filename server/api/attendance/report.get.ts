@@ -3,6 +3,7 @@ import { and, between, eq } from 'drizzle-orm'
 import { createError, getQuery } from 'h3'
 import { attendanceDay, attendanceLog, shift } from '~~/server/database/schemas'
 import { reconcileCrossdayOrphanClockOut, selectShiftClockBounds } from '~~/server/utils/attendance-reconcile'
+import { ATTENDANCE_GRACE_MS, earlyShortfallMs, lateDelayMs } from '~~/shared/utils/attendance-grace'
 import { useDb } from '../../utils/db'
 import { normalizeTimestampRaw } from '../../utils/time'
 
@@ -320,19 +321,36 @@ export default defineEventHandler(async (event) => {
       // prefer shiftCode from clockIn, then clockOut, else null
       const chosenShiftCode = clockIn?.shiftCode ?? clockOut?.shiftCode ?? null
 
-      // compute per-shift lateMs and earlyMs if we have a shift definition
       let lateMsForShift = 0
       let earlyMsForShift = 0
+      let runningForShift = false
       if (chosenShiftCode) {
         const def = shiftMap.get(chosenShiftCode)
         if (def && clockIn) {
           const { startDate: sStart, endDate: sEnd } = computeShiftSpanFromDate(date, def.start, def.end)
           const cin = clockIn.timestampMs ? new Date(clockIn.timestampMs) : null
-          if (cin && cin > sStart) lateMsForShift = Math.max(0, cin.getTime() - sStart.getTime())
+          if (cin && cin > sStart) lateMsForShift = lateDelayMs(clockIn.timestampMs, sStart.getTime())
           if (clockOut) {
             const cout = clockOut.timestampMs ? new Date(clockOut.timestampMs) : null
-            if (cout && cout < sEnd) earlyMsForShift = Math.max(0, sEnd.getTime() - cout.getTime())
+            if (cout && cout < sEnd) earlyMsForShift = earlyShortfallMs(clockOut.timestampMs, sEnd.getTime())
           }
+        }
+      }
+
+      // An open shift (clock-in, no clock-out) still inside its expected
+      // window is running, not missing - someone mid-shift is not a missed
+      // check-out. With a known shift definition the window decides; without
+      // one (a code removed from the current defs) the business date decides:
+      // today gets the benefit of the doubt, past dates are genuinely missing.
+      if (clockIn && !clockOut) {
+        const openDef = chosenShiftCode ? shiftMap.get(chosenShiftCode) : undefined
+        if (openDef) {
+          const { endDate: openEnd } = computeShiftSpanFromDate(date, openDef.start, openDef.end)
+          runningForShift = now.getTime() < openEnd.getTime() + ATTENDANCE_GRACE_MS
+        }
+        else {
+          const todayYmd = new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+          runningForShift = date === todayYmd
         }
       }
 
@@ -350,6 +368,7 @@ export default defineEventHandler(async (event) => {
         clockOutAccuracy: clockOut?.accuracy ?? null,
         lateMs: lateMsForShift,
         earlyMs: earlyMsForShift,
+        running: runningForShift,
         logs: groupLogs,
       })
     }

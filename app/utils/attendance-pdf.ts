@@ -38,6 +38,7 @@ export interface AttendancePdfCopy {
   late: string
   earlyLeave: string
   missing: string
+  running: string
   none: string
 }
 
@@ -62,12 +63,14 @@ const statusFill: Record<string, [number, number, number]> = {
   late: [254, 243, 199],
   early: [237, 233, 254],
   missing: [254, 226, 226],
+  running: [224, 242, 254],
 }
 const statusText: Record<string, [number, number, number]> = {
   onTime: [6, 95, 70],
   late: [146, 64, 14],
   early: [76, 29, 149],
   missing: [127, 29, 29],
+  running: [7, 89, 133],
 }
 
 // 1328 -> "22 hr 8 min"; zero units are omitted so 45 renders as "45 min",
@@ -245,7 +248,7 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
   y = (doc as any).lastAutoTable.finalY + 26
 
   // ---- Employee x day matrix --------------------------------------------
-  const letters: Record<string, string> = { onTime: '\u2022', late: 'L', early: 'E', missing: 'M', none: '' }
+  const letters: Record<string, string> = { onTime: '\u2022', late: 'L', early: 'E', missing: 'M', running: 'R', none: '' }
   const head1: any[] = [{ content: copy.employee, rowSpan: 2, styles: { valign: 'middle' } }]
   const head2: (string | { content: string })[] = []
   for (const day of report.days) {
@@ -295,6 +298,7 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
     { label: `${copy.late} (L)`, fill: statusFill.late },
     { label: `${copy.earlyLeave} (E)`, fill: statusFill.early },
     { label: `${copy.totalMissing} (M)`, fill: statusFill.missing },
+    { label: `${copy.running} (R)`, fill: statusFill.running },
     { label: `${copy.none} (-)`, fill: null },
   ]
   if (y > doc.internal.pageSize.getHeight() - 90)
@@ -350,7 +354,7 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
         const lateMin = entryLateMinutes(entry)
         const earlyMin = entryEarlyMinutes(entry)
         const status = resolveEntryStatus(entry)
-        const statusLabel = status === 'onTime' ? copy.onTime : status === 'late' ? copy.late : status === 'early' ? copy.earlyLeave : copy.missing
+        const statusLabel = status === 'onTime' ? copy.onTime : status === 'late' ? copy.late : status === 'early' ? copy.earlyLeave : status === 'running' ? copy.running : copy.missing
         return [fmtDay(day, language), entry.shiftCode ?? '-', st, fmtTime(entry.clockIn, timezone, language), fmtTime(entry.clockOut, timezone, language), lateMin ?? '-', earlyMin ?? '-', statusLabel]
       }),
       theme: 'grid',

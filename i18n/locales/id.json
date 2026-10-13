@@ -67,7 +67,13 @@
     "clockIn": "Masuk",
     "clockOut": "Keluar",
     "late": "Telat",
-    "early": "Pulang Awal"
+    "early": "Pulang Awal",
+    "refresh": "Muat ulang",
+    "onTime": "Tepat waktu",
+    "missingOut": "Belum absen keluar",
+    "dayDetail": "Detail hari",
+    "minutes": "mnt",
+    "running": "Sedang bekerja"
   },
   "index": {
     "clockedIn": "Sudah Masuk",
@@ -132,7 +138,16 @@
       "greeting_morning": "Selamat pagi,",
       "greeting_afternoon": "Selamat siang,",
       "greeting_evening": "Selamat sore,",
-      "greeting_night": "Selamat malam,"
+      "greeting_night": "Selamat malam,",
+      "impersonation": {
+        "banner": "Anda sedang bertindak sebagai {name}",
+        "someone": "pengguna lain",
+        "return": "Kembali ke admin",
+        "stopError": {
+          "title": "Gagal kembali ke akun admin",
+          "description": "Muat ulang halaman, lalu coba lagi."
+        }
+      }
     }
   },
   "adminUsers": {
@@ -174,7 +189,8 @@
       "makeUser": "Jadikan Pengguna",
       "ban": "Blokir",
       "unban": "Batalkan blokir",
-      "delete": "Hapus"
+      "delete": "Hapus",
+      "impersonate": "Masuk sebagai pengguna"
     },
     "actionsLabel": "Aksi",
     "confirmations": {
@@ -197,6 +213,10 @@
       "delete": {
         "title": "Hapus Pengguna",
         "description": "Anda yakin ingin menghapus permanen {name}? Tindakan ini tidak dapat dibatalkan."
+      },
+      "impersonate": {
+        "title": "Masuk sebagai pengguna ini?",
+        "description": "Anda akan masuk sebagai {name} dan dapat melakukan absen atas namanya. Gunakan banner di dalam aplikasi untuk kembali ke akun admin Anda."
       }
     },
     "toasts": {

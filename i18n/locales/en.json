@@ -67,7 +67,13 @@
     "clockIn": "Clock In",
     "clockOut": "Clock Out",
     "late": "Late",
-    "early": "Early"
+    "early": "Early",
+    "refresh": "Refresh",
+    "onTime": "On time",
+    "missingOut": "Missing check-out",
+    "dayDetail": "Day detail",
+    "minutes": "min",
+    "running": "In progress"
   },
   "index": {
     "clockedIn": "Clocked In",
@@ -132,7 +138,16 @@
       "greeting_morning": "Good morning,",
       "greeting_afternoon": "Good afternoon,",
       "greeting_evening": "Good evening,",
-      "greeting_night": "Good evening,"
+      "greeting_night": "Good evening,",
+      "impersonation": {
+        "banner": "You are acting as {name}",
+        "someone": "another user",
+        "return": "Return to admin",
+        "stopError": {
+          "title": "Could not return to admin",
+          "description": "Reload the page and try again."
+        }
+      }
     }
   },
   "adminUsers": {
@@ -174,7 +189,8 @@
       "makeUser": "Make User",
       "ban": "Ban",
       "unban": "Unban",
-      "delete": "Delete"
+      "delete": "Delete",
+      "impersonate": "Act as user"
     },
     "actionsLabel": "Actions",
     "confirmations": {
@@ -197,6 +213,10 @@
       "delete": {
         "title": "Delete User",
         "description": "Are you sure you want to permanently delete {name}? This action cannot be undone."
+      },
+      "impersonate": {
+        "title": "Act as this user?",
+        "description": "You will be signed in as {name} and can clock in on their behalf. Use the banner inside the app to return to your admin account."
       }
     },
     "toasts": {
