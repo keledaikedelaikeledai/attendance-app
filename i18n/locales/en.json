@@ -64,6 +64,8 @@
     "name": "Name",
     "email": "Email",
     "role": "Role",
+    "username": "Username",
+    "joined": "Joined",
     "roleUser": "user",
     "theme": "Theme",
     "language": "Language",

@@ -64,6 +64,8 @@
     "name": "Nama",
     "email": "Email",
     "role": "Peran",
+    "username": "Nama pengguna",
+    "joined": "Bergabung",
     "roleUser": "pengguna",
     "theme": "Tema",
     "language": "Bahasa",
