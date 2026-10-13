@@ -395,9 +395,74 @@ watch(selectedMonth, fetchReport)
 
 <template>
   <div class="mx-auto w-full max-w-3xl space-y-4">
-    <p v-if="loading" class="text-sm text-[var(--selaras-resolved-text-muted)]">
-      {{ t('report.loading') }}
-    </p>
+    <!-- Loading mirrors the real page structure - overview card, then day
+         cards - so the swap from skeleton to data reads as the same page,
+         not a flash of unrelated chrome. Tiles are sized off a 5-count
+         overview and 3 day cards, roughly a full month on mobile. -->
+    <div
+      v-if="loading"
+      class="space-y-4"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <p class="sr-only">
+        {{ t('report.loading') }}
+      </p>
+
+      <SCard :ui="{ body: 'p-0' }">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <SSkeleton class="h-5 w-36" />
+            <SSkeleton class="h-7 w-40" />
+          </div>
+        </template>
+        <dl class="grid grid-cols-2 divide-x divide-y divide-[var(--selaras-resolved-border-muted)] sm:grid-cols-3 sm:divide-y-0">
+          <div v-for="i in 5" :key="i" class="p-4">
+            <SSkeleton class="h-3.5 w-24" />
+            <SSkeleton class="mt-3 h-7 w-14" />
+          </div>
+        </dl>
+      </SCard>
+
+      <p class="px-1 pt-2">
+        <SSkeleton class="h-3.5 w-3/4 max-w-xs" />
+      </p>
+
+      <div v-for="i in 3" :key="i" class="space-y-3">
+        <SCard :ui="{ body: 'p-0', header: 'flex flex-wrap items-center justify-between gap-2 bg-[var(--selaras-resolved-surface-elevated)] p-4' }">
+          <template #header>
+            <SSkeleton class="h-4 w-32" />
+            <div class="flex items-center gap-1.5">
+              <SSkeleton class="h-5 w-16 rounded-full" />
+              <SSkeleton class="h-5 w-16 rounded-full" />
+            </div>
+          </template>
+
+          <div class="border-b border-[var(--selaras-resolved-border-muted)] px-4 py-2.5">
+            <SSkeleton class="h-3 w-48" />
+          </div>
+
+          <div class="divide-y divide-[var(--selaras-resolved-border-muted)]">
+            <div class="p-4">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+                <div class="w-full space-y-2 sm:w-44 sm:flex-none">
+                  <SSkeleton class="h-3 w-14" />
+                  <SSkeleton class="h-5 w-24 rounded-full" />
+                </div>
+                <div class="grid w-full gap-4 sm:grid-cols-2">
+                  <div v-for="j in 2" :key="j" class="min-w-0 space-y-2">
+                    <SSkeleton class="h-3 w-20" />
+                    <SSkeleton class="h-5 w-16" />
+                    <SSkeleton class="h-3 w-32" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </SCard>
+      </div>
+    </div>
+
     <div
       v-if="errorMsg"
       class="flex items-start gap-2 rounded-[var(--selaras-resolved-radius-md)] bg-[var(--_selaras-color-subtle)] p-3 text-sm text-[var(--_selaras-color-text)]"
