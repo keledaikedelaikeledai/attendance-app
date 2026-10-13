@@ -20,6 +20,7 @@ interface ShiftEntry {
   shiftStartIso?: string | null
   shiftEndIso?: string | null
   earlyReason?: string | null
+  running?: boolean
 }
 interface DayCell {
   grouped?: Record<string, ShiftEntry>
@@ -158,14 +159,30 @@ const todayRows = computed(() => employees.value.map(employee => ({
 
 // TODAY strip ---------------------------------------------------------------
 const clockedIn = computed(() => todayRows.value.reduce((acc, row) => acc + (row.entries.some(([, e]) => e.clockIn) ? 1 : 0), 0))
-const onSiteList = computed(() => todayRows.value.flatMap(({ employee, entries }) => {
-  const open = entries.filter(([, e]) => e.clockIn && !e.clockOut)
-  if (!open.length)
-    return []
-  const earliest = open.map(([, e]) => e.clockIn!).sort()[0]!
-  const shiftType = open[0]![0]
-  return [{ employee, in: earliest, shiftType }]
-}))
+// On-site = an open clock-in whose shift window is still open (the server
+// stamps `running` on the entry at fetch time - same signal that paints the
+// board cell blue). Scanned across all days up to today, not just today: a
+// malam shift clocked in yesterday before midnight is still on-site at 01:00,
+// and its record lives in yesterday's cell.
+const onSiteList = computed(() => {
+  const list: Array<{ employee: Employee, in: string, shiftType: string }> = []
+  for (const employee of employees.value) {
+    let best: { in: string, shiftType: string } | null = null
+    for (const day of data.value?.days ?? []) {
+      if (day > today.value)
+        break
+      for (const [shiftType, e] of dayEntries(employee, day)) {
+        if (!e.clockIn || e.clockOut || !e.running)
+          continue
+        if (!best || e.clockIn < best.in)
+          best = { in: e.clockIn, shiftType }
+      }
+    }
+    if (best)
+      list.push({ employee, in: best.in, shiftType: best.shiftType })
+  }
+  return list
+})
 const lateToday = computed(() => todayRows.value.flatMap(({ employee, entries }) => {
   const worst = Math.max(0, ...entries.map(([, e]) => entryLateMinutes(e)))
   if (!worst)
