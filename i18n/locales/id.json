@@ -396,6 +396,7 @@
         "label": "Radius yang diizinkan (meter)",
         "placeholder": "mis. 100",
         "suggested": "Disarankan dari poligon: ~{m} m",
+        "invalid": "Masukkan radius antara 1 dan 100.000 meter.",
         "fixedForPolygon": "Radius dikunci di 0 saat memakai poligon; pindah ke Titik untuk mengubahnya."
       }
     },

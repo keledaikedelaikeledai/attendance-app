@@ -10,6 +10,9 @@
 // that describe the shape stay visible beside it.
 import type { DropdownItem } from '@sewadah/selaras/types'
 import { useI18n } from 'vue-i18n'
+import { isValidGeofenceRadius, toFiniteNumber } from '~~/shared/utils/geofence'
+
+// (module graph refresh marker)
 
 definePageMeta({
   title: 'Geofence',
@@ -102,7 +105,11 @@ const hasShape = computed(() => geofenceType.value === 'point'
   ? Boolean(center.value)
   : polygon.value.length >= 3)
 
-const canSave = computed(() => editing.value && !isLoading.value && hasShape.value)
+// The API rejects an unusable radius (cleared field, zero, negative, enormous)
+// with a 400, so Save stays disabled instead - the description under the field
+// explains what is wrong.
+const canSave = computed(() => editing.value && !isLoading.value && hasShape.value
+  && (geofenceType.value !== 'point' || isValidGeofenceRadius(radiusMeters.value)))
 
 // The row itself is the View action - selecting a geofence already loads it
 // read-only - so Edit and Delete are all that is left for the overflow menu.
@@ -257,7 +264,10 @@ function cancelEdit() {
 }
 
 async function save() {
-  if (!canSave.value)
+  // Closing over `saving` here means a second click in the same beat cannot
+  // re-enter while the first request is in flight - it used to duplicate the
+  // fence, because canSave alone does not change until the request resolves.
+  if (saving.value || !canSave.value)
     return
   const id = editingId.value
   saving.value = true
@@ -267,7 +277,7 @@ async function save() {
       isActive: isActive.value,
       interactionMode: interactionPolicy.value,
       type: geofenceType.value,
-      radiusMeters: radiusMeters.value,
+      radiusMeters: geofenceType.value === 'point' ? toFiniteNumber(radiusMeters.value) : null,
       centerLat: center.value?.lat ?? null,
       centerLng: center.value?.lng ?? null,
       polygon: polygon.value,
@@ -314,6 +324,8 @@ function confirmDelete(fence: any) {
 }
 
 async function remove() {
+  if (saving.value)
+    return
   const id = editingId.value
   if (!id)
     return
@@ -637,14 +649,16 @@ const panelTitle = computed(() => isCreate.value
               <SFormField
                 v-if="geofenceType === 'point'"
                 :label="t('adminGeofence.form.radius.label')"
-                :description="suggestedRadius
-                  ? t('adminGeofence.form.radius.suggested', { m: Math.round(suggestedRadius) })
-                  : undefined"
+                :description="!isValidGeofenceRadius(radiusMeters)
+                  ? t('adminGeofence.form.radius.invalid')
+                  : (suggestedRadius
+                    ? t('adminGeofence.form.radius.suggested', { m: Math.round(suggestedRadius) })
+                    : undefined)"
               >
                 <SInput
                   v-model.number="radiusMeters"
                   type="number"
-                  min="0"
+                  min="1"
                   :placeholder="t('adminGeofence.form.radius.placeholder')"
                 />
               </SFormField>

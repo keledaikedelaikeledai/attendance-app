@@ -396,6 +396,7 @@
         "label": "Allowed radius (meters)",
         "placeholder": "e.g. 100",
         "suggested": "Suggested from polygon: ~{m} m",
+        "invalid": "Enter a radius between 1 and 100,000 meters.",
         "fixedForPolygon": "Radius is fixed to 0 while using polygons; switch to Point to edit it."
       }
     },
