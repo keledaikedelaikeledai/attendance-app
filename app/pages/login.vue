@@ -15,7 +15,22 @@ const { value: password } = useField('password', toTypedSchema(z.string().min(6,
 const remember = useState('auth.remember', () => false)
 const showPassword = ref(false)
 
+// The form is dead before hydration - a click raced against it and silently
+// went nowhere, and text typed before hydration was wiped when the SSR
+// markup was swapped. Keep the inputs and the submit button disabled until
+// the app is ready: a disabled default button also blocks implicit
+// submission (Enter), which would otherwise re-load the page as a plain GET
+// with the values in the URL.
+const ready = ref(false)
+onNuxtReady(() => {
+  ready.value = true
+  // The SSR `autofocus` never fires on an input that starts disabled.
+  nextTick(() => document.getElementById('login-username')?.focus())
+})
+
 const onSubmit = handleSubmit(async (values) => {
+  if (!ready.value)
+    return
   try {
     const { data } = await authClient.signIn.username({
       username: values.username,
@@ -58,12 +73,14 @@ definePageMeta({
           <div class="space-y-2">
             <SFormField :label="t('auth.login.username')" :error="errors.username" label-mode="static">
               <SInput
+                id="login-username"
                 v-model="username"
                 size="lg"
                 type="text"
                 :placeholder="t('auth.login.usernamePlaceholder')"
                 icon="i-heroicons-envelope"
                 autofocus
+                :disabled="!ready"
                 class="w-full"
               />
             </SFormField>
@@ -77,6 +94,7 @@ definePageMeta({
                 :type="showPassword ? 'text' : 'password'"
                 :placeholder="t('auth.login.passwordPlaceholder')"
                 icon="i-heroicons-lock-closed"
+                :disabled="!ready"
                 class="w-full"
                 :ui="{ trailing: 'pe-1' }"
               >
@@ -99,10 +117,11 @@ definePageMeta({
           <div class="pt-2">
             <SButton
               size="lg"
-              :loading="isSubmitting"
               block
               type="submit"
               icon="i-heroicons-arrow-right-end-on-rectangle"
+              :loading="isSubmitting"
+              :disabled="!ready"
             >
               {{ t('auth.login.submit') }}
             </SButton>
