@@ -2,11 +2,13 @@
 // maplibre-gl by scripts/sync-maplibre-worker.cjs). The dist worker imports
 // './maplibre-gl-shared.mjs', which Vite does NOT emit for ?url imports -
 // pointing at /_nuxt killed every map with "Worker failed to load" in prod.
-const mapWorkerUrl = '/maplibre/maplibre-gl-worker.mjs'
+import type { StyleSpecification } from 'maplibre-gl'
 import { geofenceShapeFeatures } from '~/utils/geofence-draw-state'
 import { GEOFENCE_DRAW_PREFIX, preserveGeofenceOverlays } from '~/utils/geofence-map-style'
 import { sanitizeMapStyle } from '~/utils/map-style'
 import 'maplibre-gl/dist/maplibre-gl.css'
+
+const mapWorkerUrl = '/maplibre/maplibre-gl-worker.mjs'
 
 // Everything about the map itself: the MapLibre instance, the layers, the
 // OpenFreeMap style swap, the Terra Draw wiring and the two-way mirror between
@@ -226,8 +228,12 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
   function closed(ring: [number, number][]): [number, number][] {
     if (ring.length < 3)
       return ring
-    const [firstX, firstY] = ring[0]
-    const [lastX, lastY] = ring[ring.length - 1]
+    const first = ring[0]
+    const last = ring[ring.length - 1]
+    if (!first || !last)
+      return ring
+    const [firstX, firstY] = first
+    const [lastX, lastY] = last
     if (firstX === lastX && firstY === lastY)
       return ring
     return [...ring, [firstX, firstY]]
@@ -241,6 +247,8 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
       return ring
     const first = ring[0]
     const last = ring[ring.length - 1]
+    if (!first || !last)
+      return ring
     return (first[0] === last[0] && first[1] === last[1]) ? ring.slice(0, -1) : ring
   }
 
@@ -1045,7 +1053,7 @@ export function useGeofenceMap(options: UseGeofenceMapOptions) {
 
   watch(mapStyle, (style) => {
     map?.setStyle(style, {
-      transformStyle: (previous, next) =>
+      transformStyle: (previous: StyleSpecification | undefined, next: StyleSpecification) =>
         preserveGeofenceOverlays(previous, sanitizeMapStyle(next)),
     })
   })

@@ -46,6 +46,12 @@ jobs:
       - name: Install dependencies
         run: bun install --no-save
 
+      - name: Run lint
+        run: bun run lint
+
+      - name: Run typecheck
+        run: bun run typecheck
+
       - name: Run regression tests
         run: bun test
 

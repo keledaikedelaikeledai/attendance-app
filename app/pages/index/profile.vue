@@ -19,7 +19,7 @@ const loading = computed(() => !session.value)
 // Up to two initials for the avatar. Uses the same display order as the header
 // so the avatar and the name never disagree.
 const initials = computed(() => {
-  const name = user.value?.user?.displayName ?? user.value?.user?.username ?? ''
+  const name = user.value?.user?.displayUsername ?? user.value?.user?.username ?? ''
   return name
     .split(/\s+/)
     .filter(Boolean)
@@ -125,10 +125,10 @@ const onSubmit = handleSubmit(async (values) => {
              to md and renders no bigger. Ask for lg and override the box with a
              class instead - SAvatar merges the consumer class into its base. -->
         <SAvatar
-          v-if="!loading && (user?.user?.displayName || user?.user?.username)"
+          v-if="!loading && (user?.user?.displayUsername || user?.user?.username)"
           :src="user?.user?.image || userAvatarUri(user?.user?.id) || undefined"
           :text="initials"
-          :alt="user?.user?.displayName ?? user?.user?.username"
+          :alt="user?.user?.displayUsername ?? user?.user?.username ?? undefined"
           size="lg"
           class="size-16 text-xl"
         />
@@ -145,7 +145,7 @@ const onSubmit = handleSubmit(async (values) => {
         </p>
         <template v-else>
           <h1 class="truncate text-lg font-semibold tracking-tight text-[var(--selaras-resolved-text-default)]">
-            {{ user?.user?.displayName ?? user?.user?.username ?? '-' }}
+            {{ user?.user?.displayUsername ?? user?.user?.username ?? '-' }}
           </h1>
           <p class="truncate text-sm text-[var(--selaras-resolved-text-muted)]">
             {{ user?.user?.email ?? '-' }}

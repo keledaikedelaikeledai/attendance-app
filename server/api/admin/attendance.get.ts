@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
 
   const q = getQuery(event)
   const month = typeof q.month === 'string' && /^\d{4}-\d{2}$/.test(q.month) ? q.month : new Date().toISOString().slice(0, 7)
-  const [y, m] = month.split('-').map(Number)
+  const [y = 0, m = 1] = month.split('-').map(Number)
   const start = new Date(Date.UTC(y, m - 1, 1))
   const end = new Date(Date.UTC(y, m, 0))
   const startDate = start.toISOString().slice(0, 10)

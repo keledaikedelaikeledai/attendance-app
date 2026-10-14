@@ -55,11 +55,13 @@ export default defineEventHandler(async (event) => {
     const targetDate = openClockIn.date || currentDateText
     const [dayRow] = await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1)
     if (!dayRow) {
-      await tx.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: bodyShiftCode ?? openClockIn.shiftCode, shiftType: bodyShiftType ?? openClockIn.shiftType ?? undefined, createdAt: now, updatedAt: now })
+      // Log rows store shift_type as a plain string; the column only ever
+      // contains 'harian' | 'bantuan' - assert rather than re-shape runtime.
+      await tx.insert(attendanceDay).values({ id: randomUUID(), userId, date: targetDate, selectedShiftCode: bodyShiftCode ?? openClockIn.shiftCode, shiftType: (bodyShiftType ?? openClockIn.shiftType ?? undefined) as 'harian' | 'bantuan' | undefined, createdAt: now, updatedAt: now })
     }
 
     const day = dayRow || (await tx.select().from(attendanceDay).where(and(eq(attendanceDay.userId, userId), eq(attendanceDay.date, targetDate))).limit(1))[0]
-    const shiftTypeToPersist: 'harian' | 'bantuan' | null = (openClockIn.shiftType ?? bodyShiftType ?? day?.shiftType) ?? null
+    const shiftTypeToPersist: 'harian' | 'bantuan' | null = ((openClockIn.shiftType ?? bodyShiftType ?? day?.shiftType) as 'harian' | 'bantuan' | null | undefined) ?? null
     const shiftCodeToPersist: string | null = (openClockIn.shiftCode ?? bodyShiftCode ?? day?.selectedShiftCode) ?? null
 
     await tx.insert(attendanceLog).values({

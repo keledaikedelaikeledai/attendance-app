@@ -361,7 +361,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                       :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
-                      size="xs"
+                      size="sm"
                       class="shrink-0"
                     />
                     <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
@@ -385,7 +385,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                       :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
-                      size="xs"
+                      size="sm"
                       class="shrink-0"
                     />
                     <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
@@ -406,7 +406,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                       :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
-                      size="xs"
+                      size="sm"
                       class="shrink-0"
                     />
                     <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
@@ -445,7 +445,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                     :src="userAvatarUri(item.employee.userId)"
                     :text="initials(displayName(item.employee))"
                     :alt="displayName(item.employee)"
-                    size="xs"
+                    size="sm"
                     class="shrink-0"
                   />
                   <span class="truncate flex-1 min-w-0">

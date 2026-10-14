@@ -11,8 +11,8 @@ import { normalizeTimestampRaw } from '../../utils/time'
 function parseYearMonth(ym?: string) {
   if (!ym) return null
   if (!/^\d{4}-\d{2}$/.test(ym)) return null
-  const [y, m] = ym.split('-').map(Number)
-  if (m < 1 || m > 12) return null
+  const [y = 0, m = 0] = ym.split('-').map(Number)
+  if (y < 1 || m < 1 || m > 12) return null
   return { year: y, month: m }
 }
 
@@ -34,14 +34,14 @@ function localDateTimeToUtcIso(dateYmd: string, hh: number, mm: number, tz: stri
 
 // Compute shift start & end Date objects given an attendance YYYY-MM-DD and shift times (supports crossing midnight)
 function computeShiftSpanFromDate(attDateYmd: string, start: string, end: string, tz = BUSINESS_TZ) {
-  const [sh, sm] = start.split(':').map(Number)
-  const [eh, em] = end.split(':').map(Number)
+  const [sh = 0, sm = 0] = start.split(':').map(Number)
+  const [eh = 0, em = 0] = end.split(':').map(Number)
   const startIso = localDateTimeToUtcIso(attDateYmd, sh, sm, tz)
   let endIso: string
   if (sh * 60 + sm > eh * 60 + em) {
     // crosses midnight -> end is next day
-    const parts = attDateYmd.split('-').map(Number)
-    const d = new Date(parts[0], parts[1] - 1, parts[2])
+    const [py = 1970, pm = 1, pd = 1] = attDateYmd.split('-').map(Number)
+    const d = new Date(py, pm - 1, pd)
     d.setDate(d.getDate() + 1)
     const endYmd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     endIso = localDateTimeToUtcIso(endYmd, eh, em, tz)
