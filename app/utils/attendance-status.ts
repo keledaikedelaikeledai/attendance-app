@@ -14,21 +14,19 @@ export interface AttendanceShiftEntryLike {
   shiftCode?: string | null
   shiftStartIso?: string | null
   shiftEndIso?: string | null
+  // Server-side flag: an open shift (clock-in, no clock-out) whose expected
+  // shift window has not ended yet. Without it, open = missing.
+  running?: boolean
 }
 
 export interface AttendanceDayCellLike {
   grouped?: Record<string, AttendanceShiftEntryLike> | null
 }
 
-export interface AttendanceEntryStatusLike {
-  clockIn?: string | null
-  clockOut?: string | null
-  shiftStartIso?: string | null
-  shiftEndIso?: string | null
-  // Server-side flag: an open shift (clock-in, no clock-out) whose expected
-  // shift window has not ended yet. Without it, open = missing.
-  running?: boolean
-}
+// Row-level entries carry the same fields as cell entries; alias, not a
+// separate declaration, so a field added for one surface is visible to the
+// other instead of drifting apart.
+export type AttendanceEntryStatusLike = AttendanceShiftEntryLike
 
 // One status per employee-day from the already-reconciled server cells.
 // Missing check-out outranks late, which outranks a short shift: a red cell

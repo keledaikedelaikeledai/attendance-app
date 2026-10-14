@@ -303,7 +303,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
         <div class="grid gap-4 grid-cols-2 xl:grid-cols-4 mb-4">
           <SCard
             v-for="tile in [
-              { key: 'in', label: c.clockedIn, sub: c.clockededInSub, value: clockedIn, icon: 'i-heroicons-arrow-right-start-on-rectangle', tone: 'text-emerald-600 dark:text-emerald-400' },
+              { key: 'in', label: c.clockedIn, sub: c.clockedInSub, value: clockedIn, icon: 'i-heroicons-arrow-right-start-on-rectangle', tone: 'text-emerald-600 dark:text-emerald-400' },
               { key: 'site', label: c.onSite, sub: c.onSiteSub, value: onSiteList.length, icon: 'i-heroicons-map-pin', tone: 'text-sky-600 dark:text-sky-400' },
               { key: 'late', label: c.lateToday, sub: c.lateTodaySub, value: lateToday.length, icon: 'i-heroicons-clock', tone: lateToday.length ? 'text-amber-600 dark:text-amber-400' : '' },
               { key: 'early', label: c.earlyToday, sub: c.earlyTodaySub, value: earlyToday.length, icon: 'i-heroicons-arrow-right-end-on-rectangle', tone: earlyToday.length ? 'text-violet-600 dark:text-violet-400' : '' },
