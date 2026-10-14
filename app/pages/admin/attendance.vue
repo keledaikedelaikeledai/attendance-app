@@ -268,12 +268,13 @@ function totals(employee: Employee) {
   let late = 0
   let missing = 0
   for (const day of days.value) {
-    const cell = employee.byDate[day]
-    const st = cellStatus(cell, day > today.value)
-    if (st !== 'none')
-      worked += st === 'onTime' || st === 'late' ? 1 : 0
-    if (st === 'late') late++
-    if (st === 'missing') missing++
+    const st = cellStatus(employee.byDate[day], day > today.value)
+    // Shared "worked" definition: any day with a record (see countsAsWorked).
+    if (countsAsWorked(st)) {
+      worked++
+      if (st === 'late') late++
+      if (st === 'missing') missing++
+    }
   }
   return { worked, late, missing }
 }

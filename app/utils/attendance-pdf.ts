@@ -1,7 +1,7 @@
 import type { AttendanceDayCellLike, AttendanceShiftEntryLike } from './attendance-status'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { entryEarlyMinutes, entryLateMinutes, resolveCellStatus, resolveEntryStatus } from './attendance-status'
+import { countsAsWorked, entryEarlyMinutes, entryLateMinutes, resolveCellStatus, resolveEntryStatus } from './attendance-status'
 
 export interface AttendancePdfEmployee {
   name?: string | null
@@ -216,7 +216,8 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
       let earlyMin = 0
       for (const day of report.days) {
         const st = statusesFor(e, day)
-        if (st === 'onTime' || st === 'late' || st === 'early')
+        // Shared "worked" definition - matches the admin page summary exactly.
+        if (countsAsWorked(st))
           worked++
         if (st === 'late')
           late++

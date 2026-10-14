@@ -74,6 +74,15 @@ export function resolveEntryStatus(e: AttendanceEntryStatusLike): Exclude<CellSt
   return late ? 'late' : early ? 'early' : 'onTime'
 }
 
+// "Days worked" = days with any attendance record. Someone who showed up
+// worked the day: a missing check-out is a data problem (flagged separately
+// in its own count/column), not an absence, and a shift still running is a
+// worked day in progress. One definition for the admin page summary and the
+// PDF monthly summary so neither can quietly undercount the other.
+export function countsAsWorked(status: CellStatus): boolean {
+  return status !== 'none'
+}
+
 // Late/early minutes for one entry - grace-filtered and ceil'd so the values
 // match the board's colors and never show a zero-minute late. Null when the
 // entry is on time for that side.
