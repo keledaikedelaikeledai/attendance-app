@@ -2,6 +2,33 @@
 
 Release notes are generated automatically by Changelogen when a release is cut from `master`.
 
+## v0.2.1
+
+[compare changes](https://github.com/keledaikedelaikeledai/attendance-app/compare/v0.2.0...v0.2.1)
+
+### 🩹 Fixes
+
+- **dashboard:** On-site now sees cross-midnight shifts from earlier days ([f1d95ff](https://github.com/keledaikedelaikeledai/attendance-app/commit/f1d95ff))
+- **types:** Declare running on cell-entry interface, add typecheck script ([6ecdafa](https://github.com/keledaikedelaikeledai/attendance-app/commit/6ecdafa))
+- **attendance:** One shared days-worked definition for page and PDF ([c3099ec](https://github.com/keledaikedelaikeledai/attendance-app/commit/c3099ec))
+- **auth:** React to 401s - clear dead session, land on login with a notice ([eca6696](https://github.com/keledaikedelaikeledai/attendance-app/commit/eca6696))
+
+### 💅 Refactors
+
+- **types:** Drop ts-nocheck from attendance table/grid - remove dead size fields ([e85ae6c](https://github.com/keledaikedelaikeledai/attendance-app/commit/e85ae6c))
+
+### 🏡 Chore
+
+- **types:** Fix all typecheck + lint errors, enforce both in CI ([abc5e8c](https://github.com/keledaikedelaikeledai/attendance-app/commit/abc5e8c))
+
+### 🤖 CI
+
+- **release:** Add custom version option for explicit releases like v1 ([4c7d9ff](https://github.com/keledaikedelaikeledai/attendance-app/commit/4c7d9ff))
+
+### ❤️ Contributors
+
+- Wicaksana Pratama <wicaksanapratama@gmail.com>
+
 ## v0.2.0
 
 [compare changes](https://github.com/keledaikedelaikeledai/attendance-app/compare/v0.1.1...v0.2.0)
