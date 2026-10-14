@@ -442,7 +442,9 @@
       "password": "Password",
       "passwordPlaceholder": "••••••••",
       "remember": "Remember me",
-      "submit": "Login"
+      "submit": "Login",
+      "sessionExpiredTitle": "Session expired",
+      "sessionExpired": "Your session has ended. Please sign in again."
     },
     "forgot": {
       "title": "Forgot Password",

@@ -9,6 +9,7 @@ const NuxtLink = resolveComponent('NuxtLink')
 
 const { handleSubmit, errors, isSubmitting } = useForm()
 const { t } = useI18n()
+const route = useRoute()
 
 const { value: username } = useField('username', toTypedSchema(z.string().min(1, 'Username is required')), { initialValue: '' })
 const { value: password } = useField('password', toTypedSchema(z.string().min(6, 'Password must be at least 6 characters')), { initialValue: '' })
@@ -62,6 +63,14 @@ definePageMeta({
       </div>
 
       <SCard>
+        <SAlert
+          v-if="route.query.expired"
+          :title="t('auth.login.sessionExpiredTitle')"
+          :description="t('auth.login.sessionExpired')"
+          color="warning"
+          class="mb-4"
+        />
+
         <img src="/logo-app.png" :alt="t('layout.user.logoAlt')" class="mx-auto w-[150px] h-auto mb-4">
 
         <p class="mx-auto text-center text-lg font-semibold mb-4 text-gray-500 dark:text-gray-400">
