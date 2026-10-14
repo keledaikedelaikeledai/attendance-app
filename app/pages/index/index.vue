@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { ShiftDef } from '~/types/shifts'
-// Served from public/maplibre/ (kept version-locked with the installed
-// maplibre-gl by scripts/sync-maplibre-worker.cjs). The dist worker imports
-// './maplibre-gl-shared.mjs', which Vite does NOT emit for ?url imports -
-// pointing at /_nuxt killed every map with "Worker failed to load" in prod.
-const mapWorkerUrl = '/maplibre/maplibre-gl-worker.mjs'
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { evaluateGeofence as evaluateGeofenceAt, formatDistance } from '~~/shared/utils/geofence-geo'
 import { getShiftLabel, useAttendance } from '~/composables/useAttendance'
 import { useGeolocation } from '~/composables/useGeolocation'
 import 'maplibre-gl/dist/maplibre-gl.css'
+// Served from public/maplibre/ (kept version-locked with the installed
+// maplibre-gl by scripts/sync-maplibre-worker.cjs). The dist worker imports
+// './maplibre-gl-shared.mjs', which Vite does NOT emit for ?url imports -
+// pointing at /_nuxt killed every map with "Worker failed to load" in prod.
+const mapWorkerUrl = '/maplibre/maplibre-gl-worker.mjs'
 
 const toast = useToast()
 const { t } = useI18n()
@@ -629,8 +629,8 @@ onMounted(async () => {
           <SFormField :label="t('index.modal.reasonLabel')" label-mode="static">
             <STextarea
               v-model="earlyReason"
-              maxlength="200"
-              rows="3"
+              :maxlength="200"
+              :rows="3"
               class="w-full"
               :placeholder="t('index.modal.reasonPlaceholder')"
             />
@@ -681,8 +681,8 @@ onMounted(async () => {
           <SFormField label="Comment" label-mode="static">
             <STextarea
               v-model="geofenceComment"
-              maxlength="200"
-              rows="3"
+              :maxlength="200"
+              :rows="3"
               class="w-full"
               placeholder="Add a brief reason..."
             />

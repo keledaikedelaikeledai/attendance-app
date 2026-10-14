@@ -26,7 +26,7 @@ const items = computed(() => [
 // inside onMounted. Feeds the mobile greeting strip.
 const { data: session } = await authClient.useSession(useFetch)
 const user = computed(() => session.value?.user ?? null)
-const displayName = computed(() => user.value?.displayName ?? user.value?.username ?? '')
+const displayName = computed(() => user.value?.displayUsername ?? user.value?.username ?? '')
 const firstName = computed(() => displayName.value.split(/\s+/).filter(Boolean)[0] ?? '')
 
 // Up to two initials as the avatar fallback, matching the profile page.
@@ -143,7 +143,7 @@ const impersonating = computed(() => Boolean(session.value?.session?.impersonate
           >
             <template #item="{ item }">
               <div class="w-full flex flex-col justify-center items-center py-1">
-                <SIcon :name="item.icon" class="w-5 h-5 mb-1" />
+                <SIcon :name="item.icon ?? ''" class="w-5 h-5 mb-1" />
                 {{ item.label }}
               </div>
             </template>

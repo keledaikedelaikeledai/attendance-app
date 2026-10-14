@@ -52,7 +52,7 @@ export function useWeather() {
     if (inflight)
       return inflight
     const { lat, lng } = source.value
-    inflight = fetchWeather(lat, lng).catch(() => {
+    inflight = fetchWeather(Number(lat), Number(lng)).catch(() => {
       // Silent by design: the chip simply stays hidden on failure.
     }).finally(() => {
       inflight = null

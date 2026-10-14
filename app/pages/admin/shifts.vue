@@ -204,7 +204,6 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
   return [
     {
       label: t('adminShifts.actions.edit'),
-      value: 'edit',
       icon: 'i-heroicons-pencil',
       async onSelect() {
         openEdit(s)
@@ -212,7 +211,6 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
     },
     {
       label: t('adminShifts.actions.delete'),
-      value: 'delete',
       icon: 'i-heroicons-trash',
       destructive: true,
       async onSelect() {
@@ -251,10 +249,10 @@ function getDropdownActions(s: ShiftRow): DropdownItem[] {
             </div>
             <div class="flex items-center gap-2">
               <SBadge color="success" variant="soft">
-                {{ t('adminShifts.list.activeCount', activeCount, { count: activeCount }) }}
+                {{ t('adminShifts.list.activeCount', { count: activeCount }, activeCount) }}
               </SBadge>
               <SBadge color="neutral" variant="outline">
-                {{ t('adminShifts.list.count', totalCount, { count: totalCount }) }}
+                {{ t('adminShifts.list.count', { count: totalCount }, totalCount) }}
               </SBadge>
             </div>
           </div>

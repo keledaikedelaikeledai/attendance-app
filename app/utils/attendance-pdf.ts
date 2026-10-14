@@ -1,7 +1,7 @@
 import type { AttendanceDayCellLike, AttendanceShiftEntryLike } from './attendance-status'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { entryEarlyMinutes, entryLateMinutes, resolveCellStatus, resolveEntryStatus } from './attendance-status'
+import { countsAsWorked, entryEarlyMinutes, entryLateMinutes, resolveCellStatus, resolveEntryStatus } from './attendance-status'
 
 export interface AttendancePdfEmployee {
   name?: string | null
@@ -216,7 +216,8 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
       let earlyMin = 0
       for (const day of report.days) {
         const st = statusesFor(e, day)
-        if (st === 'onTime' || st === 'late' || st === 'early')
+        // Shared "worked" definition - matches the admin page summary exactly.
+        if (countsAsWorked(st))
           worked++
         if (st === 'late')
           late++
@@ -250,7 +251,7 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
   // ---- Employee x day matrix --------------------------------------------
   const letters: Record<string, string> = { onTime: '\u2022', late: 'L', early: 'E', missing: 'M', running: 'R', none: '' }
   const head1: any[] = [{ content: copy.employee, rowSpan: 2, styles: { valign: 'middle' } }]
-  const head2: (string | { content: string })[] = []
+  const head2: any[] = []
   for (const day of report.days) {
     const d = new Date(`${day}T00:00:00Z`)
     head1.push(String(d.getUTCDate()))
@@ -258,7 +259,7 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
   }
   const matrix = rows.map(e => [String(e.name ?? e.username ?? '-'), ...report.days.map((day) => {
     const st = statusesFor(e, day)
-    return st === 'none' ? '' : letters[st]
+    return st === 'none' ? '' : (letters[st] ?? '')
   })])
   autoTable(doc, {
     startY: y,
@@ -367,11 +368,14 @@ export function buildAttendancePdf(report: AttendancePdfReport, opts: Attendance
       didParseCell: (data) => {
         if (data.section !== 'body')
           return
-        const status = resolveEntryStatus(entries[data.row.index][2])
+        const rowEntry = entries[data.row.index]
+        if (!rowEntry)
+          return
+        const status = resolveEntryStatus(rowEntry[2])
         const fill = statusFill[status]
         const text = statusText[status]
         if (fill)
-          data.cell.styles.textColor = text
+          data.cell.styles.textColor = text!
         if (data.column.index === 7 && fill)
           data.cell.styles.fillColor = fill
       },

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { DayCell, AttendanceEmployee as Employee, AttendanceData as Report, ShiftEntry } from '~/types/attendance'
 import type { CellStatus } from '~/utils/attendance-status'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -6,31 +7,6 @@ import { parseBusinessDate } from '~~/shared/utils/attendance-date'
 import { entryEarlyMinutes as entryEarlyMinutesShared, entryLateMinutes as entryLateMinutesShared, resolveCellStatus, resolveEntryStatus } from '~/utils/attendance-status'
 
 definePageMeta({ title: 'Attendance', pageTitle: 'Attendance - Admin - Attendance App' })
-
-interface ShiftEntry {
-  clockIn?: string | null
-  clockOut?: string | null
-  shiftCode?: string | null
-  shiftStartIso?: string | null
-  shiftEndIso?: string | null
-  earlyReason?: string | null
-  running?: boolean
-}
-interface DayCell {
-  entries: unknown[]
-  grouped?: Record<string, ShiftEntry>
-  lateMs?: number
-  earlyMs?: number
-  workingShifts?: number
-}
-interface Employee {
-  userId: string
-  email?: string | null
-  name?: string | null
-  username?: string | null
-  byDate: Record<string, DayCell>
-}
-interface Report { month: string, days: string[], rows: Employee[] }
 
 const { locale } = useI18n()
 const timezone = 'Asia/Jakarta'
@@ -268,12 +244,13 @@ function totals(employee: Employee) {
   let late = 0
   let missing = 0
   for (const day of days.value) {
-    const cell = employee.byDate[day]
-    const st = cellStatus(cell, day > today.value)
-    if (st !== 'none')
-      worked += st === 'onTime' || st === 'late' ? 1 : 0
-    if (st === 'late') late++
-    if (st === 'missing') missing++
+    const st = cellStatus(employee.byDate[day], day > today.value)
+    // Shared "worked" definition: any day with a record (see countsAsWorked).
+    if (countsAsWorked(st)) {
+      worked++
+      if (st === 'late') late++
+      if (st === 'missing') missing++
+    }
   }
   return { worked, late, missing }
 }
@@ -461,7 +438,7 @@ const monthNotes = computed(() => {
       const grouped = selectedEmployee.value!.byDate[day]?.grouped
       return grouped && Object.entries(grouped).some(([st]) => shiftType.value === 'all' || st === shiftType.value)
     })
-    .map(day => ({ day, entries: Object.entries(selectedEmployee.value!.byDate[day].grouped!).filter(([st]) => shiftType.value === 'all' || st === shiftType.value) }))
+    .map(day => ({ day, entries: Object.entries(selectedEmployee.value!.byDate[day]?.grouped ?? {}).filter(([st]) => shiftType.value === 'all' || st === shiftType.value) }))
 })
 
 function openDay(userId: string, date: string) {
@@ -705,7 +682,7 @@ const statusItems = computed(() => [
                       :src="userAvatarUri(e.userId)"
                       :text="String(e.name || e.username || '?').split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? '').join('')"
                       :alt="e.name || e.username || '?'"
-                      size="xs"
+                      size="sm"
                       class="shrink-0"
                     />
                     <span class="truncate">

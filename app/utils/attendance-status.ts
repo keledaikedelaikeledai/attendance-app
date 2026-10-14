@@ -14,21 +14,19 @@ export interface AttendanceShiftEntryLike {
   shiftCode?: string | null
   shiftStartIso?: string | null
   shiftEndIso?: string | null
+  // Server-side flag: an open shift (clock-in, no clock-out) whose expected
+  // shift window has not ended yet. Without it, open = missing.
+  running?: boolean
 }
 
 export interface AttendanceDayCellLike {
   grouped?: Record<string, AttendanceShiftEntryLike> | null
 }
 
-export interface AttendanceEntryStatusLike {
-  clockIn?: string | null
-  clockOut?: string | null
-  shiftStartIso?: string | null
-  shiftEndIso?: string | null
-  // Server-side flag: an open shift (clock-in, no clock-out) whose expected
-  // shift window has not ended yet. Without it, open = missing.
-  running?: boolean
-}
+// Row-level entries carry the same fields as cell entries; alias, not a
+// separate declaration, so a field added for one surface is visible to the
+// other instead of drifting apart.
+export type AttendanceEntryStatusLike = AttendanceShiftEntryLike
 
 // One status per employee-day from the already-reconciled server cells.
 // Missing check-out outranks late, which outranks a short shift: a red cell
@@ -74,6 +72,15 @@ export function resolveEntryStatus(e: AttendanceEntryStatusLike): Exclude<CellSt
   const late = lateMinutesGrace(e.clockIn, e.shiftStartIso) != null
   const early = earlyMinutesGrace(e.clockOut, e.shiftEndIso) != null
   return late ? 'late' : early ? 'early' : 'onTime'
+}
+
+// "Days worked" = days with any attendance record. Someone who showed up
+// worked the day: a missing check-out is a data problem (flagged separately
+// in its own count/column), not an absence, and a shift still running is a
+// worked day in progress. One definition for the admin page summary and the
+// PDF monthly summary so neither can quietly undercount the other.
+export function countsAsWorked(status: CellStatus): boolean {
+  return status !== 'none'
 }
 
 // Late/early minutes for one entry - grace-filtered and ceil'd so the values

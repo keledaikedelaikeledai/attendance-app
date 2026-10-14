@@ -36,7 +36,7 @@ function mapUrl(lat?: number, lng?: number) {
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
 }
 
-function shiftBadgeColor(code?: string): 'neutral' | 'error' | 'success' | 'primary' | 'secondary' | 'info' | 'warning' {
+function shiftBadgeColor(code?: string): 'neutral' | 'danger' | 'success' | 'primary' | 'secondary' | 'info' | 'warning' {
   switch (code) {
     case 'pagi': return 'info'
     case 'siang': return 'primary'
@@ -138,7 +138,7 @@ function entriesForGroup(groupVal: any, st?: string) {
             <div class="flex flex-col gap-2">
               <div v-for="(e, idx) in entriesForGroup(val, st)" :key="idx" class="flex items-center justify-between">
                 <SBadge
-                  :color="(typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e)) > 0 ? 'error' : 'success'"
+                  :color="(typeof e?.lateMs === 'number' ? e.lateMs : attendanceTime.computeLateMsForEntry(e)) > 0 ? 'danger' : 'success'"
                   variant="solid"
                   size="sm"
                 >

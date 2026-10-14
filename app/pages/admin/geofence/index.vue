@@ -75,6 +75,13 @@ const {
   tileSource,
 } = geo
 
+// SInput's model value is typed string | number | undefined while the map composable
+// keeps the radius as number | null - translate at this boundary so "empty" clears.
+function onRadiusInput(v: string | number | undefined) {
+  const n = typeof v === 'string' ? Number(v) : v
+  radiusMeters.value = typeof n === 'number' && Number.isFinite(n) ? n : null
+}
+
 function onMapReady() {
   if (!mapEventsBound) {
     bindMapEvents(id => selectFence(geofences.value.find(g => g.id === id)))
@@ -656,10 +663,11 @@ const panelTitle = computed(() => isCreate.value
                     : undefined)"
               >
                 <SInput
-                  v-model.number="radiusMeters"
+                  :model-value="radiusMeters ?? undefined"
                   type="number"
                   min="1"
                   :placeholder="t('adminGeofence.form.radius.placeholder')"
+                  @update:model-value="onRadiusInput"
                 />
               </SFormField>
               <p v-else class="text-xs text-[var(--selaras-resolved-text-muted)]">

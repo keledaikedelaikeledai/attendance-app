@@ -18,7 +18,7 @@ const props = defineProps<{
   modelValue?: string
   placeholder?: string
   icon?: string
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
 }>()
 

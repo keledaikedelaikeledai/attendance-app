@@ -8,8 +8,12 @@
 // and it stranded any session left open longer than that: the status
 // endpoint reported "clocked in for 9 days" while clock-out answered 409,
 // leaving the employee unable to ever close the session.
+// Accepts any log shape with a `type` field; the drizzle rows store the type
+// as a plain string column. The literal 'clock-in'/'clock-out' comparison
+// happens below - widening the field type keeps callers (which pass full
+// table rows) assignable without casts.
 export interface AttendanceTypeLog {
-  type: 'clock-in' | 'clock-out'
+  type: string
 }
 
 export function findOpenClockIn<T extends AttendanceTypeLog>(logsAscending: T[]): T | undefined {

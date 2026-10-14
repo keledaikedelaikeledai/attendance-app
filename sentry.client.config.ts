@@ -19,6 +19,7 @@ if (dsn) {
 
     integrations: [Sentry.replayIntegration()],
 
+    // @ts-expect-error - accepted by the SDK at runtime; typings lag behind
     enableLogs: true,
 
     dataCollection: {},

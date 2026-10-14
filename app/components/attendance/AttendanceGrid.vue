@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumnDef } from '@sewadah/selaras/table'
-import type { AttendanceData } from '~/pages/admin/attendance.vue'
+import type { AttendanceData } from '~/types/attendance'
 import { h } from 'vue'
 
 const props = defineProps<{
@@ -22,7 +22,6 @@ const columns = computed(() => {
     columnHelper.accessor('name', {
       header: () => h('div', { class: 'text-center w-[200px]' }, 'Member'),
       cell: info => h(AttendanceUser as any, { user: info.row.original }),
-      size: 200,
     }),
   ]
 
@@ -31,7 +30,6 @@ const columns = computed(() => {
       id: `day-${day}`,
       header: () => h('div', { class: 'text-center w-[320px]' }, new Date(day).toLocaleDateString([], { day: '2-digit', month: 'short' })),
       cell: info => h(AttendanceCard as any, { data: info.getValue(), titleDay: day, username: info.row.original.name || info.row.original.username || info.row.original.email }),
-      size: 120,
     }),
   )
   return [...baseCols, ...dayCols] as TableColumnDef<typeof attendances.value[0]>[]

@@ -20,6 +20,7 @@ interface ShiftEntry {
   shiftStartIso?: string | null
   shiftEndIso?: string | null
   earlyReason?: string | null
+  running?: boolean
 }
 interface DayCell {
   grouped?: Record<string, ShiftEntry>
@@ -158,14 +159,30 @@ const todayRows = computed(() => employees.value.map(employee => ({
 
 // TODAY strip ---------------------------------------------------------------
 const clockedIn = computed(() => todayRows.value.reduce((acc, row) => acc + (row.entries.some(([, e]) => e.clockIn) ? 1 : 0), 0))
-const onSiteList = computed(() => todayRows.value.flatMap(({ employee, entries }) => {
-  const open = entries.filter(([, e]) => e.clockIn && !e.clockOut)
-  if (!open.length)
-    return []
-  const earliest = open.map(([, e]) => e.clockIn!).sort()[0]!
-  const shiftType = open[0]![0]
-  return [{ employee, in: earliest, shiftType }]
-}))
+// On-site = an open clock-in whose shift window is still open (the server
+// stamps `running` on the entry at fetch time - same signal that paints the
+// board cell blue). Scanned across all days up to today, not just today: a
+// malam shift clocked in yesterday before midnight is still on-site at 01:00,
+// and its record lives in yesterday's cell.
+const onSiteList = computed(() => {
+  const list: Array<{ employee: Employee, in: string, shiftType: string }> = []
+  for (const employee of employees.value) {
+    let best: { in: string, shiftType: string } | null = null
+    for (const day of data.value?.days ?? []) {
+      if (day > today.value)
+        break
+      for (const [shiftType, e] of dayEntries(employee, day)) {
+        if (!e.clockIn || e.clockOut || !e.running)
+          continue
+        if (!best || e.clockIn < best.in)
+          best = { in: e.clockIn, shiftType }
+      }
+    }
+    if (best)
+      list.push({ employee, in: best.in, shiftType: best.shiftType })
+  }
+  return list
+})
 const lateToday = computed(() => todayRows.value.flatMap(({ employee, entries }) => {
   const worst = Math.max(0, ...entries.map(([, e]) => entryLateMinutes(e)))
   if (!worst)
@@ -286,7 +303,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
         <div class="grid gap-4 grid-cols-2 xl:grid-cols-4 mb-4">
           <SCard
             v-for="tile in [
-              { key: 'in', label: c.clockedIn, sub: c.clockededInSub, value: clockedIn, icon: 'i-heroicons-arrow-right-start-on-rectangle', tone: 'text-emerald-600 dark:text-emerald-400' },
+              { key: 'in', label: c.clockedIn, sub: c.clockedInSub, value: clockedIn, icon: 'i-heroicons-arrow-right-start-on-rectangle', tone: 'text-emerald-600 dark:text-emerald-400' },
               { key: 'site', label: c.onSite, sub: c.onSiteSub, value: onSiteList.length, icon: 'i-heroicons-map-pin', tone: 'text-sky-600 dark:text-sky-400' },
               { key: 'late', label: c.lateToday, sub: c.lateTodaySub, value: lateToday.length, icon: 'i-heroicons-clock', tone: lateToday.length ? 'text-amber-600 dark:text-amber-400' : '' },
               { key: 'early', label: c.earlyToday, sub: c.earlyTodaySub, value: earlyToday.length, icon: 'i-heroicons-arrow-right-end-on-rectangle', tone: earlyToday.length ? 'text-violet-600 dark:text-violet-400' : '' },
@@ -344,7 +361,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                       :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
-                      size="xs"
+                      size="sm"
                       class="shrink-0"
                     />
                     <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
@@ -368,7 +385,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                       :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
-                      size="xs"
+                      size="sm"
                       class="shrink-0"
                     />
                     <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
@@ -389,7 +406,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                       :src="userAvatarUri(item.employee.userId)"
                       :text="initials(displayName(item.employee))"
                       :alt="displayName(item.employee)"
-                      size="xs"
+                      size="sm"
                       class="shrink-0"
                     />
                     <span class="truncate flex-1 min-w-0 font-medium text-(--selaras-resolved-text-default)">{{ displayName(item.employee) }}</span>
@@ -428,7 +445,7 @@ const attentionEmpty = computed(() => !missingCheckouts.value.length && !lateTod
                     :src="userAvatarUri(item.employee.userId)"
                     :text="initials(displayName(item.employee))"
                     :alt="displayName(item.employee)"
-                    size="xs"
+                    size="sm"
                     class="shrink-0"
                   />
                   <span class="truncate flex-1 min-w-0">

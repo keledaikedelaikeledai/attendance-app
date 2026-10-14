@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TableColumnDef } from '@sewadah/selaras/table'
-import type { AttendanceData } from '~/pages/admin/attendance.vue'
+import type { AttendanceData } from '~/types/attendance'
 import { h, onMounted } from 'vue'
 import * as attendanceTime from '~/composables/useAttendanceTime'
 
@@ -115,7 +115,6 @@ const columns = computed(() => {
     columnHelper.accessor('name', {
       header: 'Nama',
       cell: info => info.getValue() || info.row.original.username || info.row.original.email || 'N/A',
-      size: 200,
     }),
     columnHelper.display({
       id: 'working-days',
@@ -124,7 +123,6 @@ const columns = computed(() => {
         const s = summarizeRow(info.row.original)
         return h('div', { class: 'text-center w-[120px]' }, String(s.workingDays))
       },
-      size: 120,
     }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'shift-harian',
@@ -133,7 +131,6 @@ const columns = computed(() => {
         const s = summarizeRow(info.row.original)
         return h('div', { class: 'text-center w-[120px]' }, String(s.harian))
       },
-      size: 120,
     }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'shift-bantuan',
@@ -142,7 +139,6 @@ const columns = computed(() => {
         const s = summarizeRow(info.row.original)
         return h('div', { class: 'text-center w-[120px]' }, String(s.bantuan))
       },
-      size: 120,
     }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'late-hours',
@@ -151,7 +147,6 @@ const columns = computed(() => {
         const s = summarizeRow(info.row.original)
         return h('div', { class: 'text-center w-[120px]' }, attendanceTime.humanizeMinutes(s.lateMs))
       },
-      size: 120,
     }) as unknown as TableColumnDef<typeof attendances.value[0]>,
     columnHelper.display({
       id: 'early-hours',
@@ -160,7 +155,6 @@ const columns = computed(() => {
         const s = summarizeRow(info.row.original)
         return h('div', { class: 'text-center w-[120px]' }, attendanceTime.humanizeMinutes(s.earlyMs))
       },
-      size: 120,
     }) as unknown as TableColumnDef<typeof attendances.value[0]>,
   ]
 
@@ -169,12 +163,15 @@ const columns = computed(() => {
       id: `day-${day}`,
       header: () => h('div', { class: 'text-center' }, day.slice(-2)),
       columns: [
-        columnHelper.accessor((row: any) => {
+        // Accessor value typed `unknown`: TanStack v9's group column requires
+        // ColumnDef<..., unknown>, and these accessors hand the cell a
+        // string[] | undefined payload that the cell re-narrow itself.
+        columnHelper.accessor((row: any): unknown => {
           const cell = row?.byDate?.[day]
           const entries = attendanceTime.normalizeCell(cell)
           // return sorted clockIn times (may be multiple)
           const times = entries.map(e => e?.clockIn).filter(Boolean).sort()
-          return times.length ? times as string[] : undefined
+          return times.length ? times : undefined
         }, {
           id: `in-${day}`,
           header: () => h('div', { class: 'text-center w-[120px]' }, 'M'),
@@ -194,14 +191,13 @@ const columns = computed(() => {
             const botNode = h('div', { class: slotCls(botLate), style: { lineHeight: '1' } }, botT ? formatTime(botT) : '')
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
-          size: 120,
         }),
-        columnHelper.accessor((row: any) => {
+        columnHelper.accessor((row: any): unknown => {
           const cell = row?.byDate?.[day]
           const entries = attendanceTime.normalizeCell(cell)
           // return clockOut times sorted descending so display order matches ins
           const times = entries.map(e => e?.clockOut).filter(Boolean).sort().reverse()
-          return times.length ? times as string[] : undefined
+          return times.length ? times : undefined
         }, {
           id: `out-${day}`,
           header: () => h('div', { class: 'text-center w-[120px]' }, 'P'),
@@ -224,7 +220,6 @@ const columns = computed(() => {
             const botNode = h('div', { class: slotCls(botEarly), style: { lineHeight: '1' } }, botInner)
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
-          size: 120,
         }),
         columnHelper.display({
           id: `late-${day}`,
@@ -240,7 +235,6 @@ const columns = computed(() => {
             const botNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botMs > 0 ? attendanceTime.humanizeMinutes(botMs) : '')
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
-          size: 120,
         }) as unknown as TableColumnDef<typeof attendances.value[0]>,
         columnHelper.display({
           id: `early-${day}`,
@@ -256,7 +250,6 @@ const columns = computed(() => {
             const botNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botMs > 0 ? attendanceTime.humanizeMinutes(botMs) : '')
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
-          size: 120,
         }) as unknown as TableColumnDef<typeof attendances.value[0]>,
         columnHelper.display({
           id: `shift-${day}`,
@@ -274,7 +267,6 @@ const columns = computed(() => {
             const botNode = h('div', { class: 'w-[120px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botLabel || '')
             return h('div', { class: 'text-center w-[120px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
-          size: 120,
         }) as unknown as TableColumnDef<typeof attendances.value[0]>,
         columnHelper.display({
           id: `ket-${day}`,
@@ -290,7 +282,6 @@ const columns = computed(() => {
             const botNode = h('div', { class: 'w-[220px] h-6 flex items-center justify-center', style: { lineHeight: '1' } }, botVal)
             return h('div', { class: 'text-center w-[220px] flex flex-col items-center justify-center' }, [topNode, botNode])
           },
-          size: 220,
         }) as unknown as TableColumnDef<typeof attendances.value[0]>,
       ],
     }) as unknown as TableColumnDef<typeof attendances.value[0]>,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { entryEarlyMinutes, entryLateMinutes, resolveCellStatus, resolveEntryStatus } from '../app/utils/attendance-status'
+import { countsAsWorked, entryEarlyMinutes, entryLateMinutes, resolveCellStatus, resolveEntryStatus } from '../app/utils/attendance-status'
 import { calculateAttendanceReportMetrics } from '../server/utils/attendance-admin-report'
 
 // These four helpers are exactly what the Excel export (admin attendance page)
@@ -99,5 +99,16 @@ describe('running vs missing check-out', () => {
       },
     }
     expect(resolveCellStatus(cell, false)).toBe('late')
+  })
+})
+
+describe('days worked definition (page summary and PDF summary must agree)', () => {
+  test('every recorded day counts - open, missing, early, late, onTime - none does not', () => {
+    expect(countsAsWorked('running')).toBe(true)
+    expect(countsAsWorked('missing')).toBe(true)
+    expect(countsAsWorked('early')).toBe(true)
+    expect(countsAsWorked('late')).toBe(true)
+    expect(countsAsWorked('onTime')).toBe(true)
+    expect(countsAsWorked('none')).toBe(false)
   })
 })

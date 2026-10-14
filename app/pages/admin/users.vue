@@ -62,8 +62,8 @@ const TABLE_UI = { wrapper: 'rounded-none ring-0' }
 function initials(name: string) {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+  if (parts.length === 1) return (parts[0] ?? '?').slice(0, 2).toUpperCase()
+  return `${parts[0]?.[0] ?? ''}${parts[parts.length - 1]?.[0] ?? ''}`.toUpperCase()
 }
 
 // modal state for add/edit user
@@ -301,13 +301,13 @@ function getDropdownActions(user: AdminUser) {
             </div>
             <div class="flex flex-wrap items-center gap-2">
               <SBadge v-if="bannedCount" color="danger" variant="soft">
-                {{ t('adminUsers.list.bannedCount', bannedCount, { count: bannedCount }) }}
+                {{ t('adminUsers.list.bannedCount', { count: bannedCount }, bannedCount) }}
               </SBadge>
               <SBadge color="primary" variant="soft">
-                {{ t('adminUsers.list.adminCount', adminCount, { count: adminCount }) }}
+                {{ t('adminUsers.list.adminCount', { count: adminCount }, adminCount) }}
               </SBadge>
               <SBadge color="neutral" variant="outline">
-                {{ t('adminUsers.list.count', data.length, { count: data.length }) }}
+                {{ t('adminUsers.list.count', { count: data.length }, data.length) }}
               </SBadge>
               <SInput
                 v-model="search"

@@ -10,6 +10,7 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare && bun scripts/sync-maplibre-worker.cjs",
     "test": "bun test",
+    "typecheck": "nuxi typecheck",
     "k6:run": "k6 run performance/k6/default.js",
     "k6:cloud": "k6 cloud performance/k6/default.js",
     "seed:last-month": "node scripts/seed_last_month_attendance.js",
@@ -52,12 +53,14 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^9.5.1",
+    "@types/bun": "^1.4.3",
     "@vueuse/core": "^15.0.0",
     "@vueuse/nuxt": "^15.0.0",
     "drizzle-kit": "^0.31.11",
     "eslint": "^10.11.0",
     "tailwindcss": "^4.3.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vue-tsc": "^3.3.13"
   },
   "overrides": {
     "@vercel/nft": "^0.27.4"

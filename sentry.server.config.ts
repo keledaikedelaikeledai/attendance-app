@@ -6,6 +6,7 @@ Sentry.init({
 
   tracesSampleRate: 0.2,
 
+  // @ts-expect-error - accepted by the SDK at runtime; typings lag behind
   enableLogs: true,
 
   dataCollection: {},

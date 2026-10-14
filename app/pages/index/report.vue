@@ -61,14 +61,14 @@ function mapUrl(lat?: number | null, lng?: number | null) {
 
 function shiftCrossesMidnight(def?: { start?: string, end?: string } | null) {
   if (!def?.start || !def?.end) return false
-  const [sh, sm] = def.start.split(':').map(s => Number(s ?? '0'))
-  const [eh, em] = def.end.split(':').map(s => Number(s ?? '0'))
+  const [sh = 0, sm = 0] = def.start.split(':').map(s => Number(s ?? '0'))
+  const [eh = 0, em = 0] = def.end.split(':').map(s => Number(s ?? '0'))
   if ([sh, sm, eh, em].some(Number.isNaN)) return false
   return (sh * 60 + sm) > (eh * 60 + em)
 }
 
 function addDaysYmd(ymd: string, days: number) {
-  const [y, m, d] = ymd.split('-').map(s => Number(s ?? '0'))
+  const [y = 1970, m = 1, d = 1] = ymd.split('-').map(s => Number(s ?? '0'))
   const dt = new Date(y, m - 1, d)
   dt.setDate(dt.getDate() + days)
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
@@ -668,7 +668,7 @@ watch(selectedMonth, fetchReport)
                 />
                 <SBadge
                   v-if="dayStatus(d) === 'missing'"
-                  color="error"
+                  color="danger"
                   variant="soft"
                   size="sm"
                 >
