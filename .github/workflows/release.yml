@@ -12,6 +12,11 @@ on:
           - patch
           - minor
           - major
+          - custom
+      customVersion:
+        description: 'Explicit version when bump = "custom" (e.g. 1.0.0 - changelogen demotes semver bumps while on 0.x, so reaching v1 needs this)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -61,12 +66,24 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Generate release version and changelog
+        env:
+          BUMP: ${{ inputs.bump }}
+          CUSTOM_VERSION: ${{ inputs.customVersion }}
         run: |
-          bunx changelogen@${CHANGELOGEN_VERSION} \
-            --bump \
-            --${{ inputs.bump }} \
-            --no-commit \
-            --no-tag
+          if [ "${BUMP}" = "custom" ]; then
+            # Strip an optional leading v, require strict X.Y.Z (optionally with
+            # a prerelease/build suffix) so the tag and image versioning stay exact.
+            VERSION="${CUSTOM_VERSION#v}"
+            if ! printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)*$'; then
+              echo "Invalid custom version '${CUSTOM_VERSION}' - use semver like 1.0.0" >&2
+              exit 1
+            fi
+            # -r sets the version explicitly, overriding changelogen's
+            # commit-derived (and 0.x-demoted) recommendation.
+            bunx changelogen@${CHANGELOGEN_VERSION} -r "${VERSION}" --bump --no-commit --no-tag
+          else
+            bunx changelogen@${CHANGELOGEN_VERSION} --bump --"${BUMP}" --no-commit --no-tag
+          fi
 
       - name: Read release version
         id: version
